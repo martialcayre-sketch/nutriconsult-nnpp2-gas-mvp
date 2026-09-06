@@ -538,13 +538,17 @@ function DoneScreen({ token, premiereAssignation }: { token: string; premiereAss
         Vos renseignements ont bien été transmis à votre praticien.<br />
         {premiereAssignation
           ? 'Vos questionnaires de suivi sont maintenant disponibles.'
-          : 'Votre praticien mettra vos questionnaires à disposition prochainement.'}
+          : 'Vous n’avez aucun questionnaire en attente pour le moment.'}
       </p>
-      {premiereAssignation && (
-        <a href={`/portail/${token}/questionnaires`} className="inline-block py-2.5 px-4 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:opacity-90 transition-opacity">
-          Accéder à mon parcours
-        </a>
-      )}
+      {/* Le lien ne dépend plus de `premiereAssignation`. La session ne compte
+          que les assignations NON complétées (`statut: { not: 'Complété' }`) :
+          le champ est donc null AUSSI pour un patient qui a tout rempli, à qui
+          cet écran fermait la porte du hub — précisément l'écran qui sait dire
+          « transmis / en préparation / restitution disponible ». Le libellé
+          ci-dessus ne promet plus rien à sa place. */}
+      <a href={`/portail/${token}/questionnaires`} className="inline-block py-2.5 px-4 bg-primary text-primary-foreground rounded-lg font-medium text-sm hover:opacity-90 transition-opacity">
+        Accéder à mon parcours
+      </a>
     </PatientCard>
   );
 }

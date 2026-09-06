@@ -203,6 +203,19 @@ function corpsAssemblage(mock: { mock: { calls: unknown[][] } }): Record<string,
 }
 
 describe('EpisodeConfirmationPanel', () => {
+  // L'écran annonçait « Cette confirmation reste en mémoire et ne modifie
+  // aucune donnée » au-dessus du geste qui écrit l'épisode — et que [[D-129]]
+  // vient de rendre ÉCRASANT sur une re-confirmation divergente. La phrase
+  // n'était gardée par aucun banc ; c'est désormais le cas.
+  it('annonce que confirmer écrit, et que la date de l’acte ne bouge pas', () => {
+    render(<EpisodeConfirmationPanel proposal={proposal} submitting={false} onConfirm={vi.fn()} />);
+
+    expect(screen.queryByText(/ne modifie aucune donnée/)).toBeNull();
+    expect(screen.queryByText(/reste en mémoire/)).toBeNull();
+    expect(screen.getByText(/Confirmer enregistre l’épisode/)).not.toBeNull();
+    expect(screen.getByText(/sans déplacer la date de l’acte/)).not.toBeNull();
+  });
+
   it('sélectionne les réponses dans la fenêtre par défaut et permet une correction hors fenêtre', () => {
     const onConfirm = vi.fn();
     render(<EpisodeConfirmationPanel proposal={proposal} submitting={false} onConfirm={onConfirm} />);
