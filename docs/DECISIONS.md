@@ -26,8 +26,8 @@ précédente. **Une confirmation clinique perdue, sans trace.**
 **Ce que la décision tranche.**
 
 **1. Une re-confirmation remplace ce que l'épisode RETIENT, et rien d'autre.**
-Trois colonnes : `payload`, `payloadHash`, `contractVersion`. Sept restent hors
-de portée, chacune pour son motif — `id`/`idPatient`/`milestone` sont l'identité
+Trois colonnes : `payload`, `payloadHash`, `contractVersion`. HUIT restent hors
+de portée (`createdAt` compris, posé par la base), chacune pour son motif — `id`/`idPatient`/`milestone` sont l'identité
 de la ligne ; `targetAt` la géométrie de la fenêtre ; `cycleId` la seule dont
 l'écriture peut violer l'index unique partiel des jalons de mesure ;
 `versionScore` est figé à la mesure, sinon la garde A8-3 devient indéclenchable.
@@ -40,7 +40,7 @@ porte donc l'instant de l'acte, jamais celui du clic — pour l'épisode comme p
 toute la chaîne C1 qu'il engendre.
 
 **3. La justification de contournement se REPREND, elle ne se recompare pas.**
-C'est l'arbitrage rendu. Sur un acte déjà enregistré, l'override est repris
+Premier arbitrage rendu. Sur un acte déjà enregistré, l'override est repris
 VERBATIM de la ligne et le motif reçu du navigateur est ignoré — sans être
 comparé. Le comparer aurait bloqué un praticien sur une virgule : le panneau
 vide ses motifs à chaque remontage du composant et ne lui remontre jamais celui
@@ -49,12 +49,37 @@ entretien » et se serait heurté à un refus définitif sur un dossier qu'il ne
 peut plus enregistrer. Même traitement que la date de l'acte, et pour la même
 raison : ce qui a été rendu à sa date se reprend, il ne se rejuge pas.
 
-**4. Un contournement NOUVEAU sur un acte ancien est refusé, et c'est le seul
-refus qui subsiste.** Il n'y a pas d'écriture honnête : `decideLe` doit égaler
-`confirmedAt` (garde des deux routes protocole), donc dater le nouveau
-contournement de l'acte antidaterait un arbitrage rendu aujourd'hui, et le dater
-d'aujourd'hui rendrait le dossier non enregistrable. Le refus dit par où sortir :
-ouvrir un nouveau cycle.
+**3 bis. La trace d'un arbitrage SURVIT à la résolution de sa condition.**
+Second arbitrage rendu. Une condition souple se résout — la contradiction est
+levée, la passation est repassée. Ne reconstruire que les conditions ENCORE
+requises effaçait alors, en silence et au premier geste anodin du praticien, qui
+avait passé outre, quand et pourquoi : c'est la seule ligne qui en fasse foi, et
+c'était la même classe de perte que le P0 que cette décision ferme. Les
+overrides déjà rendus sont donc reportés. Le contrôle « contournement sans
+objet » de `refusPreconditionsPersistance` distingue en conséquence une TRACE
+(décision antérieure à la confirmation, conservée) d'une fabrication (décision
+concomitante sur une condition qui n'est pas en défaut, toujours refusée).
+
+**4. Un contournement NOUVEAU se date du JOUR, sur un acte qui garde le sien.**
+Troisième arbitrage rendu, et il corrige une première conception de cette même
+décision. Elle refusait ce cas, au motif qu'il n'existait « pas de troisième
+écriture honnête » : `decideLe` devait ÉGALER `confirmedAt`, donc dater le
+contournement de l'acte l'aurait antidaté, et le dater du jour rendait le
+dossier non enregistrable.
+
+C'était un excès. `decideLe === confirmedAt` est une règle du dépôt, pas une
+loi ; elle existait pour empêcher un horodatage « daté à volonté ». La borne
+`confirmedAt <= decideLe <= maintenant` l'empêche tout autant — on ne peut ni
+remonter avant l'acte, ni projeter dans le futur — et elle autorise ce qui est
+vrai : un arbitrage rendu aujourd'hui porte la date d'aujourd'hui.
+
+Le refus, lui, se déclenchait sur un parcours NOMINAL. `contradictions_ouvertes`
+est une condition vivante en production (drapeau posé le 2026-08-16, `D-064` ;
+les commentaires « MUETTE AUJOURD'HUI » de `preconditionsT0.ts` sont périmés).
+Un T0 confirmé, une contradiction qui s'ouvre ensuite, et la re-confirmation
+divergente — celle que cette décision existe pour ne plus perdre — était
+refusée. Le P0 aurait été corrigé partout SAUF là où le contenu diverge le plus
+souvent. Relevé par la revue adversariale, qui l'a reproduit.
 
 **5. L'écriture dit ce qu'elle fait — trois branches, une par cas réel.** Pas de
 ligne : `create`, et non `upsert` — l'`upsert` ne SAIT PAS dire « la ligne est
@@ -91,6 +116,20 @@ lui remontre jamais le motif d'origine.
 3. **`assessment_episodes` n'est plus vide en production** (4 lignes au
    2026-09-06). Des commentaires du dépôt affirmaient encore le contraire, sur
    la foi d'un constat du 2026-08-26 ; ils sont corrigés là où ce lot passe.
+4. **Le motif saisi à l'écran est ignoré sans que l'écran le dise.** Sur un acte
+   déjà enregistré, le panneau exige encore une saisie qu'il jette : le
+   praticien tape une justification nouvelle, lit « confirmé », et la base garde
+   celle d'origine. Le comportement est le bon (§3) ; son silence ne l'est pas.
+   Corriger l'écran — « justification déjà enregistrée le … » — est un lot
+   propre, hors de celui-ci.
+5. **`targetAt` peut diverger entre la colonne et le payload** lors de la
+   re-confirmation d'une ancre dont la fenêtre a bougé. Aucun des lecteurs de
+   `assessment_episodes` ne lit cette colonne aujourd'hui : dette nommée, pas
+   défaut.
+6. **Les suites de ce périmètre dépendent de l'ordre des tests.** Mesuré par la
+   revue : `--sequence.shuffle` rougit déjà sur la base de cette PR. Ce lot
+   ferme les fuites d'implémentation qu'il a introduites, il ne guérit pas la
+   maladie de fond.
 
 ### D-128 — Révoquer ferme aussi par l'horizon : `consommeLe` ne dit plus qu'une chose
 

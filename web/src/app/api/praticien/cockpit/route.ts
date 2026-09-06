@@ -58,7 +58,6 @@ type CockpitUnavailableReason =
   | 'proposal_stale'
   | 'preconditions_non_remplies'
   | 'motif_contournement_manquant'
-  | 'contournement_nouveau_sur_acte_ancien'
   | 'exception';
 
 export type CockpitRuntimeApiResponse =
@@ -602,32 +601,41 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       // être comparé — le comparer bloquerait un praticien sur une virgule,
       // d'autant que le panneau vide ses motifs à chaque remontage et ne lui
       // remontre jamais celui d'origine.
-      const dejaRendus = new Map(
-        (ligneEnregistree
-          ? ((ligneEnregistree.payload as { preconditionOverrides?: PreconditionOverride[] })
-              .preconditionOverrides ?? [])
-          : []
-        ).map(o => [o.conditionId, o]),
-      );
+      // LA LIGNE PEUT PORTER N'IMPORTE QUEL JSON : on ne la croit pas sur parole.
+      const brut = ligneEnregistree?.payload;
+      const rendusEnBase: PreconditionOverride[] =
+        brut !== null && typeof brut === 'object' && !Array.isArray(brut)
+          ? (() => {
+              const champ = (brut as { preconditionOverrides?: unknown }).preconditionOverrides;
+              return Array.isArray(champ) ? (champ as PreconditionOverride[]) : [];
+            })()
+          : [];
+      const dejaRendus = new Map(rendusEnBase.map(o => [o.conditionId, o]));
+
+      // LA TRACE D'UN ARBITRAGE SURVIT À LA RÉSOLUTION DE SA CONDITION
+      // (`D-129`, arbitrage du 2026-09-06). Une condition souple SE RÉSOUT — la
+      // contradiction est levée, la passation est repassée. Ne reconstruire que
+      // les conditions ENCORE requises effaçait alors, en silence et au premier
+      // geste anodin, qui avait passé outre, quand et pourquoi. C'est la seule
+      // ligne qui en fasse foi : elle est reportée telle quelle.
+      const requisMaintenant = new Set(preconditions.contournementsRequis);
+      for (const rendu of rendusEnBase) {
+        if (!requisMaintenant.has(rendu.conditionId)) preconditionOverrides.push(rendu);
+      }
+
       for (const conditionId of preconditions.contournementsRequis) {
         const rendu = dejaRendus.get(conditionId);
         if (rendu) {
           preconditionOverrides.push(rendu);
           continue;
         }
-        // UN CONTOURNEMENT NOUVEAU SUR UN ACTE ANCIEN NE PEUT PAS ÊTRE DATÉ.
-        // `refusPreconditionsPersistance` exige `decideLe === confirmedAt` sur
-        // les deux routes protocole : le dater de l'acte antidaterait un
-        // arbitrage rendu aujourd'hui, le dater d'aujourd'hui rendrait le
-        // dossier non enregistrable. Il n'y a pas de troisième écriture
-        // honnête, donc on refuse — et on dit par où sortir.
-        if (ligneEnregistree) {
-          return unavailable(
-            'contournement_nouveau_sur_acte_ancien',
-            `L’épisode enregistré porte déjà ses justifications, à leur date. L’avertissement « ${conditionId} » est apparu depuis : il ne peut pas être justifié rétroactivement sur cet acte. Ouvrez un nouveau cycle pour le prendre en compte.`,
-            422,
-          );
-        }
+        // UN CONTOURNEMENT NOUVEAU SE DATE DU JOUR, SUR UN ACTE QUI GARDE LE
+        // SIEN. Un avertissement peut APPARAÎTRE après la confirmation — une
+        // contradiction s'ouvre, une passation devient ambiguë. Le refuser
+        // bloquait précisément la re-confirmation divergente que `D-129` existe
+        // pour ne plus perdre. `refusPreconditionsPersistance` borne désormais
+        // `confirmedAt <= decideLe <= maintenant` au lieu d'exiger l'égalité :
+        // rien n'est antidaté, rien n'est projeté, et l'écriture a lieu.
         const motif = motifsRecus.get(conditionId);
         if (!motif) {
           return unavailable(
@@ -643,7 +651,8 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           conditionId,
           motif: motif.slice(0, 2000),
           decidePar: emailPraticien(session) ?? '',
-          decideLe: instantActe,
+          // `now`, et non `instantActe` : cet arbitrage-ci est rendu AUJOURD'HUI.
+          decideLe: now,
         });
       }
     }
@@ -659,8 +668,8 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     // de persistance ([[D-054]], arbitrage 6) : deux constructions divergentes
     // rendraient 409 sur une carte que ce POST vient d'émettre.
     //
-    // UN SEUL HORODATAGE (`now`) pour l'épisode, le snapshot, la revue et la
-    // carte : `createdAt` et `asOf` entrent dans les empreintes, et le
+    // UN SEUL HORODATAGE (`instantActe`) pour l'épisode, le snapshot, la revue
+    // et la carte — celui de l'ACTE, jamais celui du clic (`D-129`) : `createdAt` et `asOf` entrent dans les empreintes, et le
     // vérificateur les réutilise tels qu'ils ont été soumis.
     // Une confirmation d'épisode ne sélectionne RIEN — la sélection reste un
     // geste praticien DISTINCT. Ce qui a changé avec [[D-127]], c'est qu'une
@@ -743,7 +752,14 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
             cycleId: resolveCycleId({ episode, ancresCandidates: [...ancres] }),
           }),
         });
-      } catch {
+      } catch (erreur) {
+        // SEULE LA COLLISION D'UNICITÉ EST UN 409. Un `catch` nu déguisait toute
+        // panne — base indisponible, timeout, CHECK violé, validation Prisma —
+        // en « confirmé ailleurs » : message faux, aucun log, et côté client un
+        // 409 `proposal_stale` recharge la proposition SANS rien afficher. Le
+        // praticien recliquait dans le vide, en silence : le défaut même que
+        // `D-129` ferme, déplacé sur la première confirmation.
+        if ((erreur as { code?: string })?.code !== 'P2002') throw erreur;
         return unavailable(
           'proposal_stale',
           'Cet épisode vient d’être confirmé ailleurs. Rechargez la proposition.',

@@ -232,7 +232,36 @@ describe('POST /api/praticien/protocoles', () => {
       };
       const res = await POST(postRequest({ episode: antidate, decisionCard, draft }));
       expect(res.status).toBe(422);
-      expect((await res.json()).error).toContain('datée de la confirmation');
+      expect((await res.json()).error).toContain('datée avant la confirmation');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    } finally {
+      espion.mockRestore();
+    }
+  });
+
+  // L'AUTRE BORNE. `D-129` a remplacé l'égalité stricte par
+  // `confirmedAt <= decideLe <= maintenant`, pour qu'un avertissement APPARU
+  // après l'acte puisse être justifié à sa vraie date. Relâcher une borne sans
+  // poser l'autre laisserait projeter un arbitrage dans le futur — « daté à
+  // volonté », ce que la règle d'origine existait pour empêcher.
+  it('refuse un contournement daté dans le futur', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    const service = await import('@/lib/clinical/contradictionsService');
+    const espion = vi.spyOn(service, 'contradictionsPourPatient')
+      .mockResolvedValue([CONSTAT_C_STR] as never);
+    try {
+      const projete = {
+        ...episode,
+        preconditionOverrides: [{
+          conditionId: 'contradictions_ouvertes',
+          motif: 'Vue en entretien.',
+          decidePar: 'praticien@wellneuro.fr',
+          decideLe: '2099-01-03T00:00:00.000Z',
+        }],
+      };
+      const res = await POST(postRequest({ episode: projete, decisionCard, draft }));
+      expect(res.status).toBe(422);
+      expect((await res.json()).error).toContain('dans le futur');
       expect(prisma.$transaction).not.toHaveBeenCalled();
     } finally {
       espion.mockRestore();

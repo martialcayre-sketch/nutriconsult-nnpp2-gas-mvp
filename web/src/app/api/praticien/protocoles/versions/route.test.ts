@@ -181,6 +181,41 @@ describe('POST /api/praticien/protocoles/versions', () => {
 
   // PRÉCONDITIONS T0 (D-052) : le seul point de persistance réellement appelé
   // par l'application. Refus AVANT la lecture du fil de versions.
+
+  // `D-129` — LA ROUTE VIVANTE. Le mutation testing de la revue adverse a montré
+  // que neutraliser entièrement cette garde laissait 102 bancs sur 102 au vert :
+  // le lot avait posé son seul banc sur `POST /api/praticien/protocoles`, route
+  // qu'AUCUN écran n'appelle, et zéro ici, la seule qui ait un appelant.
+  //
+  // Cette route n'est pas l'écrivain de l'acte : elle reçoit l'épisode du
+  // navigateur. Son `upsert(..., update: {})` avalait la divergence en silence,
+  // sous `ok: true`.
+  it('refuse un épisode divergent de la ligne enregistrée, au lieu de l’avaler (422)', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: 'empreinte-dune-autre-mesure',
+    });
+    const res = await POST(postRequest({ episode, decisionCard, submission }));
+    expect(res.status).toBe(422);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // ★ LE PENDANT, ET C'EST LE CHEMIN DE PRODUCTION. Sans lui, remplacer la garde
+  // par « refuser TOUTE ligne existante » passait au vert — alors que le cockpit
+  // écrit toujours la ligne d'abord, donc ce correctif-là aurait refusé chaque
+  // enregistrement réel.
+  it('laisse passer l’épisode dont l’empreinte correspond à la ligne (200)', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(episode),
+    });
+    const res = await POST(postRequest({ episode, decisionCard, submission }));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
   it('refuse la persistance d’un T0 sans premier rideau, sans lire le fil (422)', async () => {
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.questionnaireReponse.findMany.mockResolvedValue([]);

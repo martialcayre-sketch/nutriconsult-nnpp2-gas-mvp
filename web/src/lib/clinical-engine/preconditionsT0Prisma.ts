@@ -196,11 +196,29 @@ export async function refusPreconditionsPersistance(
 
   for (const override of overrides) {
     const conditionId = override?.conditionId ?? '';
-    // Un contournement qui ne correspond à AUCUNE condition en défaut n'a rien
-    // à faire dans le payload : il y resterait comme la trace d'un arbitrage
-    // qui n'a jamais eu lieu.
+    // UN CONTOURNEMENT SANS OBJET N'EST PAS LA MÊME CHOSE QU'UNE TRACE
+    // HISTORIQUE (`D-129`). La règle d'origine refusait tout override dont la
+    // condition n'est plus en défaut, pour empêcher « la trace d'un arbitrage
+    // qui n'a jamais eu lieu ». Mais une condition souple SE RÉSOUT : la
+    // contradiction est levée, la passation est repassée. L'arbitrage, lui, a
+    // bien eu lieu — et sa ligne est la seule à en faire foi. L'effacer au
+    // premier geste anodin du praticien perdrait qui a passé outre, quand et
+    // pourquoi.
+    //
+    // La distinction se fait sur la DATE, pas sur la condition : un override
+    // dont la décision est ANTÉRIEURE à cette confirmation est une trace, et se
+    // conserve. Un override fabriqué à l'instant pour une condition qui n'est
+    // pas en défaut reste refusé — c'est ce que la règle protégeait.
     if (!requis.has(conditionId)) {
-      return `Contournement sans objet : la condition « ${conditionId || 'inconnue'} » n’est pas en défaut sur ce dossier.`;
+      const decideLe = override?.decideLe ?? '';
+      const anterieur =
+        typeof episode.confirmedAt === 'string' && decideLe !== '' && decideLe < episode.confirmedAt;
+      if (!anterieur) {
+        return `Contournement sans objet : la condition « ${conditionId || 'inconnue'} » n’est pas en défaut sur ce dossier.`;
+      }
+      // Trace historique : on ne recoupe ni l'auteur ni la borne de date
+      // ci-dessous, qui valent pour un arbitrage rendu AVEC cet épisode.
+      continue;
     }
     if (typeof override.motif !== 'string' || override.motif.trim() === '') {
       return `Un motif est requis pour passer outre l’avertissement « ${conditionId} ».`;
@@ -237,8 +255,24 @@ export async function refusPreconditionsPersistance(
     // contournements. L'ancrage de `confirmedAt` sur une preuve serveur est un
     // chantier distinct. Trouvé par la contre-revue adverse du 2026-08-27
     // (affirmation `N1.8`).
-    if (decideLe !== episode.confirmedAt) {
-      return 'La justification de contournement n’est pas datée de la confirmation de l’épisode.';
+    // BORNE, ET NON ÉGALITÉ STRICTE (`D-129`, arbitrage du 2026-09-06).
+    // L'égalité interdisait de justifier un avertissement APPARU depuis l'acte :
+    // le dater de l'acte l'aurait antidaté, le dater du jour rendait le dossier
+    // non enregistrable. Il n'y avait donc aucune écriture possible, et la
+    // re-confirmation — celle que `D-129` existe pour ne plus perdre — était
+    // refusée sur tout dossier où une condition souple était apparue.
+    //
+    // Ce que la règle protégeait est CONSERVÉ : elle existait pour empêcher un
+    // horodatage arbitraire, « daté à volonté », dans la seule ligne qui en
+    // fait foi. La borne `confirmedAt <= decideLe <= maintenant` l'empêche
+    // toujours — on ne peut ni remonter avant l'acte, ni projeter dans le
+    // futur. Elle autorise seulement ce qui est vrai : un arbitrage rendu
+    // aujourd'hui porte la date d'aujourd'hui, sur un acte qui garde la sienne.
+    if (typeof episode.confirmedAt !== 'string' || decideLe < episode.confirmedAt) {
+      return 'La justification de contournement est datée avant la confirmation de l’épisode.';
+    }
+    if (decideLe > new Date().toISOString()) {
+      return 'La justification de contournement est datée dans le futur.';
     }
   }
 

@@ -106,6 +106,10 @@ describe('/api/praticien/cockpit', () => {
     // le POST écrit sa première ligne.
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
     prisma.assessmentEpisode.create.mockResolvedValue({});
+    // `vi.clearAllMocks()` vide les appels mais GARDE les implémentations :
+    // sans ce reset, le banc du compare-and-swap perdu laisse `{ count: 0 }`
+    // sur tous les suivants.
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({
@@ -823,6 +827,10 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     prisma.assessmentEpisode.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
     prisma.assessmentEpisode.create.mockResolvedValue({});
+    // `vi.clearAllMocks()` vide les appels mais GARDE les implémentations :
+    // sans ce reset, le banc du compare-and-swap perdu laisse `{ count: 0 }`
+    // sur tous les suivants.
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({
@@ -856,6 +864,120 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
       ...surcharge,
     };
   }
+
+  /** Un constat de contradiction ouverte, condition SOUPLE (`D-052`). */
+  const CONSTAT_OUVERT = {
+    id: 'C_STR_1', patientId: 'PAT_TEST', titre: 'Contradiction structurelle',
+    hypotheses: [], limitations: [],
+    passations: [{ idQuestionnaire: 'Q_MOD_01', date: '2026-03-12', dateLisible: '12/03/2026' }],
+    ecartJours: null,
+    claims: [{ claimId: 'WN-CL-0238-002', versionClaim: 'v1.0' }],
+    importance: 'useful_not_urgent' as const,
+    resolution: { statut: 'ouverte' as const },
+    regleId: 'C-STR',
+  };
+
+  /** L'override déjà rendu le 12/08, tel que la ligne le porte. */
+  const RENDU_EN_AOUT = {
+    conditionId: 'contradictions_ouvertes',
+    motif: 'Vue en entretien.',
+    decidePar: 'praticien@wellneuro.fr',
+    decideLe: '2026-08-12T09:00:00.000Z',
+  };
+
+  async function avecContradiction(fn: () => Promise<unknown>) {
+    const service = await import('@/lib/clinical/contradictionsService');
+    const espion = vi.spyOn(service, 'contradictionsPourPatient')
+      .mockResolvedValue([CONSTAT_OUVERT] as never);
+    try { return await fn(); } finally { espion.mockRestore(); }
+  }
+
+  function ligneAvecOverride(overrides: unknown[]) {
+    return {
+      confirmedAt: new Date('2026-08-12T09:00:00.000Z'),
+      payloadHash: 'empreinte-de-la-mesure-precedente',
+      payload: { preconditionOverrides: overrides },
+    };
+  }
+
+  // ── LE CŒUR DE L'ARBITRAGE (`D-129` §3), que rien ne gardait ───────────────
+  //
+  // Le mutation testing de la revue adverse l'a montré : supprimer ENTIÈREMENT
+  // la reprise de justification laissait 51 bancs sur 51 au vert. Les trois
+  // bancs qui suivent tiennent chacun une des trois directions.
+
+  it('la justification déjà rendue est REPRISE verbatim — le motif saisi est ignoré', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneAvecOverride([RENDU_EN_AOUT]));
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    await avecContradiction(async () => {
+      const proposed = await proposal();
+      const res = await POST(postRequest({
+        idPatient: 'PAT_TEST', milestone: 'T0',
+        includedResponseIds: proposed.proposal.inWindowResponseIds,
+        proposalHash: proposed.proposalHash,
+        // Le praticien retape son motif — sans le point final. Le comparer
+        // l'aurait bloqué sur une virgule ; on ne le compare pas, on l'ignore.
+        overrides: [{ conditionId: 'contradictions_ouvertes', motif: 'Vue en entretien' }],
+      }));
+      expect(res.status).toBe(200);
+    });
+
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    const ecrit = (appel.data.payload as { preconditionOverrides: typeof RENDU_EN_AOUT[] });
+    expect(ecrit.preconditionOverrides).toEqual([RENDU_EN_AOUT]);
+  });
+
+  // ★ LA NON-RÉGRESSION DU `NO GO` PRÉCÉDENT. La première conception refusait
+  // ici : les conditions souples sont recalculées à chaque appel, une nouvelle
+  // passation en rend une satisfaite, l'ensemble RÉTRÉCIT — et le praticien
+  // était bloqué parce que son patient avait fait ce qu'on lui demandait.
+  //
+  // Et la trace SURVIT à la résolution : c'est la seule ligne qui dise qui a
+  // passé outre, quand et pourquoi. La perdre au premier geste anodin serait la
+  // même classe de perte silencieuse que le P0 que ce lot ferme.
+  it('l’ensemble qui RÉTRÉCIT ne bloque pas, et la trace de l’arbitrage survit', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneAvecOverride([RENDU_EN_AOUT]));
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    // Aucune contradiction : la condition est résolue, elle n'est plus requise.
+    const res = await confirmerT0();
+    expect(res.status).toBe(200);
+
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    const ecrit = (appel.data.payload as { preconditionOverrides?: typeof RENDU_EN_AOUT[] });
+    expect(ecrit.preconditionOverrides).toEqual([RENDU_EN_AOUT]);
+  });
+
+  // L'AUTRE DIRECTION. Un avertissement APPARAÎT après l'acte. Le refuser
+  // bloquait précisément la re-confirmation divergente que `D-129` existe pour
+  // ne plus perdre. Il se date du JOUR, sur un acte qui garde le sien.
+  it('l’ensemble qui GRANDIT écrit, et date le contournement neuf du jour', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneAvecOverride([]));
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    await avecContradiction(async () => {
+      const proposed = await proposal();
+      const res = await POST(postRequest({
+        idPatient: 'PAT_TEST', milestone: 'T0',
+        includedResponseIds: proposed.proposal.inWindowResponseIds,
+        proposalHash: proposed.proposalHash,
+        overrides: [{ conditionId: 'contradictions_ouvertes', motif: 'Contradiction reprise ce jour.' }],
+      }));
+      expect(res.status).toBe(200);
+    });
+
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    const ecrit = (appel.data.payload as {
+      confirmedAt: string;
+      preconditionOverrides: { motif: string; decideLe: string }[];
+    });
+    // L'acte garde sa date…
+    expect(ecrit.confirmedAt).toBe('2026-08-12T09:00:00.000Z');
+    // …et l'arbitrage rendu aujourd'hui porte la sienne, postérieure.
+    expect(ecrit.preconditionOverrides[0].motif).toBe('Contradiction reprise ce jour.');
+    expect(ecrit.preconditionOverrides[0].decideLe > ecrit.confirmedAt).toBe(true);
+  });
 
   it('une re-confirmation au contenu divergent ÉCRIT — c’est le P0 de `D-129`', async () => {
     prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
@@ -940,10 +1062,28 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
   it('une ligne née entre la lecture et l’écriture vaut 409, pas un écrasement', async () => {
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
-    prisma.assessmentEpisode.create.mockRejectedValue(new Error('P2002'));
+    // LE CODE, PAS LE MESSAGE. Ce banc levait `new Error('P2002')` : il passait
+    // sous un `catch` NU et rougissait sur le correctif. Il certifiait le défaut
+    // qu'il était censé garder — relevé par la revue adversariale.
+    prisma.assessmentEpisode.create.mockRejectedValue(
+      Object.assign(new Error('Unique constraint failed'), { code: 'P2002' }),
+    );
 
     const res = await confirmerT0();
     expect(res.status).toBe(409);
+  });
+
+  // ★ SON PENDANT, et c'est lui qui garde le vrai défaut : une panne de base ne
+  // se déguise pas en « confirmé ailleurs ». Sous un `catch` nu elle rendait 409
+  // avec un message faux et aucun log — et le client, sur un 409
+  // `proposal_stale`, recharge la proposition SANS rien afficher : le praticien
+  // recliquait dans le vide, en silence.
+  it('une panne de base ne se déguise pas en 409 : elle sort en 500', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
+    prisma.assessmentEpisode.create.mockRejectedValue(new Error('timeout base'));
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(500);
   });
 
   it('le POST persiste l’épisode confirmé — l’ancre ouvre son propre cycle (gate G2)', async () => {
