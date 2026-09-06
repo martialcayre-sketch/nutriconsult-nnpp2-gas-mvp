@@ -168,6 +168,23 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     expect(ligne.etape).toBe('onboarding_a_finir');
   });
 
+  it('après une réouverture, une entrée POSTÉRIEURE à la révocation compte bien', async () => {
+    // LE BANC QUI DISTINGUE `===` DE `>=`. Les deux autres passent avec l'un
+    // comme avec l'autre ; celui-ci seul refuse le second, qui jetterait
+    // l'entrée réelle que la réouverture vient de rendre possible — soit
+    // exactement le cas que ce correctif existe pour préserver. Relevé par la
+    // revue adversariale de la PR #889.
+    prisma.patient.findMany.mockResolvedValue([patient({ sessionsInvalidesAvant: REVOQUE_LE })]);
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: REVOQUE_LE },
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-03T10:00:00.000Z') },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.connecteLe).toBe('2026-09-03T10:00:00.000Z');
+    expect(ligne.etape).toBe('onboarding_a_finir');
+  });
+
   it('un accès révoqué se nomme, il ne se déguise pas en mise en service', async () => {
     prisma.patient.findMany.mockResolvedValue([
       patient({ accessTokenRevoked: true, sessionsInvalidesAvant: REVOQUE_LE }),

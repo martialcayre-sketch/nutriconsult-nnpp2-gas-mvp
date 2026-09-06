@@ -120,6 +120,15 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     // LIMITE CONNUE : le compte ne retient qu'une date de révocation. Après
     // deux révocations, un tampon de la première redevient indiscernable d'une
     // entrée. Les distinguer demanderait une colonne à la table des liens.
+    //
+    // ET CE N'EST PAS LE SEUL TAMPON QUI NE VAUT PAS ENTRÉE. L'atterrissage du
+    // lien (`portail/lien/[jeton]`) consomme AVANT de vérifier que le compte est
+    // actif et non révoqué, puis refuse : l'estampille reste, posée à l'heure du
+    // clic, donc indiscernable d'une vraie entrée par cette lecture. Un patient
+    // seulement désactivé (`PATCH api/praticien/patients`, qui n'écrit aucune
+    // des deux colonnes de révocation) tombe dans ce cas. Il ne se corrige pas
+    // côté lecture et attend son arbitrage — relevé par la revue adversariale
+    // de la PR #889.
     const revoqueLe = new Map(
       patients
         .filter(p => p.sessionsInvalidesAvant)
