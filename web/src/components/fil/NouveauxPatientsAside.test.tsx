@@ -19,6 +19,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     idPatient: 'PAT_SEED_01',
     patient: 'Sophie Nicola',
     creeLe: '2026-08-24T12:00:00.000Z',
+    accesRevoque: false,
     accesEnvoyeLe: '2026-08-24T12:05:00.000Z',
     accesEnEchec: false,
     connecteLe: '2026-08-25T09:00:00.000Z',

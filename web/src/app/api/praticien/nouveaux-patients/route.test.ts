@@ -20,6 +20,27 @@ vi.mock('@/lib/prisma', () => ({ prisma }));
 import { GET } from './route';
 
 const CREE_LE = new Date('2026-09-01T08:00:00.000Z');
+const REVOQUE_LE = new Date('2026-09-02T14:00:00.000Z');
+
+function patient(over: Record<string, unknown> = {}) {
+  return {
+    idPatient: 'PAT_1',
+    prenom: 'Sophie',
+    nom: 'Nicola',
+    createdAt: CREE_LE,
+    accessTokenRevoked: false,
+    sessionsInvalidesAvant: null,
+    ...over,
+  };
+}
+
+/** Accès envoyé et abouti — sans quoi toute ligne s'arrête à la première porte
+ * et ne dit plus rien de l'entrée au portail. */
+function accesEnvoye() {
+  prisma.correspondancePatient.findMany.mockResolvedValue([
+    { idPatient: 'PAT_1', statut: 'Envoye', enregistreLe: CREE_LE },
+  ]);
+}
 
 function vide() {
   prisma.correspondancePatient.findMany.mockResolvedValue([]);
@@ -38,9 +59,7 @@ describe('GET /api/praticien/nouveaux-patients', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
-    prisma.patient.findMany.mockResolvedValue([
-      { idPatient: 'PAT_1', prenom: 'Sophie', nom: 'Nicola', createdAt: CREE_LE },
-    ]);
+    prisma.patient.findMany.mockResolvedValue([patient()]);
     vide();
   });
 
@@ -116,6 +135,50 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     const [ligne] = await lignes();
     expect(ligne.etape).toBe('complet');
     expect(ligne.nbAssignations).toBe(5);
+  });
+
+  it('la date qu’une RÉVOCATION pose sur un lien n’est pas une entrée au portail', async () => {
+    // Révoquer date les liens encore en vol pour les refuser ; le dossier a été
+    // rouvert depuis (`accessTokenRevoked: false`) et le patient n'est toujours
+    // jamais entré. Lire ce tampon comme une connexion le faisait basculer en
+    // « Onboarding à finir ».
+    prisma.patient.findMany.mockResolvedValue([
+      patient({ sessionsInvalidesAvant: REVOQUE_LE }),
+    ]);
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: REVOQUE_LE },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.connecteLe).toBeNull();
+    expect(ligne.etape).toBe('jamais_connecte');
+  });
+
+  it('une entrée réelle antérieure à la révocation reste une entrée', async () => {
+    prisma.patient.findMany.mockResolvedValue([
+      patient({ sessionsInvalidesAvant: REVOQUE_LE }),
+    ]);
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-01T09:00:00.000Z') },
+      { idPatient: 'PAT_1', consommeLe: REVOQUE_LE },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.connecteLe).toBe('2026-09-01T09:00:00.000Z');
+    expect(ligne.etape).toBe('onboarding_a_finir');
+  });
+
+  it('un accès révoqué se nomme, il ne se déguise pas en mise en service', async () => {
+    prisma.patient.findMany.mockResolvedValue([
+      patient({ accessTokenRevoked: true, sessionsInvalidesAvant: REVOQUE_LE }),
+    ]);
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: REVOQUE_LE },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.etape).toBe('acces_revoque');
+    expect(ligne.libelle).toBe('Accès révoqué');
   });
 
   it('aucun dossier récent : aucune lecture d’agrégat n’est lancée', async () => {

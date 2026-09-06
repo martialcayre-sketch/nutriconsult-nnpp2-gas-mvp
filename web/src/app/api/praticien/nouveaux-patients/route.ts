@@ -48,7 +48,14 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     const depuis = new Date(Date.now() - FENETRE_JOURS * 24 * 60 * 60 * 1000);
     const patients = await prisma.patient.findMany({
       where: { createdAt: { gte: depuis }, ...filtrePatientsDuPraticien(emailSession) },
-      select: { idPatient: true, prenom: true, nom: true, createdAt: true },
+      select: {
+        idPatient: true,
+        prenom: true,
+        nom: true,
+        createdAt: true,
+        accessTokenRevoked: true,
+        sessionsInvalidesAvant: true,
+      },
       orderBy: { createdAt: 'desc' },
       take: MAX_DOSSIERS,
     });
@@ -101,11 +108,28 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
       dernierStatut.set(c.idPatient, c.statut);
       if (c.statut === 'Envoye') dernierEnvoi.set(c.idPatient, c.enregistreLe);
     }
+    // UNE DATE DE CONSOMMATION N'EST PAS TOUJOURS UNE ENTRÉE. Révoquer l'accès
+    // date les liens encore en vol (`consommeLe`, route `token` DELETE) pour
+    // qu'`etatLien` les refuse — la colonne y porte « fermé », pas « ouvert ».
+    // Cette date-là vaut exactement l'instant de révocation, écrit dans la même
+    // transaction que `sessionsInvalidesAvant` : c'est ce qui permet de l'écarter.
+    // Sans cela, un dossier passait de « Jamais connecté » à « Onboarding à
+    // finir » au moment précis où le praticien lui fermait la porte, et le
+    // gardait après une réouverture.
+    //
+    // LIMITE CONNUE : le compte ne retient qu'une date de révocation. Après
+    // deux révocations, un tampon de la première redevient indiscernable d'une
+    // entrée. Les distinguer demanderait une colonne à la table des liens.
+    const revoqueLe = new Map(
+      patients
+        .filter(p => p.sessionsInvalidesAvant)
+        .map(p => [p.idPatient, p.sessionsInvalidesAvant!.getTime()]),
+    );
     const premiereConnexion = new Map<string, Date>();
     for (const l of liensConsommes) {
-      if (l.consommeLe && !premiereConnexion.has(l.idPatient)) {
-        premiereConnexion.set(l.idPatient, l.consommeLe);
-      }
+      if (!l.consommeLe || premiereConnexion.has(l.idPatient)) continue;
+      if (l.consommeLe.getTime() === revoqueLe.get(l.idPatient)) continue;
+      premiereConnexion.set(l.idPatient, l.consommeLe);
     }
     for (const g of connexionsGoogle) {
       if (!g.idPatient) continue;
@@ -120,6 +144,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         idPatient: p.idPatient,
         patient: `${p.prenom} ${p.nom}`.trim(),
         creeLe: p.createdAt.toISOString(),
+        accesRevoque: p.accessTokenRevoked,
         accesEnvoyeLe: dernierEnvoi.get(p.idPatient)?.toISOString() ?? null,
         accesEnEchec: dernierStatut.has(p.idPatient) && dernierStatut.get(p.idPatient) !== 'Envoye',
         connecteLe: premiereConnexion.get(p.idPatient)?.toISOString() ?? null,
