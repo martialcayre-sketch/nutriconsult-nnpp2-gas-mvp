@@ -630,10 +630,19 @@ export function PatientsPanel({ lienMagiqueActif = false }: { lienMagiqueActif?:
     setSavingEdit(true);
     setEditFeedback(null);
     try {
+      // LE FORMULAIRE NE POSTE QUE LE CONTACT. `actif` en est retiré depuis
+      // `D-126` : désactiver ferme désormais les liens en vol, geste
+      // IRRÉVERSIBLE, et ce chemin-ci était le seul sans dialogue de
+      // confirmation. Un praticien venu corriger un numéro de téléphone
+      // pouvait effleurer le select et tuer le lien envoyé deux heures plus
+      // tôt, pour tout retour « Patient mis à jour. ». La règle que ce module
+      // s'écrit à lui-même vaut ici comme ailleurs : toute action qui change ce
+      // à quoi le patient a accès passe par un dialogue — celui du menu de
+      // ligne, « Désactiver le dossier ».
       const r = await fetch('/api/praticien/patients', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(editState),
+        body: JSON.stringify({ idPatient: editState.idPatient, telephone: editState.telephone }),
       });
       const json = (await r.json()) as PatchPatientResponse;
       if (!r.ok || !json.success) {
@@ -896,12 +905,15 @@ export function PatientsPanel({ lienMagiqueActif = false }: { lienMagiqueActif?:
               <label className="text-xs text-muted-foreground">Téléphone</label>
               <Input value={editState.telephone} onChange={e => setEditState(s => s ? { ...s, telephone: e.target.value } : s)} maxLength={30} placeholder="Téléphone" />
             </div>
+            {/* L'état du dossier se change au menu de la ligne, derrière un
+                dialogue — jamais ici : ce formulaire n'avait aucune
+                confirmation et le geste est devenu irréversible (`D-126`). */}
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-muted-foreground">Actif</label>
-              <Select value={editState.actif} onChange={e => setEditState(s => s ? { ...s, actif: e.target.value as 'OUI' | 'NON' } : s)}>
-                <option value="OUI">Actif</option>
-                <option value="NON">Inactif</option>
-              </Select>
+              <label className="text-xs text-muted-foreground">État du dossier</label>
+              <span className="text-sm text-foreground py-2">
+                {editState.actif === 'OUI' ? 'Actif' : 'Inactif'}
+                <span className="text-muted-foreground"> — se change au menu de la ligne</span>
+              </span>
             </div>
             <div className="flex items-center gap-2">
               <Button onClick={onSaveEdit} disabled={savingEdit}>

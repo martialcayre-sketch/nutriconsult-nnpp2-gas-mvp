@@ -567,13 +567,56 @@ export async function PATCH(req: Request): Promise<NextResponse<PatchPatientResp
   }
 
   try {
-    await prisma.patient.update({
-      where: { idPatient },
-      data: {
-        ...(payload.telephone !== undefined && { telephone: telephone || null }),
-        ...(actif !== undefined && { actif: actif === 'OUI' }),
-      },
-    });
+    const maintenant = new Date();
+    const donneesPatient = {
+      ...(payload.telephone !== undefined && { telephone: telephone || null }),
+      ...(actif !== undefined && { actif: actif === 'OUI' }),
+    };
+
+    if (actif === 'NON') {
+      // DÉSACTIVER, C'EST FERMER LES LIENS EN VOL. Le dialogue de confirmation
+      // le promet déjà — « ses liens cesseront de fonctionner » — et le code ne
+      // le tenait pas : un lien émis avant la désactivation restait ouvrable
+      // jusqu'à 24 h après, et l'atterrissage le brûlait avant de le refuser.
+      //
+      // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT. La révocation, elle, date
+      // `consommeLe` (`api/praticien/token` DELETE) et paie ce choix par une
+      // égalité stricte avec `sessionsInvalidesAvant` — seul moyen pour
+      // `api/praticien/nouveaux-patients` de distinguer un tampon de fermeture
+      // d'une vraie première connexion. Recopier ce geste ici ferait de la
+      // désactivation le SECOND écrivain de `sessionsInvalidesAvant`, colonne à
+      // emplacement unique : chaque nouvelle date écrase la précédente et
+      // convertirait d'un coup les tampons d'une révocation antérieure en
+      // fausses entrées. On refermerait une porte en rouvrant l'autre.
+      //
+      // `expireLe` n'a qu'UN lecteur (`etatLien`) et sa valeur est dérivée
+      // (`creeLe + 24 h`) : l'avancer ne détruit aucun fait — `creeLe` le
+      // reconstruit — et ne dilue pas `consommeLe`, seule trace d'entrée du
+      // versant patient. Une colonne dit une chose : `expireLe` dit « jusqu'à
+      // quand ce lien ouvre ».
+      //
+      // FILTRE MONOTONE ET IDEMPOTENT. `expireLe: { gt: maintenant }` ne
+      // rallonge jamais un lien et ne touche rien au second passage — ce qui
+      // compte, parce que le formulaire « Modifier » renvoie `actif` à CHAQUE
+      // enregistrement : sans ce filtre, une simple correction de téléphone sur
+      // un dossier déjà inactif réécrirait des lignes.
+      //
+      // TRANSACTION, ET DANS CET ORDRE : si la fermeture des liens échoue, le
+      // `actif: false` est annulé avec elle. L'état interdit est « liens
+      // fermés, dossier encore actif » — un patient dehors sans décision.
+      await prisma.$transaction([
+        prisma.patient.update({ where: { idPatient }, data: donneesPatient }),
+        prisma.portailMagicLink.updateMany({
+          where: { idPatient, consommeLe: null, expireLe: { gt: maintenant } },
+          data: { expireLe: maintenant },
+        }),
+      ]);
+    } else {
+      // Réactivation, ou téléphone seul : l'écriture d'origine, inchangée. La
+      // réactivation ne défait RIEN — un lien fermé ne se rouvre pas, il se
+      // réémet (`api/praticien/token`). Voir `D-126`.
+      await prisma.patient.update({ where: { idPatient }, data: donneesPatient });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err) {

@@ -153,6 +153,33 @@ describe('GET /portail/lien/[jeton]', () => {
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 
+  // L'ORDRE, ET NON SEULEMENT LE REFUS. Les deux bancs ci-dessus passaient déjà
+  // quand la garde vivait APRÈS la consommation : le lien était brûlé, puis
+  // refusé. Ils ne pouvaient donc pas voir que le patient perdait son lien sans
+  // jamais entrer — et que la ligne restait avec `consommeLe` renseigné et
+  // `rejeuxRefuses` à zéro, soit la forme exacte d'une entrée réussie pour qui
+  // lit cette colonne. Ces deux-ci gardent l'ordre lui-même (`D-126`).
+  it('un compte fermé ne fait pas BRÛLER le lien : rien n’est consommé', async () => {
+    prisma.patient.findUnique.mockResolvedValue({ ...PATIENT_ACTIF, actif: false });
+    await appeler();
+    expect(prisma.portailMagicLink.updateMany).not.toHaveBeenCalled();
+
+    vi.clearAllMocks();
+    prisma.portailMagicLink.findUnique.mockResolvedValue(LIEN_VALIDE);
+    prisma.patient.findUnique.mockResolvedValue({ ...PATIENT_ACTIF, accessTokenRevoked: true });
+    await appeler();
+    expect(prisma.portailMagicLink.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('le refus sur compte fermé laisse une trace en base, comme les autres', async () => {
+    prisma.patient.findUnique.mockResolvedValue({ ...PATIENT_ACTIF, actif: false });
+    await appeler();
+    const [appel] = prisma.portailMagicLink.update.mock.calls[0];
+    expect(appel.where.id).toBe('lk_1');
+    expect(appel.data.rejeuxRefuses).toEqual({ increment: 1 });
+    expect(appel.data.derniereTentative).toBeInstanceOf(Date);
+  });
+
   // Rien ne doit distinguer les quatre refus : ni l'URL, ni le code HTTP.
   it('consommé, expiré, inconnu et révoqué atterrissent au même endroit', async () => {
     const destinations: string[] = [];

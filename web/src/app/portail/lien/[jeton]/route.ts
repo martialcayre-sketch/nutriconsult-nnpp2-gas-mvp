@@ -93,28 +93,43 @@ export async function GET(
       return refuse(etat);
     }
 
-    // Consommation ATOMIQUE : `updateMany` filtré sur `consommeLe: null` fait
-    // de la vérification et de l'écriture une seule opération. Deux requêtes
-    // concurrentes sur le même lien : une seule voit `count === 1`, l'autre est
-    // refusée. Un `update` précédé d'une lecture laisserait la fenêtre ouverte
-    // entre les deux.
-    const consommation = await prisma.portailMagicLink.updateMany({
-      where: { id: lien.id, consommeLe: null },
-      data: { consommeLe: maintenant },
-    });
-    if (consommation.count !== 1) return refuse('concurrence');
-
-    // Le patient doit toujours être actif et son portail non révoqué. Cette
-    // garde était portée par `ensureActivePortalAccess` (retiré au LOT-04) ; on
-    // la réécrit ICI explicitement — sans elle, une révocation cesserait
-    // silencieusement de bloquer l'entrée par lien magique (invariant révocation).
+    // GARDER AVANT DE CONSOMMER. Le patient doit toujours être actif et son
+    // portail non révoqué — garde portée par `ensureActivePortalAccess` avant
+    // le LOT-04, réécrite ici explicitement : sans elle, une révocation
+    // cesserait silencieusement de bloquer l'entrée (invariant révocation).
+    //
+    // ELLE VIVAIT APRÈS LA CONSOMMATION, ET C'ÉTAIT UN DÉFAUT. Un compte fermé
+    // voyait son lien BRÛLÉ au clic, puis refusé : le lien était perdu, le
+    // patient n'entrait jamais, et la ligne restait avec `consommeLe`
+    // renseigné et `rejeuxRefuses` à zéro — la forme exacte d'une entrée
+    // réussie pour qui lit cette colonne. Relevé par la revue adversariale de
+    // la PR #889 (voir `api/praticien/nouveaux-patients/route.ts`).
     const patient = await prisma.patient.findUnique({
       where: { idPatient: lien.idPatient },
       select: { email: true, actif: true, accessTokenRevoked: true },
     });
     if (!patient || !patient.actif || patient.accessTokenRevoked) {
+      // Le refus se trace en base comme celui d'`etatLien` ci-dessus : sans
+      // cette écriture, un jeton martelé sur un compte fermé ne laisserait plus
+      // que le log applicatif, qui est purgé.
+      await prisma.portailMagicLink.update({
+        where: { id: lien.id },
+        data: { rejeuxRefuses: { increment: 1 }, derniereTentative: maintenant },
+      });
       return refuse('acces_indisponible');
     }
+
+    // Consommation ATOMIQUE, et DERNIER geste de la route : `updateMany` filtré
+    // sur `consommeLe: null` fait de la vérification et de l'écriture une seule
+    // opération. Deux requêtes concurrentes sur le même lien : une seule voit
+    // `count === 1`, l'autre est refusée. Remonter la garde au-dessus ne
+    // déplace pas ce contrôle de concurrence — le prédicat est réévalué sous le
+    // verrou de ligne, ici et nulle part ailleurs.
+    const consommation = await prisma.portailMagicLink.updateMany({
+      where: { id: lien.id, consommeLe: null },
+      data: { consommeLe: maintenant },
+    });
+    if (consommation.count !== 1) return refuse('concurrence');
 
     logger.security({
       event: EVENT_CODES.PORTAIL_LIEN_CONSOMME,

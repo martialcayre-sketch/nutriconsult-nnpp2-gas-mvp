@@ -22,11 +22,15 @@
 
 /** Étape franchie la plus avancée — l'ordre du type EST l'ordre du parcours.
  *
- * `acces_revoque` ouvre la liste sans faire partie du parcours : ce n'est pas
- * une porte restée fermée mais une porte REFERMÉE, par le praticien lui-même.
- * Elle prime donc sur les trois autres, qui décrivent une mise en service en
- * cours — ce qu'un dossier révoqué n'est plus. */
+ * `dossier_desactive` et `acces_revoque` ouvrent la liste sans faire partie du
+ * parcours : ce ne sont pas des portes restées fermées mais des portes
+ * REFERMÉES, par le praticien lui-même. Elles priment donc sur les trois
+ * autres, qui décrivent une mise en service en cours — ce qu'un dossier fermé
+ * n'est plus. La désactivation passe la première parce qu'elle est la
+ * fermeture la plus large : elle coupe les trois entrées ET ferme les liens en
+ * vol (`D-126`), là où la révocation ne vise que l'accès au portail. */
 export type EtapeNouveauPatient =
+  | 'dossier_desactive'
   | 'acces_revoque'
   | 'acces_non_envoye'
   | 'jamais_connecte'
@@ -41,6 +45,9 @@ export type SourceNouveauPatient = {
   patient: string;
   /** Création du dossier (ISO). */
   creeLe: string;
+  /** Le praticien a désactivé le dossier (`actif: false`). Fermeture la plus
+   * large : les trois entrées sont coupées et les liens en vol fermés. */
+  dossierDesactive: boolean;
   /** Le praticien a révoqué l'accès au portail (`accessTokenRevoked`). Aucune
    * porte n'est à ouvrir : il vient de la fermer. */
   accesRevoque: boolean;
@@ -65,6 +72,7 @@ export type LigneNouveauPatient = SourceNouveauPatient & {
 };
 
 const LIBELLES: Record<EtapeNouveauPatient, string> = {
+  dossier_desactive: 'Dossier désactivé',
   acces_revoque: 'Accès révoqué',
   acces_non_envoye: 'Accès non envoyé',
   jamais_connecte: 'Jamais connecté',
@@ -84,9 +92,11 @@ const LIBELLES: Record<EtapeNouveauPatient, string> = {
  * d'où un libellé qui ne se confond avec aucun des trois précédents.
  */
 export function etapeNouveauPatient(source: SourceNouveauPatient): EtapeNouveauPatient {
-  // La révocation passe AVANT les trois portes : elle est le geste du
-  // praticien lui-même. Présenter un dossier révoqué comme un accès à renvoyer
-  // ou un onboarding à finir l'enverrait défaire sa propre décision.
+  // Les deux fermetures passent AVANT les trois portes : elles sont le geste du
+  // praticien lui-même. Présenter un dossier fermé comme un accès à renvoyer ou
+  // un onboarding à finir l'enverrait défaire sa propre décision — et l'encart
+  // le remonterait même en TÊTE, puisqu'il trie les dossiers en attente d'abord.
+  if (source.dossierDesactive) return 'dossier_desactive';
   if (source.accesRevoque) return 'acces_revoque';
   if (!source.accesEnvoyeLe || source.accesEnEchec) return 'acces_non_envoye';
   if (!source.connecteLe) return 'jamais_connecte';
@@ -101,9 +111,11 @@ export function libelleEtape(etape: EtapeNouveauPatient): string {
 
 /** Un dossier complet n'appelle aucun geste : il reste listé (le praticien a
  * demandé à VOIR ses nouveaux patients), il ne se compte pas comme en attente.
- * Un dossier révoqué non plus — l'attente qu'il porterait a été close exprès. */
+ * Un dossier fermé non plus — l'attente qu'il porterait a été close exprès. */
 export function estEnAttente(ligne: LigneNouveauPatient): boolean {
-  return ligne.etape !== 'complet' && ligne.etape !== 'acces_revoque';
+  return ligne.etape !== 'complet'
+    && ligne.etape !== 'acces_revoque'
+    && ligne.etape !== 'dossier_desactive';
 }
 
 /**

@@ -71,8 +71,13 @@ export function PatientRow({
   // Les actions d'accès restent OUVERTES sur un dossier clos, et c'est
   // délibéré : la clôture interdit les assignations et les envois de
   // documents (D4), pas la lecture. Le patient conserve ses archives, donc
-  // lui renvoyer son lien a du sens. Seule la désactivation coupe l'accès —
-  // et c'est le serveur qui le dit (`api/portail/lien/demande`).
+  // lui renvoyer son lien a du sens.
+  //
+  // SUR UN DOSSIER DÉSACTIVÉ, EN REVANCHE, LES DEUX ENVOIS SONT FERMÉS ICI.
+  // Le serveur les refusait déjà, mais en `patient_not_found` — que l'écran
+  // rend « Patient introuvable. » sur un dossier que le praticien a sous les
+  // yeux. Un bouton qui ment est pire qu'un bouton grisé. « Copier le lien »
+  // reste ouvert : il ne poste rien.
   const elements: ElementMenu[] = [
     { type: 'groupe', libelle: 'Accès au portail' },
     {
@@ -80,7 +85,7 @@ export function PatientRow({
       id: 'resend',
       libelle: 'Renvoyer le lien',
       onSelect: agir('resend'),
-      desactive: actionAccesEnCours,
+      desactive: actionAccesEnCours || estInactif,
     },
     {
       type: 'action',
@@ -96,7 +101,7 @@ export function PatientRow({
             id: 'lien_magique',
             libelle: 'Lien à usage unique (24 h)',
             onSelect: agir('lien_magique'),
-            desactive: actionAccesEnCours,
+            desactive: actionAccesEnCours || estInactif,
           },
         ]
       : []),

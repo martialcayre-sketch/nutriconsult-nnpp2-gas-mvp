@@ -12,6 +12,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     idPatient: 'PAT_SEED_01',
     patient: 'Sophie Nicola',
     creeLe: '2026-08-24T12:00:00.000Z',
+    dossierDesactive: false,
     accesRevoque: false,
     accesEnvoyeLe: '2026-08-24T12:05:00.000Z',
     accesEnEchec: false,
@@ -68,6 +69,19 @@ describe('etapeNouveauPatient', () => {
     expect(etapeNouveauPatient(jamaisEntre)).toBe('acces_revoque');
     expect(etapeNouveauPatient(source({ accesRevoque: true }))).toBe('acces_revoque');
     expect(libelleEtape('acces_revoque')).toBe('Accès révoqué');
+  });
+
+  it('un dossier désactivé se nomme, et prime sur la révocation', () => {
+    // La désactivation est la fermeture la plus large : elle coupe les trois
+    // entrées ET ferme les liens en vol. Elle doit donc se dire même quand le
+    // dossier porte aussi une révocation, sinon l'encart annonce le geste
+    // étroit et tait le large.
+    const ferme = source({ dossierDesactive: true, connecteLe: null });
+    expect(etapeNouveauPatient(ferme)).toBe('dossier_desactive');
+    expect(etapeNouveauPatient({ ...ferme, accesRevoque: true })).toBe('dossier_desactive');
+    expect(libelleEtape('dossier_desactive')).toBe('Dossier désactivé');
+    const [ligne] = lignesNouveauxPatients([ferme]);
+    expect(estEnAttente(ligne)).toBe(false);
   });
 
   it('un dossier révoqué n’attend rien : le praticien a fermé lui-même', () => {
