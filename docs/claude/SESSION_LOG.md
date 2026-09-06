@@ -5100,3 +5100,24 @@ Prochaine action — aucune, lot clos. Desserrer le seuil exigera une nouvelle
 mesure ; le banc le refuse au-delà de 219.
 
 Ouvert — `D-049` fait rougir T2 localement, sans rapport avec le lot.
+
+## 2026-09-06 — Le design system passe de la prose au test
+
+Deux artefacts, une finalité : outiller le design des interfaces sans importer
+de skill tierce.
+
+Décidé — trois règles du §10 (`bg-white`, `text-[13px]`/`text-[14px]`, palette
+native de Tailwind) deviennent `design-system.guard.test.ts`, chacune prouvée
+rouge sur sources fabriquées ; `/wn-ui` cadre un écran avant le code.
+
+Écarté — Impeccable (SOUS RÉSERVE au contrôle `/wn-tiers` : binaire non attesté
+sur chaque édition) et UI/UX Pro Max (génère une identité là où le dépôt en a
+une). Écartées aussi des gardes sur les hex et `shadow-sm` : trois exceptions
+pour leurs seuls usages réels.
+
+Corrigé — les « 184 boutons bruts » ne sont pas une dérive : zéro rejoue une
+variante de `Button`. Un écart s'établit sur un comptage qualifié, jamais sur un
+`grep` nu.
+
+Prochaine action — trancher si l'échelle typographique est fermée : 117 paliers
+natifs et 19 tailles arbitraires en dépendent.
