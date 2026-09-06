@@ -120,13 +120,26 @@ export async function GET(
     }
 
     // Consommation ATOMIQUE, et DERNIER geste de la route : `updateMany` filtré
-    // sur `consommeLe: null` fait de la vérification et de l'écriture une seule
-    // opération. Deux requêtes concurrentes sur le même lien : une seule voit
-    // `count === 1`, l'autre est refusée. Remonter la garde au-dessus ne
-    // déplace pas ce contrôle de concurrence — le prédicat est réévalué sous le
-    // verrou de ligne, ici et nulle part ailleurs.
+    // fait de la vérification et de l'écriture une seule opération. Deux
+    // requêtes concurrentes sur le même lien : une seule voit `count === 1`,
+    // l'autre est refusée. Remonter la garde au-dessus ne déplace pas ce
+    // contrôle de concurrence — le prédicat est réévalué sous le verrou de
+    // ligne, ici et nulle part ailleurs.
+    //
+    // `expireLe` EST DANS LE PRÉDICAT, ET AVEC UNE HORLOGE FRAÎCHE. La garde de
+    // compte ci-dessus lit un instantané : si la désactivation commite entre
+    // cette lecture et ici, elle a déjà avancé `expireLe` (`D-126`) mais un
+    // filtre limité à `consommeLe: null` matcherait encore. Le lien serait
+    // BRÛLÉ sans que le patient entre, et la ligne prendrait la forme exacte
+    // d'une entrée réussie — le défaut même que `D-126` existe pour supprimer,
+    // reparu par la course. Le prédicat le rattrape parce que Postgres le
+    // réévalue sur la version verrouillée de la ligne.
+    //
+    // `new Date()` et NON `maintenant` : `maintenant` est capturé en haut de la
+    // route, donc AVANT la fermeture concurrente. S'en servir ici comparerait
+    // le nouvel horizon à un instant qui le précède, et laisserait passer.
     const consommation = await prisma.portailMagicLink.updateMany({
-      where: { id: lien.id, consommeLe: null },
+      where: { id: lien.id, consommeLe: null, expireLe: { gt: new Date() } },
       data: { consommeLe: maintenant },
     });
     if (consommation.count !== 1) return refuse('concurrence');

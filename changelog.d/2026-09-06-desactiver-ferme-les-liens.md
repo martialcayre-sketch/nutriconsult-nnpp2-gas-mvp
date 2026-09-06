@@ -14,7 +14,10 @@ entrée réussie.
   entrées : on aurait refermé une porte en rouvrant celle que la PR #889 vient
   de fermer. Filtre monotone et idempotent (`expireLe: { gt: maintenant }`).
 - **L'atterrissage garde avant de consommer** (`portail/lien/[jeton]`), et son
-  refus laisse une trace en base comme les autres refus.
+  refus laisse une trace en base comme les autres refus. La consommation elle-
+  même est conditionnée à `expireLe`, à une horloge fraîche : sans quoi une
+  désactivation commitée entre la garde et l'écriture laissait le lien brûler
+  quand même — le défaut de départ, reparu par la course.
 - **Désactiver n'est pas révoquer** : `accessTokenRevoked` n'est pas posé — les
   quatre lecteurs exigent déjà `actif`, et le poser fabriquerait un cul-de-sac
   à la réactivation.
@@ -23,9 +26,13 @@ entrée réussie.
   remontait en TÊTE, libellé « Jamais connecté ».
 - **Le formulaire « Modifier » ne poste plus `actif`** : c'était la seule porte
   de désactivation sans confirmation, et le geste est devenu irréversible.
-- **Les deux envois d'accès sont grisés sur un dossier inactif** : le serveur
-  les refusait déjà, mais en « Patient introuvable. » sur un dossier que le
-  praticien a sous les yeux.
+- **Les trois actions d'accès sont grisées sur un dossier inactif**, « Copier
+  le lien » comprise — elle poste elle aussi. Le serveur les refusait déjà,
+  mais en « Patient introuvable. » sur un dossier que le praticien a sous les
+  yeux.
+- **Les deux dialogues annoncent qu'un lien déjà envoyé ne redeviendra pas
+  valable** : sans cela, la réactivation reproduisait à l'écran le cul-de-sac
+  silencieux que cette décision reproche à la conception écartée.
 
 Aucune migration, aucun backfill (les liens antérieurs s'éteignent seuls sous
 24 h). Les tampons posés par l'ancien ordre, eux, survivent et ne se corrigent

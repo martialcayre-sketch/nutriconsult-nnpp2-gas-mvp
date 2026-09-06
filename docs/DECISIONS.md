@@ -47,8 +47,9 @@ lecture/écriture à fermer.
 `accessTokenRevoked`. Les quatre lecteurs d'entrée exigent déjà `actif` :
 poser le drapeau ne fermerait rien de plus, et fabriquerait un cul-de-sac —
 `PATCH { actif: 'OUI' }` ne le rabaisse pas, `action: 'lien_magique'` rend 409
-sans le rabaisser, seuls `issue`/`resend` le lèvent. Deux gestes que rien à
-l'écran n'annonce, pour zéro fermeture supplémentaire.
+sans le rabaisser ; le lèvent `issue`/`resend` (`api/praticien/token`) et
+`POST /api/praticien/consultations`. Des gestes que rien à l'écran n'annonce
+comme tels, pour zéro fermeture supplémentaire.
 
 **3. L'atterrissage garde AVANT de consommer, et trace son refus.** La garde de
 compte remonte au-dessus de la consommation atomique, qui devient le dernier
@@ -56,8 +57,22 @@ geste de la route. Le refus incrémente `rejeuxRefuses` et `derniereTentative`
 comme le fait déjà le refus d'`etatLien` : sans cette écriture, un jeton martelé
 sur un compte fermé ne laisserait plus que le log applicatif, qui est purgé.
 
+Remonter la garde ne suffisait pas : elle lit un INSTANTANÉ. Si la
+désactivation commite entre cette lecture et la consommation, un `updateMany`
+filtré sur le seul `consommeLe: null` matcherait encore — lien brûlé, patient
+dehors, et la ligne prenant la forme exacte d'une entrée réussie, c'est-à-dire
+le défaut de départ reparu par la course. `expireLe` entre donc dans le
+prédicat de consommation, évalué à une horloge FRAÎCHE (`maintenant` est
+capturé en haut de la route, donc avant la fermeture qu'il s'agit de
+rattraper). Postgres réévalue le prédicat sur la version verrouillée de la
+ligne : la consommation échoue, et le patient voit l'écran de refus neutre.
+Relevé par la revue adversariale de cette PR.
+
 **4. La réactivation ne défait RIEN.** Un lien fermé ne se rouvre pas, il se
-réémet. Le silence sur ce point aurait été un défaut ; la réponse est explicite.
+réémet. Le silence sur ce point aurait été un défaut ; la réponse est explicite
+— et elle est DITE AU PRATICIEN, dans les deux dialogues. Ne pas l'y écrire
+aurait reproduit à l'écran le cul-de-sac que le §2 reproche à la conception
+écartée : une conséquence irréversible que rien n'annonce.
 
 **5. L'état fermé se dit au cockpit.** Nouvelle étape `dossier_desactive` —
 « Dossier désactivé » — en tête de l'ordre de l'encart des dossiers neufs, et
@@ -72,6 +87,12 @@ lien envoyé deux heures plus tôt, pour tout retour « Patient mis à jour. ».
 L'état du dossier se change au menu de ligne, derrière son dialogue — la règle
 que ce module s'écrivait déjà à lui-même.
 
+**7. Les TROIS actions d'accès sont grisées sur un dossier inactif** — « Copier
+le lien » comprise. Elle poste elle aussi (`action: 'lien'`), et le garde
+`actif` d'`api/praticien/token` précède l'aiguillage des actions : le serveur
+la refusait déjà, en « Patient introuvable. » sur un dossier que le praticien a
+sous les yeux. Un bouton qui ment est pire qu'un bouton grisé.
+
 **L'écart résiduel, nommé maintenant plutôt que découvert plus tard.**
 
 1. **Les tampons `consommeLe` posés par l'ancien ordre survivent en base et
@@ -80,15 +101,21 @@ que ce module s'écrivait déjà à lui-même.
    de `nouveaux-patients` le dit, pour qui interrogera cette table plus tard.
 2. **Aucun backfill n'est requis** : tout lien en vol antérieur est borné par
    `creeLe + 24 h` et s'éteint seul.
-3. **Une course étroite demeure** : un lien peut naître entre la lecture du
-   patient et le commit de la transaction, et redeviendrait ouvrable si le
-   dossier était réactivé sous 24 h. Résidu identique à celui de la révocation
-   d'aujourd'hui ; il n'est pas fermé ici.
+3. **Une course étroite demeure, à la NAISSANCE d'un lien** — non à sa
+   consommation, que le §3 ferme. `api/portail/lien/demande` lit `actif` puis
+   crée le lien dans une transaction tenue par `pg_advisory_xact_lock` ; sous
+   contention de ce verrou, un lien peut naître après la fermeture. Il ne
+   s'ouvre pas pour autant (la garde de compte à l'atterrissage le refuse), et
+   ne redeviendrait utile qu'en cas de réactivation sous 24 h. Résidu identique
+   à celui de la révocation d'aujourd'hui ; il n'est pas fermé ici.
 
-**Forensique.** Un lien fermé par une désactivation se reconnaît à
-`expire_le < cree_le + interval '23 hours'`. La marge d'une heure absorbe la
-dérive d'horloge entre l'application, qui calcule `expire_le`, et Postgres, qui
-pose `cree_le` par défaut — sans elle, un lien normal satisferait le prédicat.
+**Forensique.** Un lien intact porte `expire_le = cree_le + 24 h` exactement
+(`DUREE_VALIDITE_MS`) ; un lien fermé par une désactivation porte un écart plus
+court. Le prédicat est donc une tolérance autour de 24 h,
+`abs(extract(epoch from (expire_le - cree_le)) - 86400) > 60`, et non un seuil
+large : à `23 hours`, toute désactivation survenue dans la dernière heure de vie
+du lien échapperait au filtre. Angle mort résiduel : la minute qui suit
+l'émission.
 Table de distinction des trois gestes : `docs/RUNBOOK.md`, §Révocation.
 
 **Comment la décision a été prise.** Cinq lentilles ont cartographié ce que

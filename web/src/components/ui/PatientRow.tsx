@@ -73,11 +73,14 @@ export function PatientRow({
   // documents (D4), pas la lecture. Le patient conserve ses archives, donc
   // lui renvoyer son lien a du sens.
   //
-  // SUR UN DOSSIER DÉSACTIVÉ, EN REVANCHE, LES DEUX ENVOIS SONT FERMÉS ICI.
-  // Le serveur les refusait déjà, mais en `patient_not_found` — que l'écran
-  // rend « Patient introuvable. » sur un dossier que le praticien a sous les
-  // yeux. Un bouton qui ment est pire qu'un bouton grisé. « Copier le lien »
-  // reste ouvert : il ne poste rien.
+  // SUR UN DOSSIER DÉSACTIVÉ, EN REVANCHE, LES TROIS ACTIONS D'ACCÈS SONT
+  // FERMÉES ICI. Le serveur les refusait déjà, mais en `patient_not_found` —
+  // que l'écran rend « Patient introuvable. » sur un dossier que le praticien a
+  // sous les yeux. Un bouton qui ment est pire qu'un bouton grisé.
+  //
+  // « COPIER LE LIEN » COMPRIS : il poste, lui aussi (`action: 'lien'`), et le
+  // garde `!patient.actif` d'`api/praticien/token` précède l'aiguillage des
+  // actions — il le refuse donc au même titre que les deux envois.
   const elements: ElementMenu[] = [
     { type: 'groupe', libelle: 'Accès au portail' },
     {
@@ -92,7 +95,7 @@ export function PatientRow({
       id: 'copier',
       libelle: 'Copier le lien',
       onSelect: agir('copier'),
-      desactive: actionAccesEnCours,
+      desactive: actionAccesEnCours || estInactif,
     },
     ...(lienMagiqueActif
       ? [

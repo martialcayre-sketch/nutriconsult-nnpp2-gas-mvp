@@ -601,9 +601,15 @@ export async function PATCH(req: Request): Promise<NextResponse<PatchPatientResp
       // enregistrement : sans ce filtre, une simple correction de téléphone sur
       // un dossier déjà inactif réécrirait des lignes.
       //
-      // TRANSACTION, ET DANS CET ORDRE : si la fermeture des liens échoue, le
-      // `actif: false` est annulé avec elle. L'état interdit est « liens
-      // fermés, dossier encore actif » — un patient dehors sans décision.
+      // TRANSACTION : les deux écritures commitent ENSEMBLE, donc aucun lecteur
+      // ne voit « liens fermés, dossier encore actif », ni l'inverse. C'est la
+      // transaction qui l'assure, PAS l'ordre : sous READ COMMITTED aucun état
+      // intermédiaire n'est visible, quel que soit l'ordre des deux écritures.
+      //
+      // L'ORDRE, LUI, SERT À AUTRE CHOSE. Il est identique à celui de la
+      // révocation (`api/praticien/token` DELETE : `patient`, puis
+      // `portailMagicLink`). Deux gestes concurrents sur le même dossier
+      // prennent donc leurs verrous dans le même sens — pas d'interblocage.
       await prisma.$transaction([
         prisma.patient.update({ where: { idPatient }, data: donneesPatient }),
         prisma.portailMagicLink.updateMany({

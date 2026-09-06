@@ -121,12 +121,27 @@ describe('GET /portail/lien/[jeton]', () => {
 
   // La consommation ne doit pas être « lire puis écrire » : entre les deux,
   // une seconde requête passerait.
-  it('la consommation est atomique — écriture conditionnée à `consommeLe: null`', async () => {
+  //
+  // `expireLe` EST DANS LE PRÉDICAT. Sans lui, une désactivation qui commite
+  // entre la garde de compte et cette écriture laisserait le lien être BRÛLÉ
+  // sans que le patient entre — la ligne prenant alors la forme exacte d'une
+  // entrée réussie, c'est-à-dire le défaut même que `D-126` supprime, reparu
+  // par la course.
+  it('la consommation est atomique — conditionnée à `consommeLe: null` ET à `expireLe`', async () => {
     await appeler();
     expect(prisma.portailMagicLink.updateMany).toHaveBeenCalledWith({
-      where: { id: 'lk_1', consommeLe: null },
+      where: { id: 'lk_1', consommeLe: null, expireLe: { gt: expect.any(Date) } },
       data: { consommeLe: expect.any(Date) },
     });
+  });
+
+  // L'horloge du prédicat doit être FRAÎCHE : `maintenant` est capturé en haut
+  // de la route, donc avant la fermeture concurrente qu'il s'agit de rattraper.
+  // S'en servir comparerait le nouvel horizon à un instant qui le précède.
+  it('le prédicat `expireLe` est évalué APRÈS la garde de compte, pas à l’horloge d’entrée', async () => {
+    await appeler();
+    const [appel] = prisma.portailMagicLink.updateMany.mock.calls[0];
+    expect(appel.where.expireLe.gt.getTime()).toBeGreaterThanOrEqual(appel.data.consommeLe.getTime());
   });
 
   it('perdre la course de consommation vaut refus, pas ouverture', async () => {

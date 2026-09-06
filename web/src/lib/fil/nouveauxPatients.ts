@@ -26,9 +26,12 @@
  * parcours : ce ne sont pas des portes restées fermées mais des portes
  * REFERMÉES, par le praticien lui-même. Elles priment donc sur les trois
  * autres, qui décrivent une mise en service en cours — ce qu'un dossier fermé
- * n'est plus. La désactivation passe la première parce qu'elle est la
- * fermeture la plus large : elle coupe les trois entrées ET ferme les liens en
- * vol (`D-126`), là où la révocation ne vise que l'accès au portail. */
+ * n'est plus. Entre les deux, l'ordre est une CONVENTION D'AFFICHAGE et non une
+ * hiérarchie de gravité : les deux fermetures sont de largeur équivalente. La
+ * révocation ferme elle aussi les liens en vol, et invalide en plus les
+ * sessions déjà ouvertes (`sessionsInvalidesAvant`) que la désactivation, elle,
+ * laisse simplement expirer. Aucune des deux ne compte « en attente », toutes
+ * deux portent la même variante neutre : la place ne décide de rien d'autre. */
 export type EtapeNouveauPatient =
   | 'dossier_desactive'
   | 'acces_revoque'
