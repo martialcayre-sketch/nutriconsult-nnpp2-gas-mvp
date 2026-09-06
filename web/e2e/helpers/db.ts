@@ -750,6 +750,69 @@ export async function provisionnerDossierBiologie(idPatient: string): Promise<vo
  *   2. le panel déclaré, reconnu à la DATE de bilan que le parcours saisit ;
  *   3. la passation fabriquée, reconnue à son préfixe.
  */
+/**
+ * Les versions de protocole et les arbitrages posés PAR LE RUN COURANT.
+ *
+ * Les arbitrages PARTENT EN PREMIER : ils citent une version
+ * (`protocol_draft_id`), et ce qui s'appuie sur une ligne part avant elle.
+ *
+ * Borne temporelle, comme les documents et les mesures — `arbitre_le` et
+ * `created_at` sont posés par la base. Le fil de versions du dossier de fixture
+ * n'appartient à personne d'autre, mais le borner évite d'emporter une version
+ * qu'un autre parcours aurait laissée derrière lui.
+ */
+export async function nettoyerProtocoleEtArbitrages(
+  idPatient: string,
+  depuis: Date,
+): Promise<void> {
+  await prisma.arbitrageBiologique.deleteMany({
+    where: { idPatient, arbitreLe: { gte: depuis } },
+  });
+  await prisma.protocolDraft.deleteMany({
+    where: { idPatient, createdAt: { gte: depuis } },
+  });
+}
+
+/**
+ * Les résultats biologiques consignés PAR LE RUN COURANT, et eux seuls.
+ *
+ * Même borne temporelle que les documents patient, et pour la même raison :
+ * `saisi_le` est posé par la base (c'est ce qui rend une mesure
+ * inantidatable) et la table est append-only. Sans ramassage, la garde
+ * anti-doublon du run suivant buterait sur une mesure qu'il n'a pas posée.
+ */
+export async function nettoyerResultatsBiologiques(
+  idPatient: string,
+  depuis: Date,
+): Promise<void> {
+  await prisma.resultatBiologique.deleteMany({
+    where: { idPatient, saisiLe: { gte: depuis } },
+  });
+}
+
+/**
+ * Les documents patient consignés PAR LE RUN COURANT, et eux seuls.
+ *
+ * La table n'a aucune marque exploitable — pas de destinataire comme la
+ * lettre, pas de date saisie comme le panel déclaré : le texte est dérivé, et
+ * `genere_le` est posé par la base. Supprimer « tous les documents du dossier »
+ * emporterait ceux qu'un autre geste aurait posés sur la fixture ; la borne est
+ * donc TEMPORELLE — l'instant relevé avant le premier geste du parcours.
+ *
+ * Append-only : ces lignes ne s'effacent jamais en production, et c'est le
+ * régime. Ici, la fixture est un dossier de test dont le parcours est seul
+ * producteur ; ne pas ramasser ferait grossir la table à chaque run et rendrait
+ * la garde anti-doublon dépendante de l'historique des runs précédents.
+ */
+export async function nettoyerDocumentsPatientBiologie(
+  idPatient: string,
+  depuis: Date,
+): Promise<void> {
+  await prisma.documentPatientBiologie.deleteMany({
+    where: { idPatient, genereLe: { gte: depuis } },
+  });
+}
+
 export async function nettoyerDossierBiologie(idPatient: string): Promise<void> {
   // L'épisode que la confirmation du spec a PERSISTÉ (`D-118`). Avant cette
   // décision le POST cockpit n'écrivait rien et il n'y avait rien à ramasser ;

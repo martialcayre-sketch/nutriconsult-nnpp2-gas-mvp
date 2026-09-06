@@ -170,6 +170,18 @@ export default defineConfig({
       // élargir ici rougirait Vitest.
       WN_CB_ENABLED: 'true',
       WN_CB_PROPOSITION: 'true',
+      // Étage 2 — résultats réels ([[D-122]] §2). CE DRAPEAU N'EST PAS POSÉ EN
+      // PRODUCTION, et c'est la différence avec ses deux voisins : eux
+      // ALIGNENT le banc sur la production, celui-ci ouvre la seule position
+      // où la surface existe. Ne pas en déduire que l'étage est ouvert chez le
+      // praticien — il ne l'est pas, et la table compte 0 ligne.
+      //
+      // Même portée que les autres : ici, et la seule commande `npm run build`
+      // (le composant serveur du dossier lit le drapeau pour alimenter
+      // `CbFeatureProvider`). JAMAIS au niveau du runner — la suite Vitest
+      // s'exécute en position CB éteinte et un drapeau posé là déplacerait
+      // toute la suite.
+      WN_CB_RESULTS_ENABLED: 'true',
       // Posé en Production le 2026-08-16 ([[D-064]]) — même doctrine que la
       // ligne du dessus : aligner l'E2E sur l'état réel de production. Depuis
       // [[D-065]], ce drapeau conditionne AUSSI les règles d'arrêt : sans lui,
