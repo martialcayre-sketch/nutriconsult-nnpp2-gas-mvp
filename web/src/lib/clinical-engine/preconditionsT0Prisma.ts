@@ -179,6 +179,13 @@ export async function refusPreconditionsPersistance(
     preconditionOverrides?: { conditionId?: string; motif?: string; decidePar?: string; decideLe?: string }[];
   },
   emailPraticienSession: string,
+  /**
+   * Les contournements DÉJÀ PERSISTÉS sur la ligne de cet épisode, s'il en
+   * existe une. C'est la seule preuve qu'un arbitrage a réellement eu lieu :
+   * une trace se reconnaît à sa PRÉSENCE EN BASE, jamais à sa date (`D-129`).
+   * Absent ⇒ aucune trace admise, comportement d'avant le lot.
+   */
+  tracesEnBase: readonly { conditionId?: string; motif?: string; decidePar?: string; decideLe?: string }[] = [],
 ): Promise<string | null> {
   // La contradiction d'abord : elle se juge sans la base, et elle vaut pour
   // TOUT jalon — y compris ceux que la porte laisse passer. La trancher en
@@ -201,23 +208,29 @@ export async function refusPreconditionsPersistance(
     // condition n'est plus en défaut, pour empêcher « la trace d'un arbitrage
     // qui n'a jamais eu lieu ». Mais une condition souple SE RÉSOUT : la
     // contradiction est levée, la passation est repassée. L'arbitrage, lui, a
-    // bien eu lieu — et sa ligne est la seule à en faire foi. L'effacer au
-    // premier geste anodin du praticien perdrait qui a passé outre, quand et
-    // pourquoi.
+    // bien eu lieu — et sa ligne est la seule à en faire foi.
     //
-    // La distinction se fait sur la DATE, pas sur la condition : un override
-    // dont la décision est ANTÉRIEURE à cette confirmation est une trace, et se
-    // conserve. Un override fabriqué à l'instant pour une condition qui n'est
-    // pas en défaut reste refusé — c'est ce que la règle protégeait.
+    // UNE TRACE SE RECONNAÎT À SA PRÉSENCE EN BASE, JAMAIS À SA DATE. Une
+    // première version de ce contrôle acceptait un override non requis dont la
+    // décision était ANTÉRIEURE à la confirmation. La revue adversariale l'a
+    // exécutée : elle était inversée dans les deux sens. Le cockpit tamponne
+    // `decideLe = confirmedAt` sur le tout premier contournement — l'égalité ne
+    // satisfait pas la stricte antériorité, donc AUCUNE trace réelle n'était
+    // reconnue, et la route vivante refusait définitivement le dossier. Et
+    // symétriquement, une date se forge : un override daté de 1999, au motif
+    // vide et à l'e-mail d'un autre praticien, passait.
+    //
+    // La ligne persistée, elle, ne se forge pas depuis le navigateur. Un
+    // override non requis n'est admis que s'il est déjà EXACTEMENT en base.
     if (!requis.has(conditionId)) {
-      const decideLe = override?.decideLe ?? '';
-      const anterieur =
-        typeof episode.confirmedAt === 'string' && decideLe !== '' && decideLe < episode.confirmedAt;
-      if (!anterieur) {
+      const empreinte = (o: { conditionId?: string; motif?: string; decidePar?: string; decideLe?: string }) =>
+        JSON.stringify([o?.conditionId ?? '', o?.motif ?? '', o?.decidePar ?? '', o?.decideLe ?? '']);
+      const attendue = empreinte(override);
+      if (!tracesEnBase.some(trace => empreinte(trace) === attendue)) {
         return `Contournement sans objet : la condition « ${conditionId || 'inconnue'} » n’est pas en défaut sur ce dossier.`;
       }
-      // Trace historique : on ne recoupe ni l'auteur ni la borne de date
-      // ci-dessous, qui valent pour un arbitrage rendu AVEC cet épisode.
+      // Trace déjà écrite, reportée telle quelle : ni l'auteur ni les bornes de
+      // date ne se recoupent ici — ils l'ont été le jour où elle a été posée.
       continue;
     }
     if (typeof override.motif !== 'string' || override.motif.trim() === '') {

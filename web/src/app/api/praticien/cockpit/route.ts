@@ -56,6 +56,7 @@ type CockpitUnavailableReason =
   | 'invalid_payload'
   | 'patient_not_found'
   | 'proposal_stale'
+  | 'episode_ecrit_ailleurs'
   | 'preconditions_non_remplies'
   | 'motif_contournement_manquant'
   | 'exception';
@@ -631,7 +632,17 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
         brut !== null && typeof brut === 'object' && !Array.isArray(brut)
           ? (() => {
               const champ = (brut as { preconditionOverrides?: unknown }).preconditionOverrides;
-              return Array.isArray(champ) ? (champ as PreconditionOverride[]) : [];
+              if (!Array.isArray(champ)) return [];
+              // LES ÉLÉMENTS AUSSI. `null` est une valeur JSON légale : sans ce
+              // filtre, `o.conditionId` levait un `TypeError` sur une donnée
+              // serveur corrompue, que le catch externe rendait en 400
+              // `invalid_payload` — un défaut de la base présenté comme une
+              // faute du navigateur. Même filtre que `motifsRecus` plus bas.
+              return champ.filter(
+                (o): o is PreconditionOverride =>
+                  typeof (o as PreconditionOverride)?.conditionId === 'string'
+                  && typeof (o as PreconditionOverride)?.motif === 'string',
+              );
             })()
           : [];
       const dejaRendus = new Map(rendusEnBase.map(o => [o.conditionId, o]));
@@ -680,6 +691,14 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
         });
       }
     }
+
+    // TRIÉS : `canonicalSha256` est sensible à l'ordre d'un tableau. Les traces
+    // sont poussées avant les requis, donc l'ordre change quand une condition
+    // se résout — et deux états identiques rendraient deux empreintes. Sans ce
+    // tri, chaque transition coûtait une écriture gratuite et périmait
+    // l'épisode que le navigateur tient encore, d'où un 422 à l'enregistrement
+    // suivant. Un ordre stable rend l'idempotence vraie.
+    preconditionOverrides.sort((a, b) => a.conditionId.localeCompare(b.conditionId));
 
     const episode = confirmAssessmentEpisode(
       current.proposal,
@@ -787,8 +806,13 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
         // praticien recliquait dans le vide, en silence : le défaut même que
         // `D-129` ferme, déplacé sur la première confirmation.
         if ((erreur as { code?: string })?.code !== 'P2002') throw erreur;
+        // RAISON DISTINCTE DE `proposal_stale` : le client intercepte celle-ci
+        // pour recharger la proposition en posant « Les réponses ont changé »,
+        // ce qui est faux ici — rien n'a changé côté réponses, la ligne est née
+        // sous une autre requête. Un message vrai vaut mieux qu'un rechargement
+        // muet sur un message emprunté.
         return unavailable(
-          'proposal_stale',
+          'episode_ecrit_ailleurs',
           'Cet épisode vient d’être confirmé ailleurs. Rechargez la proposition.',
           409,
         );
@@ -804,7 +828,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       });
       if (count !== 1) {
         return unavailable(
-          'proposal_stale',
+          'episode_ecrit_ailleurs',
           'Cet épisode vient d’être modifié ailleurs. Rechargez la proposition.',
           409,
         );

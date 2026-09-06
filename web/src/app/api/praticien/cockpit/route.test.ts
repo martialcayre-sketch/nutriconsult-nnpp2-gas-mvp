@@ -991,7 +991,12 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     expect(prisma.assessmentEpisode.updateMany).toHaveBeenCalledTimes(1);
     const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
     expect(appel.where.payloadHash).toBe('empreinte-de-la-mesure-precedente');
-    expect(appel.data.payloadHash).not.toBe('empreinte-de-la-mesure-precedente');
+    // L'EMPREINTE SE RECOUPE. Assertion d'origine : `not.toBe(<ancienne>)`, que
+    // `undefined` satisfait — supprimer `payloadHash` du mapping laissait la
+    // suite entière au vert, alors que la colonne aurait gardé l'ancienne
+    // empreinte pendant que le payload change : rejeu refusé, compare-and-swap
+    // qui ne matche plus jamais, et 422 permanent sur les deux routes protocole.
+    expect(appel.data.payloadHash).toBe(canonicalSha256(appel.data.payload));
   });
 
   // ★ LE BANC DÉCISIF. Il garde ce que la re-confirmation s'INTERDIT : toucher
@@ -1050,6 +1055,24 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     expect(res.status).toBe(200);
     expect(prisma.assessmentEpisode.updateMany).not.toHaveBeenCalled();
     expect(prisma.assessmentEpisode.create).not.toHaveBeenCalled();
+  });
+
+  // `payload` EST UN `jsonb` : il peut porter n'importe quoi, y compris un
+  // `null` dans le tableau — valeur JSON parfaitement légale. Sans filtre sur
+  // les ÉLÉMENTS, `o.conditionId` levait un `TypeError` que le catch externe
+  // rendait en 400 `invalid_payload` : un défaut de la base présenté au
+  // praticien comme une faute de son navigateur. Ce banc rougit sur le retrait
+  // du parsing défensif.
+  it('une ligne au payload corrompu ne devient pas une faute du navigateur', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      confirmedAt: new Date('2026-08-12T09:00:00.000Z'),
+      payloadHash: 'empreinte-de-la-mesure-precedente',
+      payload: { preconditionOverrides: [null, 'texte', { conditionId: 42 }] },
+    });
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(200);
   });
 
   it('perdre le compare-and-swap vaut 409, pas un écrasement', async () => {

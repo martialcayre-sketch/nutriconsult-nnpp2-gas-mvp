@@ -207,6 +207,62 @@ describe('POST /api/praticien/protocoles', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
+  // ★ LE PENDANT, ET C'EST LUI QUI TIENT `D-129` §3 bis. Une condition souple SE
+  // RÉSOUT : la contradiction est levée, la passation est repassée. La trace de
+  // l'arbitrage doit survivre — c'est la seule ligne qui dise qui a passé outre,
+  // quand et pourquoi.
+  //
+  // UNE TRACE SE RECONNAÎT À SA PRÉSENCE EN BASE, JAMAIS À SA DATE. Une première
+  // version de ce contrôle acceptait un override non requis DATÉ AVANT la
+  // confirmation ; la revue adversariale l'a exécutée et montrée inversée dans
+  // les deux sens — le cockpit tamponnant `decideLe = confirmedAt` sur le
+  // premier contournement, aucune trace réelle n'était reconnue, et une date se
+  // forge de toute façon. Ce banc rougit sur cette version-là, et sur le retour
+  // à la règle d'origine.
+  it('accepte un contournement dont la condition s’est résolue, s’il est DÉJÀ en base', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    const trace = {
+      conditionId: 'contradictions_ouvertes',
+      motif: 'Vue en entretien.',
+      decidePar: 'praticien@wellneuro.fr',
+      decideLe: HORODATAGE_C1_FIXTURE,
+    };
+    // La chaîne est reconstruite sur l'épisode variant : l'épisode entre dans
+    // les trois empreintes, et le retoucher sans refaire la carte rendrait 409
+    // — ce que la garde de chaîne doit faire, mais pas ce que ce cas décrit.
+    const chaine = chainePour({ ...episode, preconditionOverrides: [trace] });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(chaine.episode),
+      payload: { preconditionOverrides: [trace] },
+    });
+    const res = await POST(postRequest(chaine));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  // L'AUTRE MOITIÉ DE LA MÊME RÈGLE : la ligne en base ne se forge pas depuis le
+  // navigateur, mais l'override posté, si. Un override qui DIFFÈRE de la trace
+  // enregistrée — fût-ce d'un mot du motif — n'est pas cette trace.
+  it('refuse un contournement résolu qui NE correspond PAS à la trace en base', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    const trace = {
+      conditionId: 'contradictions_ouvertes',
+      motif: 'Vue en entretien.',
+      decidePar: 'praticien@wellneuro.fr',
+      decideLe: HORODATAGE_C1_FIXTURE,
+    };
+    const retouche = { ...trace, motif: 'Motif réécrit après coup.' };
+    const chaine = chainePour({ ...episode, preconditionOverrides: [retouche] });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(chaine.episode),
+      payload: { preconditionOverrides: [trace] },
+    });
+    const res = await POST(postRequest(chaine));
+    expect(res.status).toBe(422);
+    expect((await res.json()).error).toContain('sans objet');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
   // CONTRE-REVUE ADVERSE DU 2026-08-27, affirmation `N1.8` RÉFUTÉE.
   //
   // `decideLe` n'était vérifié que comme ISO LISIBLE. Le commentaire de la
