@@ -579,21 +579,23 @@ export async function PATCH(req: Request): Promise<NextResponse<PatchPatientResp
       // le tenait pas : un lien émis avant la désactivation restait ouvrable
       // jusqu'à 24 h après, et l'atterrissage le brûlait avant de le refuser.
       //
-      // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT. La révocation, elle, date
-      // `consommeLe` (`api/praticien/token` DELETE) et paie ce choix par une
-      // égalité stricte avec `sessionsInvalidesAvant` — seul moyen pour
-      // `api/praticien/nouveaux-patients` de distinguer un tampon de fermeture
-      // d'une vraie première connexion. Recopier ce geste ici ferait de la
-      // désactivation le SECOND écrivain de `sessionsInvalidesAvant`, colonne à
-      // emplacement unique : chaque nouvelle date écrase la précédente et
-      // convertirait d'un coup les tampons d'une révocation antérieure en
-      // fausses entrées. On refermerait une porte en rouvrant l'autre.
+      // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT — et depuis `D-128` la
+      // RÉVOCATION AUSSI : les deux gestes praticien sont devenus le même, au
+      // mot près (`api/praticien/token` DELETE). Ce commentaire a d'abord dit
+      // le contraire, parce que la révocation datait alors `consommeLe` et
+      // payait ce choix par une égalité stricte avec `sessionsInvalidesAvant`,
+      // seul moyen pour `api/praticien/nouveaux-patients` d'écarter un tampon
+      // de fermeture. Recopier CE geste-là ici aurait fait de la désactivation
+      // le second écrivain de `sessionsInvalidesAvant`, colonne à emplacement
+      // unique dont chaque date écrase la précédente : on aurait refermé une
+      // porte en rouvrant l'autre. `D-128` a réglé la question à la racine, en
+      // retirant l'écrivain plutôt qu'en ajoutant une colonne.
       //
-      // `expireLe` n'a qu'UN lecteur (`etatLien`) et sa valeur est dérivée
-      // (`creeLe + 24 h`) : l'avancer ne détruit aucun fait — `creeLe` le
-      // reconstruit — et ne dilue pas `consommeLe`, seule trace d'entrée du
-      // versant patient. Une colonne dit une chose : `expireLe` dit « jusqu'à
-      // quand ce lien ouvre ».
+      // `expireLe` ne dilue pas `consommeLe`, seule trace d'entrée du versant
+      // patient, et sa valeur est dérivée (`creeLe + 24 h`) : l'avancer ne
+      // détruit aucun fait, `creeLe` le reconstruit. Une colonne dit une
+      // chose : `expireLe` dit « jusqu'à quand ce lien ouvre », `consommeLe`
+      // dit « le patient est entré ».
       //
       // FILTRE MONOTONE ET IDEMPOTENT. `expireLe: { gt: maintenant }` ne
       // rallonge jamais un lien et ne touche rien au second passage — ce qui

@@ -176,11 +176,28 @@ export async function DELETE(req: Request): Promise<NextResponse<TokenActionResp
     // cookies déjà émis ; un nouveau login légitime, postérieur, repart proprement.
     //
     // Restaient les liens à usage unique **encore en vol**, émis avant la
-    // révocation : on les date ici (`consommeLe`) pour qu'`etatLien` les refuse.
-    // Sans cela, un lien émis avant la révocation resterait ouvrable jusqu'à 24 h
-    // après. `consommeLe` porte un lien non consommé, et c'est délibéré :
-    // `etatLien` refuse déjà sur cette date, le patient lit le même message
-    // qu'un lien réellement consommé (`MESSAGE_LIEN_INDISPONIBLE`).
+    // révocation : on les ferme ici pour qu'`etatLien` les refuse. Sans cela,
+    // un lien émis avant la révocation resterait ouvrable jusqu'à 24 h après.
+    //
+    // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT (`D-128`). Ce geste datait
+    // `consommeLe` — une colonne qui dit « le patient est entré » — sur un lien
+    // que PERSONNE n'avait ouvert. L'encart des dossiers neufs devait alors
+    // écarter ces tampons par une égalité stricte avec `sessionsInvalidesAvant`,
+    // et cette ruse ne tenait qu'une révocation : la colonne n'a qu'un
+    // emplacement, la seconde écrasait la première et rendait ses tampons
+    // indiscernables d'une entrée. Le code appelait cela une limite connue et la
+    // disait insoluble sans une colonne de plus. Elle ne l'était pas : il ne
+    // fallait pas AJOUTER une colonne, il fallait RETIRER un écrivain.
+    //
+    // Depuis, `consommeLe` ne dit plus qu'une chose, et l'encart n'a plus rien à
+    // discriminer. La fermeture passe par `expireLe`, exactement comme la
+    // désactivation (`D-126`, `api/praticien/patients`) : même filtre monotone
+    // et idempotent, même transaction, même ordre de verrouillage — les deux
+    // gestes sont désormais jumeaux.
+    //
+    // EFFET DE BORD ASSUMÉ : le motif journalisé par le refus d'atterrissage
+    // passe de « consomme » à « expire » pour un lien fermé par révocation. La
+    // destination et le message lus par le patient sont inchangés.
     //
     // Une transaction, parce que fermer le drapeau sans fermer les liens laisse
     // exactement le trou qu'on referme.
@@ -191,8 +208,8 @@ export async function DELETE(req: Request): Promise<NextResponse<TokenActionResp
         data: { accessTokenRevoked: true, sessionsInvalidesAvant: maintenant },
       }),
       prisma.portailMagicLink.updateMany({
-        where: { idPatient, consommeLe: null },
-        data: { consommeLe: maintenant },
+        where: { idPatient, consommeLe: null, expireLe: { gt: maintenant } },
+        data: { expireLe: maintenant },
       }),
     ]);
     return NextResponse.json({ success: true });

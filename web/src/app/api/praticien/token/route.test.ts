@@ -77,12 +77,21 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
     await DELETE(request());
 
     const [appel] = prisma.portailMagicLink.updateMany.mock.calls as [
-      [{ where: { idPatient: string; consommeLe: null }; data: { consommeLe: Date } }],
+      [{
+        where: { idPatient: string; consommeLe: null; expireLe: { gt: Date } };
+        data: { expireLe: Date };
+      }],
     ];
     // `consommeLe: null` : un lien DÉJÀ consommé garde sa date d'origine — la
     // trace ne doit pas être réécrite par une révocation postérieure.
-    expect(appel[0].where).toEqual({ idPatient: 'PAT_1', consommeLe: null });
-    expect(appel[0].data.consommeLe).toBeInstanceOf(Date);
+    // `expireLe: { gt: maintenant }` : l'écriture est monotone et idempotente,
+    // elle ne rallonge jamais un lien et ne touche rien au second passage.
+    expect(appel[0].where).toEqual({
+      idPatient: 'PAT_1',
+      consommeLe: null,
+      expireLe: { gt: expect.any(Date) },
+    });
+    expect(appel[0].data.expireLe).toBeInstanceOf(Date);
 
     // Les deux écritures tombent ensemble : fermer le jeton sans fermer les
     // liens laisserait exactement le trou qu'on referme.
@@ -94,8 +103,27 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
   it('date les deux écritures du même instant', async () => {
     await DELETE(request());
     const patch = prisma.patient.update.mock.calls[0][0] as { data: { sessionsInvalidesAvant: Date } };
-    const liens = prisma.portailMagicLink.updateMany.mock.calls[0][0] as { data: { consommeLe: Date } };
-    expect(liens.data.consommeLe.getTime()).toBe(patch.data.sessionsInvalidesAvant.getTime());
+    const liens = prisma.portailMagicLink.updateMany.mock.calls[0][0] as { data: { expireLe: Date } };
+    expect(liens.data.expireLe.getTime()).toBe(patch.data.sessionsInvalidesAvant.getTime());
+  });
+
+  // LE BANC DÉCISIF DE `D-128`, et il garde ce que la révocation s'INTERDIT.
+  // Elle datait `consommeLe` sur un lien que personne n'avait ouvert : l'encart
+  // des dossiers neufs devait ensuite écarter ces tampons par une égalité
+  // stricte, ruse qui ne tenait qu'UNE révocation. Un correctif qui refermerait
+  // par `consommeLe` — la forme d'avant — rougit ici.
+  //
+  // La boucle ne peut pas être vide-donc-verte : le banc voisin ci-dessus
+  // déréférence `mock.calls[0][0]`, donc l'absence d'appel y échoue déjà.
+  it('n’écrit JAMAIS `consommeLe` — cette colonne ne dit que l’entrée du patient', async () => {
+    await DELETE(request());
+    // La garantie tient DANS ce banc : sans cette ligne, la boucle serait
+    // vide-donc-verte le jour où l'écriture disparaîtrait.
+    expect(prisma.portailMagicLink.updateMany).toHaveBeenCalledTimes(1);
+    for (const [appel] of prisma.portailMagicLink.updateMany.mock.calls) {
+      expect(appel.data).not.toHaveProperty('consommeLe');
+      expect(appel.data).toHaveProperty('expireLe');
+    }
   });
 
   it('refuse sans session praticien, et n’écrit rien', async () => {

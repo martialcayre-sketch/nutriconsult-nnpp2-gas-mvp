@@ -149,7 +149,8 @@ scalingo --app wellneuro --region osc-fr1 one-off-stop one-off-NNNN
    (panneau patients) — ou `DELETE /api/praticien/token?idPatient=...`.
    La route ferme **les trois portes en une transaction** : compte
    (`accessTokenRevoked`), sessions déjà ouvertes (`sessionsInvalidesAvant`),
-   liens magiques encore en vol (datés `consommeLe`).
+   liens magiques encore en vol (horizon `expireLe` ramené à la date de
+   révocation — `consommeLe` n'est PAS touché, `D-128`).
 2. Vérifier le refus côté patient : ancien lien → message d'indisponibilité,
    session `wn_portail` existante refusée.
 3. Si l'accès doit être rétabli : réémettre et envoyer un nouveau lien
@@ -163,14 +164,29 @@ dossier ») ferme aussi les liens magiques encore en vol — mais **par
 `expireLe`, jamais par `consommeLe`** ([[D-126]]). Les deux gestes se
 distinguent donc en base :
 
-| Geste | `accessTokenRevoked` | `sessionsInvalidesAvant` | Liens en vol |
-|---|---|---|---|
-| Révoquer | `true` | daté | `consommeLe` = cette date |
-| Désactiver | inchangé | inchangé | `expireLe` avancé à maintenant |
+| Geste | `accessTokenRevoked` | `sessionsInvalidesAvant` | Liens en vol | `consomme_le` |
+|---|---|---|---|---|
+| Révoquer | `true` | daté | `expire_le` avancé à cette date | **jamais touché** |
+| Désactiver | inchangé | inchangé | `expire_le` avancé à maintenant | **jamais touché** |
+
+Depuis `D-128`, aucun geste praticien n'écrit `consomme_le` : **une date de
+consommation est une entrée du patient, et rien d'autre** — pour toute ligne
+écrite depuis. Les lignes antérieures, elles, restent ambiguës (`D-128`, écart
+résiduel n° 1).
 
 En forensique, un lien non fermé porte `expire_le = cree_le + 24 h` EXACTEMENT
-(`DUREE_VALIDITE_MS`). Un lien fermé par une désactivation se reconnaît donc à
-un écart plus court que 24 h :
+(`DUREE_VALIDITE_MS`). Un écart plus court signe une fermeture praticien — mais
+depuis `D-128` il ne signe plus la seule désactivation : les deux gestes ferment
+par l'horizon. Pour les SÉPARER, comparer `expire_le` à
+`patients.sessions_invalides_avant` : égalité à la milliseconde = révocation
+(même objet `Date`, même transaction).
+
+ATTENTION, CETTE ÉGALITÉ NE VAUT QUE POUR LA DERNIÈRE RÉVOCATION DU DOSSIER.
+`sessions_invalides_avant` n'a qu'un emplacement : une révocation postérieure
+l'écrase, et les liens fermés par une révocation ANTÉRIEURE ne correspondent
+alors plus. Ne pas conclure « désactivation » d'une non-égalité — c'est le
+défaut même que `D-128` retire de l'encart, et il subsisterait ici. Un tel lien
+n'est pas départageable en l'état. Le prédicat d'écart reste celui-ci :
 
     abs(extract(epoch from (expire_le - cree_le)) - 86400) > 60
 

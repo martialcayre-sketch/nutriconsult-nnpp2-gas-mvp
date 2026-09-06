@@ -109,18 +109,32 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
       dernierStatut.set(c.idPatient, c.statut);
       if (c.statut === 'Envoye') dernierEnvoi.set(c.idPatient, c.enregistreLe);
     }
-    // UNE DATE DE CONSOMMATION N'EST PAS TOUJOURS UNE ENTRÉE. Révoquer l'accès
-    // date les liens encore en vol (`consommeLe`, route `token` DELETE) pour
-    // qu'`etatLien` les refuse — la colonne y porte « fermé », pas « ouvert ».
-    // Cette date-là vaut exactement l'instant de révocation, écrit dans la même
-    // transaction que `sessionsInvalidesAvant` : c'est ce qui permet de l'écarter.
-    // Sans cela, un dossier passait de « Jamais connecté » à « Onboarding à
-    // finir » au moment précis où le praticien lui fermait la porte, et le
-    // gardait après une réouverture.
+    // UNE DATE DE CONSOMMATION EST UNE ENTRÉE — DEPUIS `D-128`, ET PAS AVANT.
+    // Les deux fermetures praticien passent maintenant par `expireLe` : la
+    // désactivation depuis `D-126`, la révocation depuis `D-128`. Plus aucun
+    // écrivain ne pose `consommeLe` sur un lien que personne n'a ouvert, et il
+    // n'y a donc plus rien à discriminer sur les lignes écrites depuis.
     //
-    // LIMITE CONNUE : le compte ne retient qu'une date de révocation. Après
-    // deux révocations, un tampon de la première redevient indiscernable d'une
-    // entrée. Les distinguer demanderait une colonne à la table des liens.
+    // CE QUI SUIT EST UN FILET RÉTROSPECTIF, pour les lignes ANTÉRIEURES.
+    // Révoquer datait alors les liens en vol (`consommeLe`, route `token`
+    // DELETE) à l'instant exact de la révocation, écrit dans la même
+    // transaction que `sessionsInvalidesAvant` : l'égalité stricte les écarte.
+    // Sans elle, un dossier passait de « Jamais connecté » à « Onboarding à
+    // finir » au moment précis où le praticien lui fermait la porte.
+    //
+    // LA LIMITE QUE CE FILET PORTE ENCORE, et qui ne concerne plus que le
+    // passé : le compte ne retient qu'UNE date de révocation. Après deux
+    // révocations, un tampon de la première redevient indiscernable d'une
+    // entrée. Le code disait ici que « les distinguer demanderait une colonne à
+    // la table des liens ». C'était faux, et `D-128` le montre : il ne fallait
+    // pas ajouter une colonne, il fallait retirer un écrivain.
+    //
+    // `sessionsInvalidesAvant` NON NUL NE VEUT PAS DIRE « RÉVOQUÉ ». La
+    // migration `20260721190000_idp2_sessions_invalides_avant` a rempli la
+    // colonne par backfill. La carte ci-dessous n'écarte donc une date que si
+    // elle tombe À LA MILLISECONDE sur celle d'un `consommeLe` — une collision
+    // fortuite avec une date de backfill est hors de portée pratique, mais le
+    // prédicat vaut par cette coïncidence, pas par un état « révoqué ».
     //
     // UN SECOND TAMPON A EXISTÉ, ET SES LIGNES SURVIVENT. L'atterrissage du
     // lien consommait AVANT de vérifier que le compte était actif et non

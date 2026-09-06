@@ -503,6 +503,10 @@ describe('PATCH /api/praticien/patients', () => {
   // que la PR #889 vient de fermer, puisque `nouveaux-patients` distingue un
   // tampon de fermeture d'une vraie entrée par une ÉGALITÉ STRICTE entre ces
   // deux colonnes. Ce banc rougit sur ce correctif-là, et sur lui seul.
+  //
+  // DEPUIS `D-128`, la révocation ne date plus `consommeLe` non plus : le banc
+  // garde donc un invariant que les DEUX gestes praticien respectent, et non
+  // plus une asymétrie entre eux.
   it('la désactivation n’écrit NI la révocation, NI une date de consommation', async () => {
     await PATCH(patch({ idPatient: 'PAT001', actif: 'NON' }));
     for (const [appel] of prisma.patient.update.mock.calls) {

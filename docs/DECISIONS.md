@@ -4,6 +4,98 @@
 
 ## Décisions actives
 
+### D-128 — Révoquer ferme aussi par l'horizon : `consommeLe` ne dit plus qu'une chose
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06)
+- Domaine : accès au portail patient, lecture de l'encart des dossiers neufs.
+  **Aucune règle clinique, aucun seuil, aucune migration.**
+- Porte sur : `D-126` (dont ce geste devient le jumeau), la PR #889 (l'égalité
+  stricte, ici requalifiée), `D-085` §2, `D-125` pour l'étiquetage
+
+**Le défaut.** La révocation datait `consommeLe` sur les liens encore en vol,
+pour qu'`etatLien` les refuse. Or `consommeLe` est la seule trace d'entrée du
+versant patient : on y écrivait « fermé » dans une colonne qui dit « ouvert ».
+L'encart des dossiers neufs devait ensuite écarter ces tampons par une égalité
+stricte avec `sessionsInvalidesAvant` — et cette ruse ne tenait qu'UNE
+révocation, la colonne n'ayant qu'un emplacement : à la seconde, les tampons de
+la première redevenaient indiscernables d'une entrée, et le dossier passait de
+« Jamais connecté » à « Onboarding à finir » sans que personne ne soit entré.
+
+Le code nommait cette limite et la disait insoluble : « les distinguer
+demanderait une colonne à la table des liens ». **C'était faux.** Il ne fallait
+pas ajouter une colonne, il fallait retirer un écrivain.
+
+**Ce que la décision tranche.**
+
+**1. La révocation ferme par `expireLe`, comme la désactivation.** Un écrivain
+RETIRÉ à `consommeLe`, aucun ajouté nulle part, aucun lecteur nouveau. Le filtre
+`expireLe: { gt: maintenant }` rend l'écriture monotone et idempotente. Les deux
+fermetures praticien sont désormais le même geste, au mot près.
+
+**2. L'encart n'a plus rien à discriminer.** La présence de `consommeLe` EST
+l'entrée, pour toute ligne écrite depuis. L'égalité stricte de la #889 n'est pas
+retirée : elle devient un FILET RÉTROSPECTIF sur les lignes antérieures, et
+c'est écrit à l'endroit où elle vit.
+
+**3. Ce qui a été REFUSÉ, et qui semblait pourtant la solution.** La piste
+examinée d'abord faisait écrire à la révocation `consommeLe` ET `expireLe`, pour
+que le lecteur discrimine par `consommeLe >= expireLe`. Elle fonctionne — c'est
+son piège. Elle AJOUTE un écrivain à `expireLe` sans en retirer aucun à
+`consommeLe` : on finirait avec deux colonnes à deux sens au lieu d'une colonne
+à un sens. Elle donnerait surtout à `expireLe` un SECOND lecteur, et dès lors
+tout futur écrivain d'`expireLe` qui oublierait `consommeLe: null` dans son
+`where` convertirait silencieusement des entrées RÉELLES en tampons.
+
+**4. La consommation compare l'horizon à la valeur LUE, pas à une horloge.**
+`D-126` avait conditionné la consommation à `expireLe: { gt: new Date() }` en
+croyant fermer la course. Elle ne la fermait pas : ce prédicat est évalué en
+JavaScript à la CONSTRUCTION de la requête, donc avant l'attente du verrou de
+ligne. La fermeture concurrente commite ensuite, à un instant postérieur, et son
+nouvel horizon satisfait encore le prédicat. Côté SQL, `now()` ne vaudrait pas
+mieux : Postgres le fige au début de la transaction, elle aussi antérieure à
+l'attente. Le prédicat devient donc un COMPARE-AND-SWAP sur la valeur lue :
+toute fermeture déplace `expireLe`, la constante ne correspond plus, et Postgres
+réévalue le prédicat sur la version verrouillée de la ligne. Relevé par la revue
+adversariale de ce lot, sur du code mergé le jour même.
+
+**Les écarts résiduels.**
+
+1. **Les lignes ANTÉRIEURES ne sont pas récupérées**, et se rangent en trois
+   familles. (A) Les tampons posés par l'ancien ordre de l'atterrissage
+   (consommer avant de garder, pré-`D-126`) : indiscernables, définitivement.
+   (B) Les tampons de révocation sur liens en vol : rattrapés par le filet tant
+   que leur révocation reste la dernière du dossier. (C) Les tampons sur liens
+   déjà expirés : reconnaissables par ligne (`consommeLe > expireLe`), mais les
+   récupérer donnerait à `expireLe` le second lecteur que le §3 refuse.
+2. **Aucun volume de production n'a été lu.** Combien de lignes tombent dans
+   chaque famille, on l'ignore — et la conception ne dépend d'aucun comptage.
+3. **`sessionsInvalidesAvant` non nul ne veut pas dire « révoqué »** : la
+   migration `20260721190000` a rempli la colonne par backfill. Le filet vaut
+   par la coïncidence à la milliseconde, pas par un état.
+4. **Le motif journalisé se déplace** : un lien fermé par révocation était
+   refusé en « consomme », il le sera en « expire ». Destination et message
+   patient inchangés ; qui cherche des révocations dans les logs doit le savoir.
+5. **La course à la NAISSANCE d'un lien est inchangée** (`D-126` §3). Elle ne
+   peut pas salir l'encart : la ligne reste à `consommeLe` nul.
+6. **AUCUN BANC NE GARDE L'ALLER-RETOUR `DateTime`.** Le compare-and-swap
+   suppose qu'une valeur lue par Prisma puis renvoyée dans un `where`
+   corresponde encore à la ligne. Une perte de précision rendrait le prédicat
+   TOUJOURS faux — et plus aucun patient n'entrerait. La revue adversariale l'a
+   vérifié à la main, sur le vrai client et une base jetable en `TIMESTAMP(3)` :
+   aller-retour fidèle, `count = 1` puis `count = 0` au rejeu, et l'UPDATE émis
+   est plat (sans `IN (SELECT …)`), ce qui est la condition pour que Postgres
+   réévalue le prédicat sur la version verrouillée. Les bancs, eux, comparent
+   contre un double : ils ne verraient pas cette perte. Le mécanisme pour
+   combler ce trou existe (`web/prisma/checks/` et le service Postgres du CI) ;
+   il n'est pas mobilisé ici.
+
+**Règle d'arbitrage, pour les lignes que rien ne départage.** De deux erreurs
+possibles, on choisit toujours celle qui fait **renvoyer un accès de trop** —
+coût : un e-mail, que la prochaine connexion corrige — jamais celle qui fait
+**attendre en silence un patient jamais entré**, dont le coût est l'onboarding
+entier.
+
 ### D-127 — La sélection d'une priorité est un acte praticien : elle se pose au serveur, s'écrit une fois pour toutes, et ne se rattrape pas
 
 - Date : 2026-09-06
