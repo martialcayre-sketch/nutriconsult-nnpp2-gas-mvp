@@ -122,26 +122,40 @@ describe('GET /portail/lien/[jeton]', () => {
   // La consommation ne doit pas être « lire puis écrire » : entre les deux,
   // une seconde requête passerait.
   //
-  // `expireLe` EST DANS LE PRÉDICAT. Sans lui, une désactivation qui commite
-  // entre la garde de compte et cette écriture laisserait le lien être BRÛLÉ
-  // sans que le patient entre — la ligne prenant alors la forme exacte d'une
-  // entrée réussie, c'est-à-dire le défaut même que `D-126` supprime, reparu
-  // par la course.
+  // `expireLe` EST DANS LE PRÉDICAT, EN COMPARE-AND-SWAP. Sans lui, une
+  // fermeture praticien qui commite entre la garde de compte et cette écriture
+  // laisserait le lien être BRÛLÉ sans que le patient entre — la ligne prenant
+  // alors la forme exacte d'une entrée réussie, c'est-à-dire le défaut même que
+  // `D-126` supprime, reparu par la course.
   it('la consommation est atomique — conditionnée à `consommeLe: null` ET à `expireLe`', async () => {
     await appeler();
     expect(prisma.portailMagicLink.updateMany).toHaveBeenCalledWith({
-      where: { id: 'lk_1', consommeLe: null, expireLe: { gt: expect.any(Date) } },
+      where: { id: 'lk_1', consommeLe: null, expireLe: DEMAIN },
       data: { consommeLe: expect.any(Date) },
     });
   });
 
-  // L'horloge du prédicat doit être FRAÎCHE : `maintenant` est capturé en haut
-  // de la route, donc avant la fermeture concurrente qu'il s'agit de rattraper.
-  // S'en servir comparerait le nouvel horizon à un instant qui le précède.
-  it('le prédicat `expireLe` est évalué APRÈS la garde de compte, pas à l’horloge d’entrée', async () => {
+  // LE PRÉDICAT NE DOIT PAS ÊTRE UNE HORLOGE. `{ gt: <date> }` est évalué en
+  // JavaScript à la construction de la requête, donc AVANT l'attente du verrou
+  // de ligne : la fermeture concurrente commite ensuite, à un instant
+  // postérieur, et son nouvel horizon satisfait encore un tel prédicat. Ce banc
+  // rougit sur cette forme-là, qui est celle que `D-126` avait d'abord posée.
+  it('compare `expireLe` à la valeur LUE, jamais à une horloge', async () => {
     await appeler();
     const [appel] = prisma.portailMagicLink.updateMany.mock.calls[0];
-    expect(appel.where.expireLe.gt.getTime()).toBeGreaterThanOrEqual(appel.data.consommeLe.getTime());
+    expect(appel.where.expireLe).toBe(DEMAIN);
+    expect(appel.where.expireLe).not.toHaveProperty('gt');
+    expect(appel.where.expireLe).not.toHaveProperty('gte');
+  });
+
+  // La course elle-même, jouée : la fermeture praticien a bougé l'horizon entre
+  // notre lecture et notre écriture. Le compare-and-swap ne matche plus, le
+  // lien n'est PAS brûlé, et aucune session ne s'ouvre.
+  it('une fermeture survenue depuis la lecture fait échouer la consommation', async () => {
+    prisma.portailMagicLink.updateMany.mockResolvedValue({ count: 0 });
+    const res = await appeler();
+    expect(res.headers.get('location')).toContain('/portail/lien/indisponible');
+    expect(res.headers.get('set-cookie')).toBeNull();
   });
 
   it('perdre la course de consommation vaut refus, pas ouverture', async () => {

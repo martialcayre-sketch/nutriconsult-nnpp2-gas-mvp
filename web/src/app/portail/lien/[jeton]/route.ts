@@ -126,20 +126,30 @@ export async function GET(
     // contrôle de concurrence — le prédicat est réévalué sous le verrou de
     // ligne, ici et nulle part ailleurs.
     //
-    // `expireLe` EST DANS LE PRÉDICAT, ET AVEC UNE HORLOGE FRAÎCHE. La garde de
-    // compte ci-dessus lit un instantané : si la désactivation commite entre
-    // cette lecture et ici, elle a déjà avancé `expireLe` (`D-126`) mais un
-    // filtre limité à `consommeLe: null` matcherait encore. Le lien serait
-    // BRÛLÉ sans que le patient entre, et la ligne prendrait la forme exacte
-    // d'une entrée réussie — le défaut même que `D-126` existe pour supprimer,
-    // reparu par la course. Le prédicat le rattrape parce que Postgres le
-    // réévalue sur la version verrouillée de la ligne.
+    // `expireLe` EST DANS LE PRÉDICAT, EN COMPARE-AND-SWAP. La garde de compte
+    // ci-dessus lit un instantané : si une fermeture praticien commite entre
+    // cette lecture et ici, elle a déjà ramené `expireLe` (révocation `D-127`,
+    // désactivation `D-126`) mais un filtre limité à `consommeLe: null`
+    // matcherait encore. Le lien serait BRÛLÉ sans que le patient entre, et la
+    // ligne prendrait la forme exacte d'une entrée réussie — le défaut même que
+    // `D-126` existe pour supprimer, reparu par la course.
     //
-    // `new Date()` et NON `maintenant` : `maintenant` est capturé en haut de la
-    // route, donc AVANT la fermeture concurrente. S'en servir ici comparerait
-    // le nouvel horizon à un instant qui le précède, et laisserait passer.
+    // ON COMPARE `expireLe` À LA VALEUR LUE, PAS À UNE HORLOGE. Une horloge ne
+    // ferme pas cette course, et `D-126` l'a d'abord cru : un `{ gt: new Date() }`
+    // est évalué en JavaScript à la CONSTRUCTION de la requête, donc avant
+    // l'attente du verrou de ligne ; la fermeture concurrente commite ensuite,
+    // à un instant POSTÉRIEUR, et son nouvel horizon satisfait encore le
+    // prédicat. Côté SQL, `now()` ne vaut pas mieux : Postgres le fige au début
+    // de la transaction, elle aussi antérieure à l'attente.
+    //
+    // La valeur lue, elle, ne dépend d'aucune horloge : toute fermeture DÉPLACE
+    // `expireLe`, donc la constante ne correspond plus. Postgres réévalue le
+    // prédicat sur la version verrouillée de la ligne — c'est exactement ce que
+    // ce mécanisme garantit pour une constante. Le lien n'a pas expiré au sens
+    // du temps : `etatLien` l'a déjà vérifié plus haut sur ces mêmes valeurs.
+    // Ce qu'on vérifie ici est autre chose — que RIEN n'a bougé depuis.
     const consommation = await prisma.portailMagicLink.updateMany({
-      where: { id: lien.id, consommeLe: null, expireLe: { gt: new Date() } },
+      where: { id: lien.id, consommeLe: null, expireLe: lien.expireLe },
       data: { consommeLe: maintenant },
     });
     if (consommation.count !== 1) return refuse('concurrence');

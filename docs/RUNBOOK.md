@@ -163,14 +163,23 @@ dossier ») ferme aussi les liens magiques encore en vol — mais **par
 `expireLe`, jamais par `consommeLe`** ([[D-126]]). Les deux gestes se
 distinguent donc en base :
 
-| Geste | `accessTokenRevoked` | `sessionsInvalidesAvant` | Liens en vol |
-|---|---|---|---|
-| Révoquer | `true` | daté | `consommeLe` = cette date |
-| Désactiver | inchangé | inchangé | `expireLe` avancé à maintenant |
+| Geste | `accessTokenRevoked` | `sessionsInvalidesAvant` | Liens en vol | `consomme_le` |
+|---|---|---|---|---|
+| Révoquer | `true` | daté | `expire_le` avancé à cette date | **jamais touché** |
+| Désactiver | inchangé | inchangé | `expire_le` avancé à maintenant | **jamais touché** |
+
+Depuis `D-127`, aucun geste praticien n'écrit `consomme_le` : **une date de
+consommation est une entrée du patient, et rien d'autre** — pour toute ligne
+écrite depuis. Les lignes antérieures, elles, restent ambiguës (`D-127`, écart
+résiduel n° 1).
 
 En forensique, un lien non fermé porte `expire_le = cree_le + 24 h` EXACTEMENT
-(`DUREE_VALIDITE_MS`). Un lien fermé par une désactivation se reconnaît donc à
-un écart plus court que 24 h :
+(`DUREE_VALIDITE_MS`). Un écart plus court signe une fermeture praticien — mais
+depuis `D-127` il ne signe plus la seule désactivation : les deux gestes ferment
+par l'horizon. Pour les SÉPARER, comparer `expire_le` à
+`patients.sessions_invalides_avant` : égalité à la milliseconde = révocation
+(même objet `Date`, même transaction) ; sinon, désactivation. Le prédicat
+d'écart reste celui-ci :
 
     abs(extract(epoch from (expire_le - cree_le)) - 86400) > 60
 
