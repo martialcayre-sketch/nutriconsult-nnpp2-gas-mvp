@@ -292,6 +292,31 @@ Interface : **Actions → Release DB → Run workflow**, choisir le `mode`. Ou :
 gh workflow run release-db.yml -f mode=migrate-only
 ```
 
+### La tête a bougé pendant l'attente d'approbation — ce que fait la garde
+
+`integration-link-manual-deploy` déploie une **branche**, pas un SHA : la
+release ne peut déclencher que sur la tête de `main`. Quand celle-ci a bougé
+depuis l'approbation, la garde tranche sur le **contenu**, pas sur l'identité :
+
+- la tête a quitté la ligne du commit approuvé (force-push, historique réécrit)
+  → **refus**, l'approbation ne dit plus rien de ce que déploierait la branche ;
+- la tête apporte des **migrations nouvelles** (`git diff <approuvé> <tête> --
+  web/prisma/migrations/` non vide) → **refus**, rejeter le run puis relancer en
+  `workflow_dispatch` sur `main`, dont la tête sera alors le commit jugé ;
+- la tête contient le commit approuvé **sans toucher aux migrations** (push
+  documentaire ou applicatif) → la release **continue** : l'ensemble à écrire
+  est identique à l'approuvé (l'empreinte du one-off ne change pas). Le
+  déploiement part sur la tête, et la garde « dernier déployé » est repointée
+  sur elle — c'est elle que le build produira, pas le commit approuvé.
+
+Conséquence à connaître : dans ce dernier cas, l'image déployée contient le code
+du push intermédiaire (jamais approuvé — même régime que les coalescences
+ordinaires du D-102), et si le build de la tête échoue, la garde peut refuser
+**après** une écriture. Un tel refus se vérifie à la main, comme un run muet.
+Avant ce jugement de contenu (2026-09-06), tout push postérieur à
+l'approbation faisait échouer la release — y compris un push documentaire, en
+pleine fenêtre d'attente de plusieurs heures (run 33966114073).
+
 Depuis le 2026-08-22, `mode=import-cb` est **refusé explicitement** par le
 workflow (hors service — il visait Supabase, l'input `nabm_base` a disparu
 avec lui) ; sa réécriture pour Scalingo viendra avec la Phase C.

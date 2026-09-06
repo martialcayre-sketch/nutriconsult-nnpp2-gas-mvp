@@ -235,8 +235,13 @@ test('la release déclenche le déploiement avant de l’attendre', () => {
 });
 
 // `integration-link-manual-deploy` déploie une BRANCHE. Si la tête de `main`
-// n'est plus le commit approuvé, elle déploierait du code que personne n'a
-// approuvé — exactement ce que tout ce workflow existe pour empêcher.
+// n'est plus le commit approuvé, tout dépend de CE qui est arrivé : des
+// migrations nouvelles, que personne n'a approuvées — exactement ce que tout
+// ce workflow existe pour empêcher — ou aucune, auquel cas l'ensemble à
+// écrire est identique à l'approuvé. Le refus aveugle d'origine a échoué le
+// 2026-09-06 (run 33966114073) sur un push DOCUMENTAIRE, après 20 h
+// d'attente d'approbation : une garde qui refuse à tort quand elle peut
+// trancher n'est pas une garde, c'est un bruit.
 test('le déclenchement exige que la tête de main soit le commit approuvé', () => {
   const bloc = JOBS.get('release');
   const debut = bloc.indexOf('Déclenchement du déploiement');
@@ -250,9 +255,35 @@ test('le déclenchement exige que la tête de main soit le commit approuvé', ()
   assert.match(
     etape,
     /!=\s*"\$GITHUB_SHA"/,
-    'une tête différente du commit approuvé doit arrêter le déclenchement',
+    'une tête différente du commit approuvé doit être jugée',
+  );
+  assert.match(
+    etape,
+    /merge-base --is-ancestor "\$GITHUB_SHA" "\$TETE"/,
+    'une tête hors de la ligne du commit approuvé (force-push) doit arrêter le déclenchement',
+  );
+  assert.match(
+    etape,
+    /git diff --quiet "\$GITHUB_SHA" "\$TETE" -- web\/prisma\/migrations\//,
+    'une tête apportant des migrations nouvelles doit arrêter le déclenchement — elles sont non approuvées',
   );
   assert.match(etape, /exit 1/, 'le refus doit être franc, pas un avertissement');
+});
+
+// Quand la tête acceptée n'est pas le commit approuvé, c'est ELLE que le
+// build déploie : sans repointage, la garde suivante attendrait 20 minutes
+// un déploiement du commit approuvé qui ne viendra jamais.
+test('une tête acceptée à la place du commit approuvé repointe la garde', () => {
+  const bloc = JOBS.get('release');
+  const debut = bloc.indexOf('Déclenchement du déploiement');
+  const fin = bloc.indexOf('Release en one-off');
+  assert.ok(debut > -1 && fin > debut, 'les ancres du déploiement ont bougé');
+  const etape = bloc.slice(debut, fin);
+  assert.match(
+    etape,
+    /GITHUB_SHA="\$TETE"/,
+    'la garde doit attendre la tête déployée, pas le commit approuvé qu’elle a dépassé',
+  );
 });
 
 // LE point de sûreté de D-102 : le pouvoir de déployer reste DERRIÈRE le gate
