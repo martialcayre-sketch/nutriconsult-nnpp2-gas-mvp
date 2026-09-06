@@ -179,7 +179,7 @@ export async function DELETE(req: Request): Promise<NextResponse<TokenActionResp
     // révocation : on les ferme ici pour qu'`etatLien` les refuse. Sans cela,
     // un lien émis avant la révocation resterait ouvrable jusqu'à 24 h après.
     //
-    // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT (`D-127`). Ce geste datait
+    // ON FERME PAR L'HORIZON, PAS PAR L'ÉVÉNEMENT (`D-128`). Ce geste datait
     // `consommeLe` — une colonne qui dit « le patient est entré » — sur un lien
     // que PERSONNE n'avait ouvert. L'encart des dossiers neufs devait alors
     // écarter ces tampons par une égalité stricte avec `sessionsInvalidesAvant`,

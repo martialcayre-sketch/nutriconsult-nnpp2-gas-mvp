@@ -1,4 +1,4 @@
-### `D-127` — révoquer ferme aussi par l'horizon : `consommeLe` ne dit plus qu'une chose (2026-09-06)
+### `D-128` — révoquer ferme aussi par l'horizon : `consommeLe` ne dit plus qu'une chose (2026-09-06)
 
 La révocation datait `consommeLe` sur les liens encore en vol — une colonne qui
 dit « le patient est entré » — pour fermer une porte. L'encart des dossiers
@@ -28,4 +28,4 @@ un écrivain.
   début de la transaction. Le prédicat devient un compare-and-swap.
 
 Aucune migration, aucun backfill. Les lignes antérieures restent ambiguës, en
-trois familles nommées dans `D-127`.
+trois familles nommées dans `D-128`.

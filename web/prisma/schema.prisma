@@ -53,6 +53,7 @@ model Patient {
   trustRightsRequests       TrustRightsRequest[]
 
   assessmentEpisodes         AssessmentEpisode[]
+  decisionPrioritySelections DecisionPrioritySelection[]
   protocolDrafts             ProtocolDraft[]
   protocolCheckins           ProtocolCheckin[]
   protocolDiffusionApprovals ProtocolDiffusionApproval[]
@@ -957,6 +958,83 @@ model AssessmentEpisode {
   @@index([idPatient, confirmedAt], map: "c2a_episode_patient_confirmed_idx")
   @@index([idPatient, cycleId], map: "c2b_episode_cycle_idx")
   @@map("assessment_episodes")
+}
+
+// SÉLECTION PRATICIEN D'UNE PRIORITÉ ([[D-127]]) — l'acte qui manquait à la
+// chaîne C1. `buildProtocolDraft` l'exige depuis toujours, et AUCUN module de
+// `src/` n'en produisait : les deux sites de construction de carte du cockpit
+// passaient `selectionPraticien: null`. Enregistrer une version de protocole
+// était donc IMPOSSIBLE depuis l'application — constat OBSERVÉ sur un parcours
+// réel le 2026-09-06 ([[D-125]]), et non plus seulement démontré dans le code.
+//
+// APPEND-ONLY CHAÎNÉ, et ce n'est pas une préférence de style : `selectedAt`
+// entre dans l'empreinte de la carte, et chaque version ancre sa provenance sur
+// `protocol_drafts.decision_card_input_hash`. Une sélection mise à jour EN
+// PLACE ferait pointer l'ancre d'une version DÉJÀ ENREGISTRÉE vers une carte
+// que la base ne saurait plus reconstruire — `refusChaineC1` refuserait alors
+// une version que le praticien avait légitimement écrite.
+//
+// Table fille de `patients` : entre dans la transaction d'effacement IDP2 DÈS
+// CETTE PR (le banc de complétude dérive du schéma — précédent
+// `resultats_biologiques`). La LECTURE, elle, n'arrive qu'après application
+// constatée de la migration : le déploiement du code précède la migration
+// ([[D-087]]), et interroger ici une table encore absente ferait échouer la
+// construction de la carte, donc le cockpit entier.
+model DecisionPrioritySelection {
+  id                    String   @id @default(cuid())
+  idPatient             String   @map("id_patient")
+  // `runtime-decision-<jalon>-<empreinte de proposition>` : stable pour un même
+  // dossier, jalon et proposition — c'est l'identité de la carte, pas celle de
+  // son contenu.
+  decisionCardId        String   @map("decision_card_id")
+  // Empreinte de la carte AU MOMENT DU CHOIX. Elle NE BARRE RIEN ([[D-127]]
+  // §2) : `buildDecisionCard` refuse déjà une sélection dont le recalcul
+  // serveur ne produit pas le candidat, et gater ici refuserait en plus des
+  // sélections encore valides. Elle sert à ce que le DÉSACCORD SE DISE — sans
+  // elle, une sélection devenue inapplicable fait jeter la construction, et le
+  // rejeu du cockpit sert « proposition » : l'épisode confirmé redeviendrait un
+  // formulaire à confirmer, ce que [[D-118]] a fermé. CHECK migration : 64
+  // caractères hexadécimaux minuscules, la forme que rend `canonicalSha256`.
+  decisionCardInputHash String   @map("decision_card_input_hash")
+  // `priority:<id de règle>` — dérivé de la RÈGLE clinique, jamais de
+  // l'instance de carte : c'est ce qui lui permet de survivre à un recalcul.
+  candidateId           String   @map("candidate_id")
+  // Le motif écrit du praticien : la décision elle-même, pas une note
+  // facultative — c'est ce qu'une version de protocole citera, et ce qui se
+  // relit six semaines plus tard (CHECK : non vide, ≤ 2000, borne de
+  // `note_courte` sur `arbitrages_biologiques` — même nature, même borne).
+  rationale             String   @map("rationale")
+  selectedAt            DateTime @default(now()) @map("selected_at")
+  // E-mail de session, posé CÔTÉ SERVEUR (patron `arbitre_par`) : l'écran ne
+  // transmet ni auteur ni horodatage. À NE PAS CONFONDRE avec le `selectedBy`
+  // du contrat C1, qui vaut la constante `'practitioner'` — `buildDecisionCard`
+  // refuse toute autre valeur, et c'est ce refus qui interdit de faire passer
+  // la proposition du moteur pour la décision d'un praticien.
+  selectedByEmail       String   @map("selected_by_email")
+  // Référence SOUPLE, sans clé étrangère : patron des autres chaînes
+  // `supersedes_*` du dépôt. La ligne visée est validée côté route.
+  supersedesSelectionId String?  @map("supersedes_selection_id")
+  createdAt             DateTime @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [idPatient], references: [idPatient])
+
+  // DEUX GARDES, et ensemble le fil d'une carte est STRICTEMENT LINÉAIRE : la
+  // fourche n'est pas représentable. Resserrement ASSUMÉ par rapport aux autres
+  // chaînes du dépôt, qui la tolèrent et la tranchent à la lecture — ici deux
+  // sélections concurrentes de la même carte seraient deux praticiens croyant
+  // chacun avoir décidé, et la base refuse plutôt que d'élire ([[D-127]] §3bis).
+  //
+  // LA GARDE DE RACINE VIT DANS LA MIGRATION SEULE : Prisma ne sait pas
+  // exprimer un index partiel (même situation que `resultats_biologiques`).
+  // `c1_selection_priorite_racine_unique` est UNIQUE sur (patient, carte)
+  // `WHERE supersedes_selection_id IS NULL`. Ne pas redéclarer ici un
+  // `@@unique([idPatient, decisionCardId])` : il recréerait l'index TOTAL et
+  // rendrait toute correction impossible. Ce commentaire N'EST PAS une garde —
+  // c'est le contrat `c1_selection_priorite_v1_negatif.sql` qui tient la
+  // régression, par la forme des index et par le cas de la fourche.
+  @@unique([supersedesSelectionId], map: "c1_selection_priorite_supersedes_unique")
+  @@index([idPatient, decisionCardId, selectedAt], map: "c1_selection_priorite_carte_idx")
+  @@map("decision_priority_selections")
 }
 
 // Version append-only du protocole 21 jours. PK = protocolDraftId du contrat.

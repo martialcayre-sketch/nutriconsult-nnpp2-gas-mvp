@@ -168,14 +168,14 @@ distinguent donc en base :
 | Révoquer | `true` | daté | `expire_le` avancé à cette date | **jamais touché** |
 | Désactiver | inchangé | inchangé | `expire_le` avancé à maintenant | **jamais touché** |
 
-Depuis `D-127`, aucun geste praticien n'écrit `consomme_le` : **une date de
+Depuis `D-128`, aucun geste praticien n'écrit `consomme_le` : **une date de
 consommation est une entrée du patient, et rien d'autre** — pour toute ligne
-écrite depuis. Les lignes antérieures, elles, restent ambiguës (`D-127`, écart
+écrite depuis. Les lignes antérieures, elles, restent ambiguës (`D-128`, écart
 résiduel n° 1).
 
 En forensique, un lien non fermé porte `expire_le = cree_le + 24 h` EXACTEMENT
 (`DUREE_VALIDITE_MS`). Un écart plus court signe une fermeture praticien — mais
-depuis `D-127` il ne signe plus la seule désactivation : les deux gestes ferment
+depuis `D-128` il ne signe plus la seule désactivation : les deux gestes ferment
 par l'horizon. Pour les SÉPARER, comparer `expire_le` à
 `patients.sessions_invalides_avant` : égalité à la milliseconde = révocation
 (même objet `Date`, même transaction) ; sinon, désactivation. Le prédicat

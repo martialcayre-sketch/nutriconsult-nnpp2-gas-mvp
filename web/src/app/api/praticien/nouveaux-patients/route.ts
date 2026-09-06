@@ -109,9 +109,9 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
       dernierStatut.set(c.idPatient, c.statut);
       if (c.statut === 'Envoye') dernierEnvoi.set(c.idPatient, c.enregistreLe);
     }
-    // UNE DATE DE CONSOMMATION EST UNE ENTRÉE — DEPUIS `D-127`, ET PAS AVANT.
+    // UNE DATE DE CONSOMMATION EST UNE ENTRÉE — DEPUIS `D-128`, ET PAS AVANT.
     // Les deux fermetures praticien passent maintenant par `expireLe` : la
-    // désactivation depuis `D-126`, la révocation depuis `D-127`. Plus aucun
+    // désactivation depuis `D-126`, la révocation depuis `D-128`. Plus aucun
     // écrivain ne pose `consommeLe` sur un lien que personne n'a ouvert, et il
     // n'y a donc plus rien à discriminer sur les lignes écrites depuis.
     //
@@ -126,7 +126,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     // passé : le compte ne retient qu'UNE date de révocation. Après deux
     // révocations, un tampon de la première redevient indiscernable d'une
     // entrée. Le code disait ici que « les distinguer demanderait une colonne à
-    // la table des liens ». C'était faux, et `D-127` le montre : il ne fallait
+    // la table des liens ». C'était faux, et `D-128` le montre : il ne fallait
     // pas ajouter une colonne, il fallait retirer un écrivain.
     //
     // `sessionsInvalidesAvant` NON NUL NE VEUT PAS DIRE « RÉVOQUÉ ». La

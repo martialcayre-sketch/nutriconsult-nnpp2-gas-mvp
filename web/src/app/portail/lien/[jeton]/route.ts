@@ -128,7 +128,7 @@ export async function GET(
     //
     // `expireLe` EST DANS LE PRÉDICAT, EN COMPARE-AND-SWAP. La garde de compte
     // ci-dessus lit un instantané : si une fermeture praticien commite entre
-    // cette lecture et ici, elle a déjà ramené `expireLe` (révocation `D-127`,
+    // cette lecture et ici, elle a déjà ramené `expireLe` (révocation `D-128`,
     // désactivation `D-126`) mais un filtre limité à `consommeLe: null`
     // matcherait encore. Le lien serait BRÛLÉ sans que le patient entre, et la
     // ligne prendrait la forme exacte d'une entrée réussie — le défaut même que
