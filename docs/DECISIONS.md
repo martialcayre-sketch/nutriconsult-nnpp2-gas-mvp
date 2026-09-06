@@ -4,6 +4,111 @@
 
 ## Décisions actives
 
+### D-130 — Le contrat de payload du protocole devient demandable : sans quoi la chaîne biologie de LOT-03 n'a aucun producteur
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « go » sur l'ouverture de la route au contrat V4)
+- Domaine : versionnement du protocole 21 jours, chaîne arbitrage biologique →
+  révision. **Aucun seuil, aucune règle clinique nouvelle, aucune migration** —
+  le contrat V4 lui-même est celui, déjà signé, de `D-056`.
+- Porte sur : `D-056` (contrat V4), `D-059` §4 (correspondance verdict →
+  résolution), le LOT-03 §3, `D-127` (dont ce défaut est le jumeau), `D-125`
+  pour l'étiquetage des constats
+
+**Faits relus avant d'écrire.**
+
+1. `buildProtocolDraft` construit `c1-protocol-draft-v1` quand `version` est
+   absent (`protocolDraft.ts`), et V1 **refuse** `interventionStatus` comme
+   `waitFor` — « exige un payload protocole V4 explicite ».
+2. `POST /api/praticien/protocoles/versions` est l'**unique** appelant de
+   production de `buildProtocolDraft`, et il ne passait aucune `version` ; son
+   type `Submission` n'avait pas ce champ.
+3. `ProtocolMiniBuilder.emptyAction` ne pose aucun statut, et le formulaire
+   n'offre ni statut d'intervention ni attente.
+4. `arbitrage.ts` refuse une intention dont le statut n'est pas
+   `conditionnelle_biologie`.
+5. `refusResolutionSansArbitrage` (`revision.ts`) itère les intentions
+   `conditionnelle_biologie` de la version **active** — celles d'un payload
+   persisté.
+6. Les bancs de `revision.ts` et `boucleRevision.ts` appellent la fonction pure
+   avec des `actionsActives` **fabriquées à la main** ; aucun banc de route ne
+   soumet un `interventionStatus`.
+
+**Le défaut, et sa forme.** De (1) + (2) : aucune intention
+`conditionnelle_biologie` n'était persistable. De là, par (4) et (5), **la route
+d'arbitrage ET la garde de résolution étaient inatteignables depuis
+l'application** — un invariant serveur sans aucun producteur. Par (3), l'écran
+ne pouvait pas davantage en produire une.
+
+C'est **exactement la forme de `D-127`**, en plus large : là-bas un champ que
+personne n'écrivait, ici un contrat entier que personne ne demandait. Et (6) dit
+pourquoi c'est resté invisible dix mois : le domaine était éprouvé, la route
+était éprouvée, et **aucun banc ne demandait si la route savait produire
+l'entrée que le domaine garde**. Constat **démontré dans le code, sans occurrence
+observée en production** (`D-125`) — la base n'a pas été lue pour ce point ; elle
+ne peut de toute façon porter aucun payload V4, faute d'écrivain.
+
+**Arbitrage 1 — la version se DEMANDE, elle ne se déduit pas.** `submission`
+accepte désormais `version`. Déduire V4 de la présence d'un `interventionStatus`
+aurait été plus court et aurait contredit la doctrine de `protocolDraft.ts`, qui
+exige le mot « explicite » : un contrat déduit d'un champ présent laisse le
+client choisir sa validation par omission, et un champ oublié ferait alors
+silencieusement retomber le payload au contrat le plus permissif.
+
+**Arbitrage 2 — une seule valeur est demandable.** `c1-protocol-draft-v4`, et
+rien d'autre ; toute autre valeur est un 400 `version_inconnue`. V2 et V3 ont
+leurs propres surfaces (référence alimentaire, catalogue de compléments) et
+leurs propres vérifications ; cette décision n'ouvre que ce qu'elle nomme.
+L'absence de `version` reste V1, **et les empreintes déjà persistées ne bougent
+pas** — `canonicalJson` ignore les clés absentes.
+
+**Arbitrage 3 — V4 n'ouvre pas `supplementCatalogRef` au passage.** Le moteur
+l'accepte en V3 comme en V4 (`normalizeActions`), et cette route ne le vérifie
+contre **aucun** catalogue — à la différence de `foodCompassRef`, recalculée
+puis comparée. L'accepter par effet de bord ferait persister une référence que
+personne n'a contrôlée. Elle reste refusée, comme aujourd'hui ; le refus n'est
+rendu explicite (400 `reference_non_verifiee`) que sur le chemin V4, pour laisser
+les autres payloads au message du moteur, inchangé.
+
+**Arbitrage 4 — une version V4 ne se révise pas en V1** (409
+`version_contrat_incompatible`). Le cas « statut conservé » était déjà refusé par
+le moteur ; c'est le cas **« statut retiré »** que ce refus ferme, et c'est le
+grave : une intention résolue `non_indiquee_actuellement` redeviendrait une
+action ordinaire, et **la résolution clinique s'effacerait sans laisser de
+trace**. Sans cette garde, l'ouverture du contrat aurait créé un chemin
+d'effacement qui n'existait pas avant elle.
+
+**Ce que la décision N'ouvre PAS.** L'écran ne produit toujours aucune intention
+`conditionnelle_biologie` : `ProtocolMiniBuilder` n'offre ni statut ni attente.
+La chaîne devient atteignable **par l'API**, et le parcours E2E l'éprouve de bout
+en bout ; le geste d'écran reste dû, et il est nommé ici plutôt que supposé
+livré. C'est la même séquence que `D-127` — la table, puis le serveur, puis
+l'écran — et nous en sommes au serveur.
+
+**Arbitrage 5 — une fixture E2E qui mute doit savoir se défaire.**
+`preparerReprisePourTest` (`e2e/helpers/db.ts`) antidatait **toutes** les
+réponses du dossier au 2025-01-01, et `nettoyerReprise` ne restaurait rien :
+elle ne supprimait que les propositions de pack. L'en-tête de
+`portail-pack-reevaluation` affirmait pourtant que « chaque spec qui mute nettoie
+derrière lui » — un commentaire crédible et faux, exactement ce que ce même
+en-tête reprochait à sa rédaction précédente.
+
+Ce que l'oubli cassait est mesurable : le rideau T0 de la fixture biologie est
+daté du **2026-01-01**, un an APRÈS l'antidatage. Une fois le dossier antidaté,
+la fenêtre T0 se recompose sur les réponses de 2025 et le rideau en sort. Le
+cockpit l'a dit lui-même au second projet Playwright : « Le canal de plainte
+(`Q_MOD_03`) ne rend aucune mesure sur l'épisode confirmé » ⇒ abstention requise,
+aucun candidat, sélection impossible. Le premier projet passait, le second non —
+et **aucun parcours antérieur ne dépendait des règles de priorité**, ce qui est
+la seule raison pour laquelle personne ne l'avait vu.
+
+Les dates sont désormais **capturées avant la mutation et restituées par
+`nettoyerReprise`**. La capture ne s'écrase pas : deux préparations sans
+nettoyage entre elles (le spec `visual` suit celui du pack) prendraient la
+seconde sur un dossier déjà antidaté et figeraient 2025-01-01 en croyant
+restaurer. Un worker qui redémarrerait entre capture et restitution ne restaure
+rien plutôt que d'inventer des dates.
 ### D-129 — Un acte a une date et un contenu : un écrivain chacun
 
 - Date : 2026-09-06

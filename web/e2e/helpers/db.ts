@@ -219,6 +219,30 @@ export async function lireRatifications(
  * Et une remise à zéro : aucune proposition antérieure, sinon la question ne se
  * reposerait pas.
  */
+/**
+ * Les dates de réponses antidatées par `preparerReprisePourTest`, pour que
+ * `nettoyerReprise` sache les REMETTRE.
+ *
+ * LA MUTATION N'ÉTAIT PAS RÉVERSIBLE, et l'en-tête de
+ * `portail-pack-reevaluation` affirmait pourtant que « chaque spec qui mute
+ * nettoie derrière lui » : `nettoyerReprise` ne supprimait que les propositions
+ * de pack, et les réponses restaient au 2025-01-01 pour tout le reste du run.
+ *
+ * CE QUE ÇA CASSAIT, et il a fallu un parcours pour le voir : le rideau T0 de la
+ * fixture biologie est daté du 2026-01-01, un an APRÈS l'antidatage. Une fois le
+ * dossier antidaté, la fenêtre T0 se recompose sur les réponses de 2025 et le
+ * rideau en sort — `Q_MOD_03`, le canal de plainte, ne rend plus aucune mesure
+ * sur l'épisode confirmé, la table des priorités devient inévaluable et
+ * l'abstention est requise. Le second projet Playwright ne voyait donc plus
+ * aucun candidat là où le premier en voyait ([[D-130]], dette nommée).
+ *
+ * Capture en mémoire du worker : `workers: 1`, et capture et restitution vivent
+ * dans le `beforeAll`/`afterAll` d'un même fichier. Un worker qui redémarrerait
+ * entre les deux perdrait la capture — on ne restaure alors rien plutôt que
+ * d'inventer des dates.
+ */
+const datesReponsesAntidatees = new Map<string, { idReponse: string; dateReponse: Date }[]>();
+
 export async function preparerReprisePourTest(idPatient: string): Promise<void> {
   await prisma.patient.update({
     where: { idPatient },
@@ -231,6 +255,18 @@ export async function preparerReprisePourTest(idPatient: string): Promise<void> 
 
   // Bien au-delà de six mois : la reprise se déclenche sur la réponse la plus
   // récente, on antidate donc toutes les réponses seedées du patient.
+  //
+  // CAPTURÉES AVANT, restituées par `nettoyerReprise`. La capture ne s'écrase
+  // pas : deux préparations sans nettoyage entre elles (le spec `visual` suit
+  // celui du pack) prendraient la seconde sur un dossier DÉJÀ antidaté, et la
+  // restitution figerait 2025-01-01 en croyant restaurer.
+  const datesAvant = await prisma.questionnaireReponse.findMany({
+    where: { idPatient },
+    select: { idReponse: true, dateReponse: true },
+  });
+  if (!datesReponsesAntidatees.has(idPatient)) {
+    datesReponsesAntidatees.set(idPatient, datesAvant);
+  }
   await prisma.questionnaireReponse.updateMany({
     where: { idPatient },
     data: { dateReponse: new Date('2025-01-01T00:00:00.000Z') },
@@ -277,9 +313,25 @@ export async function accuserCadreTrust(idPatient: string): Promise<void> {
   });
 }
 
-/** Nettoie l'état de reprise laissé par un run (propositions ; le jeton n'existe plus). */
+/**
+ * Nettoie l'état de reprise laissé par un run : les propositions, ET les dates
+ * de réponses antidatées par `preparerReprisePourTest` — voir le commentaire de
+ * `datesReponsesAntidatees` pour ce que leur oubli cassait.
+ *
+ * `updateMany` plutôt qu'`update` : une réponse supprimée entre-temps par un
+ * autre spec rend un no-op, là où `update` jetterait dans un `afterAll`.
+ */
 export async function nettoyerReprise(idPatient: string): Promise<void> {
   await prisma.packProposition.deleteMany({ where: { idPatient } });
+  const capture = datesReponsesAntidatees.get(idPatient);
+  if (!capture) return;
+  datesReponsesAntidatees.delete(idPatient);
+  for (const ligne of capture) {
+    await prisma.questionnaireReponse.updateMany({
+      where: { idPatient, idReponse: ligne.idReponse },
+      data: { dateReponse: ligne.dateReponse },
+    });
+  }
 }
 
 export async function closePrisma(): Promise<void> {
@@ -822,6 +874,17 @@ export async function nettoyerDossierBiologie(idPatient: string): Promise<void> 
   // qui s'appuie sur une passation part avant elle.
   await prisma.assessmentEpisode.deleteMany({
     where: { idPatient, id: `runtime-episode-${idPatient}-T0` },
+  });
+  // Les sélections de priorité posées sur une carte de COCKPIT ([[D-127]]).
+  // Bornées à ce préfixe, qui est le seul espace de noms que le cockpit émet :
+  // « toutes les sélections du dossier » emporterait celles qu'un autre geste
+  // aurait posées. Ramassées ICI plutôt que sous une borne temporelle, parce
+  // que ce nettoyage tourne AUSSI au provisionnement : un run interrompu avant
+  // son `afterAll` laisserait sinon une racine derrière lui, et la garde
+  // d'unicité de `D-127` §3bis refuserait la sélection du run suivant en 409
+  // — un échec qui décrit une course concurrente là où il n'y a qu'un reste.
+  await prisma.decisionPrioritySelection.deleteMany({
+    where: { idPatient, decisionCardId: { startsWith: 'runtime-decision-' } },
   });
   await prisma.correspondanceMedecin.deleteMany({
     where: { idPatient, medecinLibelle: MEDECIN_BIO_E2E },

@@ -26,6 +26,7 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/prisma', () => ({ prisma }));
 
 import { buildProtocolDraft } from '@/lib/clinical-engine/protocolDraft';
+import { VERSION_PROTOCOL_DRAFT_V4 } from '@/lib/clinical-engine/types';
 import type { ProtocolAction } from '@/lib/clinical-engine/types';
 import { deriveProtocolDraftId, deriveVersionId } from '@/lib/protocol/versioning';
 import { SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
@@ -542,6 +543,133 @@ describe('POST /api/praticien/protocoles/versions', () => {
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ ok: false, reason: 'chaine_c1_divergente' });
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // ── LE CONTRAT DE PAYLOAD DEMANDABLE (`D-130`) ────────────────────────────
+  //
+  // CE QUE CE BLOC FERME, et pourquoi il n'existait pas : cette route ne
+  // passait AUCUNE `version` au moteur, donc construisait toujours V1, qui
+  // refuse `interventionStatus`. Aucune intention `conditionnelle_biologie`
+  // n'était persistable — et toute la chaîne LOT-03 (route d'arbitrage, garde
+  // `refusResolutionSansArbitrage`) restait inatteignable depuis l'application.
+  // Les bancs du domaine passaient, parce qu'ils fabriquaient à la main
+  // l'entrée que la route ne savait pas produire.
+  describe('contrat de payload V4 (`D-130`)', () => {
+    const actionV4: ProtocolAction = {
+      ...action,
+      interventionStatus: 'conditionnelle_biologie',
+      waitFor: { type: 'biologie', cible: 'Ferritine' },
+    };
+    const submissionV4 = {
+      ...submission,
+      actions: [actionV4],
+      version: VERSION_PROTOCOL_DRAFT_V4,
+    };
+
+    it('persiste une intention en attente de biologie quand V4 est DEMANDÉ', async () => {
+      getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+      prisma.protocolDraft.findMany.mockResolvedValue([]);
+      const res = await POST(postRequest({ episode, decisionCard, submission: submissionV4 }));
+      expect(res.status).toBe(200);
+      const create = prisma.protocolDraft.upsert.mock.calls[0][0].create;
+      // La colonne de contrat suit le payload : c'est elle qui rend le fil
+      // relisable, et c'est elle qui restait bloquée en V1.
+      expect(create.contractVersion).toBe(VERSION_PROTOCOL_DRAFT_V4);
+      expect(create.payload.actions[0].interventionStatus).toBe('conditionnelle_biologie');
+      expect(create.payload.actions[0].waitFor).toEqual({ type: 'biologie', cible: 'Ferritine' });
+    });
+
+    // LE MÊME PAYLOAD SANS LA DEMANDE RESTE REFUSÉ : c'est ce qui prouve que la
+    // version n'est pas déduite du contenu. Un contrat déduit d'un champ présent
+    // laisserait le client choisir sa validation par omission.
+    it('refuse le même payload sans `version` — le contrat ne se déduit pas', async () => {
+      getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+      prisma.protocolDraft.findMany.mockResolvedValue([]);
+      const res = await POST(
+        postRequest({ episode, decisionCard, submission: { ...submission, actions: [actionV4] } }),
+      );
+      expect(res.status).toBe(400);
+      const json = (await res.json()) as { reason: string; error: string };
+      expect(json.reason).toBe('draft_invalid');
+      expect(json.error).toContain('V4 explicite');
+      expect(prisma.protocolDraft.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuse toute autre version demandée (400 version_inconnue)', async () => {
+      getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+      prisma.protocolDraft.findMany.mockResolvedValue([]);
+      const res = await POST(
+        postRequest({
+          episode,
+          decisionCard,
+          submission: { ...submission, version: 'c1-protocol-draft-v3' },
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { reason: string }).reason).toBe('version_inconnue');
+      expect(prisma.protocolDraft.upsert).not.toHaveBeenCalled();
+    });
+
+    // V4 OUVRE `supplementCatalogRef` DANS LE MOTEUR, et cette route ne le
+    // vérifie contre aucun catalogue — contrairement à `foodCompassRef`. Sans ce
+    // refus, l'ouverture du contrat aurait fait persister au passage une
+    // référence que personne n'a contrôlée.
+    it('n’ouvre pas `supplementCatalogRef` au passage (400 reference_non_verifiee)', async () => {
+      getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+      prisma.protocolDraft.findMany.mockResolvedValue([]);
+      const res = await POST(
+        postRequest({
+          episode,
+          decisionCard,
+          submission: {
+            ...submissionV4,
+            actions: [{ ...actionV4, supplementCatalogRef: 'catalogue:inventé' }],
+          },
+        }),
+      );
+      expect(res.status).toBe(400);
+      expect(((await res.json()) as { reason: string }).reason).toBe('reference_non_verifiee');
+      expect(prisma.protocolDraft.upsert).not.toHaveBeenCalled();
+    });
+
+    // UNE VERSION V4 NE SE RÉVISE PAS EN V1. Le cas « statut conservé » est déjà
+    // refusé par le moteur ; celui-ci ferme le cas « statut RETIRÉ », où une
+    // intention résolue redeviendrait une action ordinaire — la résolution
+    // clinique s'effacerait sans laisser de trace.
+    it('refuse de réviser un protocole V4 en V1 (409 version_contrat_incompatible)', async () => {
+      getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+      const draftV4 = buildProtocolDraft({
+        protocolDraftId: deriveProtocolDraftId(decisionCardId),
+        decisionCard,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-02T00:00:00.000Z',
+        purpose: submission.purpose,
+        followUpCriterion: submission.followUpCriterion,
+        therapeuticLoad: submission.therapeuticLoad,
+        actions: [actionV4],
+        review: {
+          reviewedAt: '2026-01-02T00:00:00.000Z',
+          reviewerRole: 'practitioner',
+          confirmation: 'content_reviewed',
+        },
+        version: VERSION_PROTOCOL_DRAFT_V4,
+      });
+      prisma.protocolDraft.findMany.mockResolvedValue([{
+        id: deriveVersionId(deriveProtocolDraftId(decisionCardId), draftV4.inputHash),
+        inputHash: draftV4.inputHash,
+        supersedesDraftId: null,
+        createdAt: new Date('2026-01-02T00:00:00.000Z'),
+        payload: draftV4,
+      }]);
+      // Une soumission SANS statut : le moteur ne la refuserait pas, et c'est
+      // exactement ce qui rend ce refus nécessaire.
+      const res = await POST(
+        postRequest({ episode, decisionCard, submission: { ...submission, actions: [action] } }),
+      );
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { reason: string }).reason).toBe('version_contrat_incompatible');
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+    });
   });
 
   it('refuse une insertion C5 si le flag est désactivé', async () => {
