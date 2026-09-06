@@ -65,7 +65,7 @@ export function EpisodeConfirmationPanel({
         Confirmation de l’épisode {jalon}
       </h3>
       <p className="mt-2 text-base text-muted-foreground">
-        Vérifiez les conditions et les questionnaires à inclure. Confirmer enregistre l’épisode : une nouvelle
+        Vérifiez les conditions et les questionnaires à inclure. Confirmer enregistre l’épisode. Une nouvelle
         confirmation remplace la sélection retenue, sans déplacer la date de l’acte.
       </p>
 
