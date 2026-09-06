@@ -20,7 +20,8 @@ export function PatientPageHeader({
   return (
     <div className={center ? 'text-center mb-6' : 'mb-1'}>
       <div className="flex items-center justify-between gap-3">
-        {/* 26px : taille du titre pcard de la maquette cible. */}
+        {/* `text-2xl` (24px) : palier natif le plus proche des 26px de la maquette
+            cible, l'échelle s'étant fermée aux valeurs arbitraires le 2026-09-06. */}
         <Tag className={`font-display font-bold text-foreground ${as === 'h1' ? 'text-2xl leading-tight' : 'text-lg'}`}>{title}</Tag>
         {accessory}
       </div>

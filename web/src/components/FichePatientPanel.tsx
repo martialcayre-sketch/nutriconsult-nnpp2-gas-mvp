@@ -1560,7 +1560,8 @@ export function FichePatientPanel({
               visible depuis tous les onglets, pas seulement le cockpit. */}
           <div>
           {/* Bandeau trajectoire — toujours visible. Anatomie maquette cible :
-              Spirale (emblème décoratif), identité en display 19px, position en
+              Spirale (emblème décoratif), identité en display `text-lg` (18px, la
+              maquette disait 19), position en
               mono, chip d'état à droite. */}
           <div className="flex flex-wrap items-center gap-4 border-b border-border bg-surface px-[18px] py-3.5">
             <SpiraleTrajectoire enCours className="shrink-0" />

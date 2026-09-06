@@ -139,7 +139,8 @@ export function MonEquilibreAccueil({
               Points à explorer avec votre praticien
             </p>
             <ul className="space-y-1.5">
-              {/* Item priorité maquette : 15,5px, icône 19px encre cuivre. */}
+              {/* Item priorité maquette : `text-sm` (15px, la maquette disait 15,5),
+                  icône 19px encre cuivre. */}
               {priorites.map(p => (
                 <li key={p.id} className="flex items-center gap-3 text-sm text-foreground bg-muted rounded-xl px-[15px] py-[13px]">
                   <Sprout aria-hidden="true" size={19} strokeWidth={2} className="shrink-0 text-copper-ink" />

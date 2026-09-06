@@ -70,23 +70,36 @@ des pixels **volontairement**. La comparaison réelle n'aura lieu qu'en CI.
 
 ## Problèmes ouverts
 
-- **Les baselines visuelles vont rougir, et c'est attendu.** Quatre écrans sont
-  comparés (8 fichiers, Desktop + iPhone 13) ; au moins `fiche-cockpit`
-  (nom du patient, 19 → 18 px) et `fiche-tiroir-besoins` (titre de tiroir, même
-  changement) bougent. Le seuil est à 100 px absolus : un changement de corps sur
-  un titre le dépasse largement.
+- **Aucun.** Les baselines ont été régénérées et promues (voir ci-dessous).
 - **`eslint` cassé au chargement de sa config** en local (`eslint.config.mjs` ne
   résout pas `eslint-config-next/core-web-vitals`). Préexistant, non diagnostiqué.
 - **Le checkout principal est partagé** — ne pas y changer de branche.
 
+## Baselines — régénérées, regardées, promues
+
+`visual-baselines.yml` rejoué sur la branche (run 34041820027, Ubuntu, vert).
+**Six baselines sur huit changent** ; les deux de `fiche-trajectoire-onglet` sont
+identiques à l'octet.
+
+Les six ont été **ouvertes à pleine résolution** avant promotion :
+`fiche-cockpit` ×2 (identité 19 → 18 px), `fiche-tiroir-besoins` ×2 (titre de
+tiroir, même changement), `portail-connexion` ×2. Aucun texte tronqué, aucun
+débordement, la barre de navigation basse mobile est à sa place.
+
+**`portail-connexion` était la surprise** : la seule ligne que ce lot touche sur
+`login/page.tsx` est conditionnée à une erreur, donc invisible ici. La comparaison
+des deux versions montre le titre plus petit de 2 px et tout le bloc remonté
+d'autant — l'écran passe par `PatientPageHeader`, dont le titre est passé de
+26 à 24 px. Changement réel et voulu, pas de la dérive de rendu. Sans ouvrir
+l'image, la conclusion aurait été l'inverse.
+
+Trois commentaires devenus faux ont été corrigés dans la foulée (« 26px »,
+« 15,5px », « display 19px ») ; ils ne rendent aucun pixel, les baselines restent
+donc valides.
+
 ## Prochaine action exacte
 
-Régénérer les baselines **avant** de demander le merge :
-`gh workflow run visual-baselines.yml --ref typo-echelle-paliers-nommes`, puis
-télécharger l'artefact, **regarder chaque image à pleine résolution**, et les
-committer dans cette PR. Un vert sans cette étape ne prouverait rien, et
-promouvoir une baseline sans la regarder est un interdit du dépôt — c'est ce
-geste qui avait intercepté l'artefact de la barre fixe en mobile.
+Ouvrir la PR (`--base main`), lire le CI par `wn-attendre-ci`, merger si `0`.
 
 ## Interdits encore actifs
 
