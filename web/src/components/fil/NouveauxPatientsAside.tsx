@@ -16,7 +16,9 @@ const MAX_LIGNES = 6;
 /** La couleur double toujours le libellé, jamais l'inverse (règle A5-R1) :
  * ces variantes ne portent aucun sens que le texte du badge ne dise déjà. */
 const VARIANTE: Record<EtapeNouveauPatient, BadgeVariant> = {
-  // État voulu, pas incident : rien à relancer sur un accès qu'on vient de fermer.
+  // États voulus, pas incidents : rien à relancer sur un dossier qu'on vient de
+  // fermer, ni sur un accès qu'on vient de couper.
+  dossier_desactive: 'neutral',
   acces_revoque: 'neutral',
   acces_non_envoye: 'danger',
   jamais_connecte: 'warning',

@@ -4,6 +4,8 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   prisma: {
     patient: { findMany: vi.fn(), count: vi.fn(), findUnique: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+    portailMagicLink: { updateMany: vi.fn() },
+    $transaction: vi.fn(),
     assignation: { findMany: vi.fn(), count: vi.fn() },
     questionnaireReponse: { findMany: vi.fn() },
     agendaAlimentaireJour: { findMany: vi.fn() },
@@ -474,6 +476,50 @@ describe('PATCH /api/praticien/patients', () => {
     getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
     prisma.patient.findUnique.mockResolvedValue({ idPatient: 'PAT001', praticienEmail: 'p@wellneuro.fr' });
     prisma.patient.update.mockResolvedValue({});
+    prisma.portailMagicLink.updateMany.mockResolvedValue({ count: 0 });
+    // Forme TABLEAU : Prisma reçoit le résultat des constructeurs, déjà
+    // évalués. Les deux écritures sont donc bien appelées pour bâtir le
+    // tableau, et les compteurs d'appel des bancs existants restent justes.
+    prisma.$transaction.mockImplementation(async (ops: unknown[]) => ops);
+  });
+
+  it('désactiver ferme les liens encore en vol, dans la même transaction', async () => {
+    const res = await PATCH(patch({ idPatient: 'PAT001', actif: 'NON' }));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
+    const arg = prisma.portailMagicLink.updateMany.mock.calls[0][0];
+    expect(arg.where.idPatient).toBe('PAT001');
+    // Les deux filtres portent le sens : on ne ferme QUE ce qui est encore
+    // ouvert, et on ne rallonge jamais un lien.
+    expect(arg.where.consommeLe).toBeNull();
+    expect(arg.where.expireLe.gt).toBeInstanceOf(Date);
+    expect(arg.data.expireLe).toEqual(arg.where.expireLe.gt);
+  });
+
+  // ★ LE BANC DÉCISIF. Il ne garde pas ce que le correctif fait, mais ce qu'il
+  // s'INTERDIT : devenir un second écrivain de `sessionsInvalidesAvant` ou un
+  // troisième de `consommeLe`. Recopier la transaction de révocation — le
+  // réflexe naturel, et la première conception proposée — rouvrirait le défaut
+  // que la PR #889 vient de fermer, puisque `nouveaux-patients` distingue un
+  // tampon de fermeture d'une vraie entrée par une ÉGALITÉ STRICTE entre ces
+  // deux colonnes. Ce banc rougit sur ce correctif-là, et sur lui seul.
+  it('la désactivation n’écrit NI la révocation, NI une date de consommation', async () => {
+    await PATCH(patch({ idPatient: 'PAT001', actif: 'NON' }));
+    for (const [appel] of prisma.patient.update.mock.calls) {
+      expect(appel.data).not.toHaveProperty('accessTokenRevoked');
+      expect(appel.data).not.toHaveProperty('sessionsInvalidesAvant');
+    }
+    for (const [appel] of prisma.portailMagicLink.updateMany.mock.calls) {
+      expect(appel.data).not.toHaveProperty('consommeLe');
+    }
+  });
+
+  it('réactiver et corriger un téléphone ne touchent aucun lien', async () => {
+    await PATCH(patch({ idPatient: 'PAT001', actif: 'OUI' }));
+    await PATCH(patch({ idPatient: 'PAT001', telephone: '0600000000' }));
+    expect(prisma.portailMagicLink.updateMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.patient.update).toHaveBeenCalledTimes(2);
   });
 
   it('patient d’un autre praticien : 403, aucune écriture', async () => {

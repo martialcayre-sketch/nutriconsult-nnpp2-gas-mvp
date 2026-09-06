@@ -309,7 +309,9 @@ describe('PatientsPanel — cycle de vie du dossier (LOT-01b)', () => {
     stubFetch({ patient: { ...PATIENT, suiviClotureLe: '2026-07-21T10:00:00.000Z' } });
     render(<PatientsPanel />);
     await ouvrirMenu();
-    expect((item(/renvoyer le lien/i) as HTMLButtonElement).disabled).toBe(false);
+    // `MenuActions` pose `aria-disabled`, jamais `disabled` : lire `.disabled`
+    // rendait ce banc incapable de rougir.
+    expect(item(/renvoyer le lien/i).getAttribute('aria-disabled')).toBe(null);
   });
 
   // Régression : la désactivation coupe l'accès au portail du patient. Avant
@@ -329,6 +331,44 @@ describe('PatientsPanel — cycle de vie du dossier (LOT-01b)', () => {
       const patch = appels.find(a => a.method === 'PATCH');
       expect(patch?.body).toMatchObject({ idPatient: 'PAT_SEED_03', actif: 'NON' });
     });
+  });
+
+  // Régression `D-126`, point 5. Ce formulaire était la SEULE porte de
+  // désactivation sans dialogue de confirmation. La désactivation étant
+  // devenue irréversible — elle ferme les liens en vol —, un praticien venu
+  // corriger un numéro de téléphone pouvait tuer le lien envoyé deux heures
+  // plus tôt, pour tout retour « Patient mis à jour. ».
+  it('le formulaire « Modifier » n’envoie jamais `actif`', async () => {
+    const appels = stubFetch();
+    render(<PatientsPanel />);
+    fireEvent.click((await screen.findAllByRole('button', { name: /^modifier$/i }))[0]);
+
+    // L'état reste LISIBLE, il n'est plus modifiable ici.
+    expect(screen.getByText(/se change au menu de la ligne/i)).toBeTruthy();
+
+    fireEvent.click(await screen.findByRole('button', { name: /^enregistrer$/i }));
+    await waitFor(() => {
+      const patch = appels.find(a => a.method === 'PATCH');
+      expect(patch).toBeTruthy();
+      expect(patch!.body).not.toHaveProperty('actif');
+    });
+  });
+
+  // Régression `D-126`, point 6, et symétrique du banc « un dossier clos
+  // conserve ses actions d'accès » ci-dessus : ce que la clôture laisse
+  // ouvert, la désactivation le ferme. Le serveur refusait déjà les trois,
+  // mais en « Patient introuvable. » sur un dossier que le praticien a sous
+  // les yeux — un bouton qui ment est pire qu'un bouton grisé.
+  //
+  // « Copier le lien » EST DEDANS : il poste lui aussi (`action: 'lien'`), et
+  // le garde `actif` d'`api/praticien/token` précède l'aiguillage des actions.
+  // La quatrième action, le lien magique, n'existe que drapeau allumé.
+  it('un dossier désactivé grise ses actions d’accès au portail', async () => {
+    stubFetch({ patient: { ...PATIENT, actif: 'NON' } });
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    expect(item(/renvoyer le lien/i).getAttribute('aria-disabled')).toBe('true');
+    expect(item(/copier le lien/i).getAttribute('aria-disabled')).toBe('true');
   });
 
   it('un dossier inactif propose la réactivation, et l’envoie par PATCH', async () => {

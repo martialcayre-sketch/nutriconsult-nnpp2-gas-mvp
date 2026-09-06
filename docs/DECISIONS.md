@@ -4,6 +4,129 @@
 
 ## Décisions actives
 
+### D-126 — Désactiver un dossier ferme les liens en vol, par l'horizon et non par l'événement
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « un patient désactivé doit voir son lien révoqué »)
+- Domaine : accès au portail patient, cycle de vie du dossier. **Aucune règle
+  clinique, aucun seuil, aucune migration.**
+- Porte sur : l'invariant révocation du LOT-04, `D-085` §2 et §5, la PR #889
+  (le discriminant d'égalité stricte de `api/praticien/nouveaux-patients`),
+  `D-125` pour l'étiquetage des constats
+
+**Le défaut.** Le dialogue de désactivation promettait déjà « ses liens
+cesseront de fonctionner ». Le code ne le tenait pas : `PATCH
+/api/praticien/patients` posait `actif: false` par un `update` nu, sans toucher
+aux liens magiques encore en vol. Un lien émis avant la désactivation restait
+ouvrable jusqu'à 24 h après — et l'atterrissage le CONSOMMAIT avant de vérifier
+le compte, puis le refusait. Le lien était brûlé, le patient n'entrait jamais,
+et la ligne restait avec `consommeLe` renseigné et `rejeuxRefuses` à zéro :
+la forme exacte d'une entrée réussie pour qui lit cette colonne.
+
+**Ce que la décision tranche** — six points.
+
+**1. On ferme par `expireLe`, jamais par `consommeLe`.** C'est l'arbitrage
+central. La révocation, elle, date `consommeLe` et paie ce choix par une
+égalité stricte avec `sessionsInvalidesAvant` — seul moyen, pour l'encart des
+dossiers neufs, de distinguer un tampon de fermeture d'une vraie première
+connexion (PR #889). Recopier ce geste ici ferait de la désactivation le
+**second écrivain de `sessionsInvalidesAvant`**, colonne à emplacement unique :
+chaque nouvelle date écrase la précédente et convertirait d'un coup les tampons
+d'une révocation antérieure en fausses entrées. **On refermerait une porte en
+rouvrant l'autre.** `expireLe` n'a qu'un lecteur (`etatLien`), sa valeur est
+dérivée (`creeLe + 24 h`) et donc reconstructible, et elle ne dilue pas
+`consommeLe`, seule trace d'entrée du versant patient (`D-085` §2).
+
+Le filtre `expireLe: { gt: maintenant }` rend l'écriture **monotone et
+idempotente** : elle ne rallonge jamais un lien et ne touche rien au second
+passage. Aucune détection de transition n'est nécessaire, donc aucune course
+lecture/écriture à fermer.
+
+**2. Désactiver n'est pas révoquer.** La désactivation ne pose PAS
+`accessTokenRevoked`. Les quatre lecteurs d'entrée exigent déjà `actif` :
+poser le drapeau ne fermerait rien de plus, et fabriquerait un cul-de-sac —
+`PATCH { actif: 'OUI' }` ne le rabaisse pas, `action: 'lien_magique'` rend 409
+sans le rabaisser ; le lèvent `issue`/`resend` (`api/praticien/token`) et
+`POST /api/praticien/consultations`. Des gestes que rien à l'écran n'annonce
+comme tels, pour zéro fermeture supplémentaire.
+
+**3. L'atterrissage garde AVANT de consommer, et trace son refus.** La garde de
+compte remonte au-dessus de la consommation atomique, qui devient le dernier
+geste de la route. Le refus incrémente `rejeuxRefuses` et `derniereTentative`
+comme le fait déjà le refus d'`etatLien` : sans cette écriture, un jeton martelé
+sur un compte fermé ne laisserait plus que le log applicatif, qui est purgé.
+
+Remonter la garde ne suffisait pas : elle lit un INSTANTANÉ. Si la
+désactivation commite entre cette lecture et la consommation, un `updateMany`
+filtré sur le seul `consommeLe: null` matcherait encore — lien brûlé, patient
+dehors, et la ligne prenant la forme exacte d'une entrée réussie, c'est-à-dire
+le défaut de départ reparu par la course. `expireLe` entre donc dans le
+prédicat de consommation, évalué à une horloge FRAÎCHE (`maintenant` est
+capturé en haut de la route, donc avant la fermeture qu'il s'agit de
+rattraper). Postgres réévalue le prédicat sur la version verrouillée de la
+ligne : la consommation échoue, et le patient voit l'écran de refus neutre.
+Relevé par la revue adversariale de cette PR.
+
+**4. La réactivation ne défait RIEN.** Un lien fermé ne se rouvre pas, il se
+réémet. Le silence sur ce point aurait été un défaut ; la réponse est explicite
+— et elle est DITE AU PRATICIEN, dans les deux dialogues. Ne pas l'y écrire
+aurait reproduit à l'écran le cul-de-sac que le §2 reproche à la conception
+écartée : une conséquence irréversible que rien n'annonce.
+
+**5. L'état fermé se dit au cockpit.** Nouvelle étape `dossier_desactive` —
+« Dossier désactivé » — en tête de l'ordre de l'encart des dossiers neufs, et
+hors du compte « en attente ». Sans elle, un dossier que le praticien vient de
+fermer restait « Jamais connecté », comptait en attente, et **remontait en tête
+de l'encart** : l'inverse exact de sa décision.
+
+**6. Le formulaire « Modifier » ne poste plus `actif`.** C'était la seule porte
+de désactivation sans dialogue de confirmation. Le geste étant devenu
+irréversible, un praticien venu corriger un numéro de téléphone pouvait tuer le
+lien envoyé deux heures plus tôt, pour tout retour « Patient mis à jour. ».
+L'état du dossier se change au menu de ligne, derrière son dialogue — la règle
+que ce module s'écrivait déjà à lui-même.
+
+**7. Les TROIS actions d'accès sont grisées sur un dossier inactif** — « Copier
+le lien » comprise. Elle poste elle aussi (`action: 'lien'`), et le garde
+`actif` d'`api/praticien/token` précède l'aiguillage des actions : le serveur
+la refusait déjà, en « Patient introuvable. » sur un dossier que le praticien a
+sous les yeux. Un bouton qui ment est pire qu'un bouton grisé.
+
+**L'écart résiduel, nommé maintenant plutôt que découvert plus tard.**
+
+1. **Les tampons `consommeLe` posés par l'ancien ordre survivent en base et
+   sont irrécupérables** : aucune lecture ne peut les distinguer d'une entrée
+   réelle. Le correctif vaut pour l'avenir, pas pour l'existant. Le commentaire
+   de `nouveaux-patients` le dit, pour qui interrogera cette table plus tard.
+2. **Aucun backfill n'est requis** : tout lien en vol antérieur est borné par
+   `creeLe + 24 h` et s'éteint seul.
+3. **Une course étroite demeure, à la NAISSANCE d'un lien** — non à sa
+   consommation, que le §3 ferme. `api/portail/lien/demande` lit `actif` puis
+   crée le lien dans une transaction tenue par `pg_advisory_xact_lock` ; sous
+   contention de ce verrou, un lien peut naître après la fermeture. Il ne
+   s'ouvre pas pour autant (la garde de compte à l'atterrissage le refuse), et
+   ne redeviendrait utile qu'en cas de réactivation sous 24 h. Résidu identique
+   à celui de la révocation d'aujourd'hui ; il n'est pas fermé ici.
+
+**Forensique.** Un lien intact porte `expire_le = cree_le + 24 h` exactement
+(`DUREE_VALIDITE_MS`) ; un lien fermé par une désactivation porte un écart plus
+court. Le prédicat est donc une tolérance autour de 24 h,
+`abs(extract(epoch from (expire_le - cree_le)) - 86400) > 60`, et non un seuil
+large : à `23 hours`, toute désactivation survenue dans la dernière heure de vie
+du lien échapperait au filtre. Angle mort résiduel : la minute qui suit
+l'émission.
+Table de distinction des trois gestes : `docs/RUNBOOK.md`, §Révocation.
+
+**Comment la décision a été prise.** Cinq lentilles ont cartographié ce que
+`patients.actif` commande, trois conceptions indépendantes ont été écrites
+depuis trois angles (sécurité, changement minimal, doctrine), une synthèse a
+tranché, et une passe adverse a tenté de la réfuter. Elle a rendu GO sous
+réserve et trouvé quatre défauts que la conception ne voyait pas — dont les
+points 5 et 6 ci-dessus, qui sont des conséquences directes d'arbitrages
+qu'elle défendait comme des bénéfices, et le fait que le banc présenté comme
+décisif ne l'était pas. Tous sont traités dans le lot.
+
 ### D-125 — Une fixture prouve un mécanisme, elle ne décrit pas un parcours
 
 - Date : 2026-09-06

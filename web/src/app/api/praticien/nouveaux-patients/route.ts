@@ -53,6 +53,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         prenom: true,
         nom: true,
         createdAt: true,
+        actif: true,
         accessTokenRevoked: true,
         sessionsInvalidesAvant: true,
       },
@@ -121,14 +122,18 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     // deux révocations, un tampon de la première redevient indiscernable d'une
     // entrée. Les distinguer demanderait une colonne à la table des liens.
     //
-    // ET CE N'EST PAS LE SEUL TAMPON QUI NE VAUT PAS ENTRÉE. L'atterrissage du
-    // lien (`portail/lien/[jeton]`) consomme AVANT de vérifier que le compte est
-    // actif et non révoqué, puis refuse : l'estampille reste, posée à l'heure du
-    // clic, donc indiscernable d'une vraie entrée par cette lecture. Un patient
-    // seulement désactivé (`PATCH api/praticien/patients`, qui n'écrit aucune
-    // des deux colonnes de révocation) tombe dans ce cas. Il ne se corrige pas
-    // côté lecture et attend son arbitrage — relevé par la revue adversariale
-    // de la PR #889.
+    // UN SECOND TAMPON A EXISTÉ, ET SES LIGNES SURVIVENT. L'atterrissage du
+    // lien consommait AVANT de vérifier que le compte était actif et non
+    // révoqué, puis refusait : l'estampille restait, posée à l'heure du clic,
+    // donc indiscernable d'une vraie entrée. L'ordre est corrigé depuis
+    // `D-126` (`portail/lien/[jeton]`, la garde passe devant), et la
+    // désactivation ferme désormais les liens en vol par `expireLe`, sans
+    // toucher `consommeLe`.
+    //
+    // MAIS LES LIGNES DÉJÀ POSÉES PAR L'ANCIEN ORDRE RESTENT EN BASE, et rien
+    // ne les récupère : aucune lecture ne peut les distinguer d'une entrée
+    // réelle. Qui interrogera cette table dans six mois doit le savoir — le
+    // correctif vaut pour l'avenir, pas pour l'existant.
     const revoqueLe = new Map(
       patients
         .filter(p => p.sessionsInvalidesAvant)
@@ -153,6 +158,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         idPatient: p.idPatient,
         patient: `${p.prenom} ${p.nom}`.trim(),
         creeLe: p.createdAt.toISOString(),
+        dossierDesactive: !p.actif,
         accesRevoque: p.accessTokenRevoked,
         accesEnvoyeLe: dernierEnvoi.get(p.idPatient)?.toISOString() ?? null,
         accesEnEchec: dernierStatut.has(p.idPatient) && dernierStatut.get(p.idPatient) !== 'Envoye',

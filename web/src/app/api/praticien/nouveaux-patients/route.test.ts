@@ -28,6 +28,7 @@ function patient(over: Record<string, unknown> = {}) {
     prenom: 'Sophie',
     nom: 'Nicola',
     createdAt: CREE_LE,
+    actif: true,
     accessTokenRevoked: false,
     sessionsInvalidesAvant: null,
     ...over,
@@ -196,6 +197,17 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     const [ligne] = await lignes();
     expect(ligne.etape).toBe('acces_revoque');
     expect(ligne.libelle).toBe('Accès révoqué');
+  });
+
+  it('un dossier désactivé ne remonte pas en tête comme un accès à renvoyer', async () => {
+    // Sans ce signal, un dossier que le praticien vient de fermer restait
+    // « Jamais connecté », comptait « en attente », et le tri le remontait en
+    // TÊTE de l'encart — soit l'inverse exact de sa décision.
+    prisma.patient.findMany.mockResolvedValue([patient({ actif: false })]);
+    accesEnvoye();
+    const [ligne] = await lignes();
+    expect(ligne.etape).toBe('dossier_desactive');
+    expect(ligne.libelle).toBe('Dossier désactivé');
   });
 
   it('aucun dossier récent : aucune lecture d’agrégat n’est lancée', async () => {

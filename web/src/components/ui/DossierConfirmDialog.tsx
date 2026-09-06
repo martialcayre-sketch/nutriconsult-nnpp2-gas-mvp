@@ -150,7 +150,8 @@ export function DossierConfirmDialog({
             <Dialog.Description className="mt-4 text-sm leading-relaxed text-foreground">
               Le patient perdra l’accès à son espace : ses liens cesseront de fonctionner et
               une nouvelle demande de lien lui sera refusée. Les données sont conservées et
-              vous pouvez réactiver le dossier à tout moment.
+              vous pouvez réactiver le dossier à tout moment — mais un lien à usage unique
+              déjà envoyé ne redeviendra pas valable : il faudra lui en réémettre un.
             </Dialog.Description>
           )}
 
@@ -182,7 +183,8 @@ export function DossierConfirmDialog({
 
           {mode === 'reactivation' && (
             <Dialog.Description className="mt-4 text-sm leading-relaxed text-foreground">
-              Le patient retrouvera l’accès à son espace.
+              Le patient retrouvera l’accès à son espace. Un lien à usage unique envoyé
+              avant la désactivation reste inutilisable : renvoyez-lui un lien.
             </Dialog.Description>
           )}
 

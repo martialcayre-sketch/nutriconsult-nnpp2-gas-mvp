@@ -156,6 +156,37 @@ scalingo --app wellneuro --region osc-fr1 one-off-stop one-off-NNNN
    (`POST /api/praticien/token`, bouton « Renvoyer le lien »). La réémission
    ne rouvre pas les sessions antérieures (`sessionsInvalidesAvant` survit).
 
+### Désactiver n'est pas révoquer, et les deux ferment les liens
+
+Désactiver un dossier (`PATCH /api/praticien/patients`, menu « Désactiver le
+dossier ») ferme aussi les liens magiques encore en vol — mais **par
+`expireLe`, jamais par `consommeLe`** ([[D-126]]). Les deux gestes se
+distinguent donc en base :
+
+| Geste | `accessTokenRevoked` | `sessionsInvalidesAvant` | Liens en vol |
+|---|---|---|---|
+| Révoquer | `true` | daté | `consommeLe` = cette date |
+| Désactiver | inchangé | inchangé | `expireLe` avancé à maintenant |
+
+En forensique, un lien non fermé porte `expire_le = cree_le + 24 h` EXACTEMENT
+(`DUREE_VALIDITE_MS`). Un lien fermé par une désactivation se reconnaît donc à
+un écart plus court que 24 h :
+
+    abs(extract(epoch from (expire_le - cree_le)) - 86400) > 60
+
+La tolérance de 60 s absorbe la dérive d'horloge entre l'application, qui
+calcule `expire_le`, et Postgres, qui pose `cree_le` par défaut ; sans elle, un
+lien parfaitement normal satisferait le prédicat. Angle mort résiduel, à
+connaître : une désactivation survenue dans la MINUTE qui suit l'émission du
+lien reste indiscernable. Ne pas retenir de seuil large (`23 hours` par
+exemple) : il manquerait toute désactivation survenue dans la dernière heure de
+vie du lien — un faux négatif silencieux, au pire moment.
+
+Réactiver ne rouvre aucun lien déjà fermé : il faut en réémettre un. Réserve :
+un lien né pendant la fermeture elle-même peut y échapper (course nommée en
+écart résiduel n° 3 de `D-126`) et redevenir utilisable si le dossier est
+réactivé sous 24 h.
+
 ## Violation de données personnelles
 
 Si un incident touche des données patient (divulgation, altération, perte —
