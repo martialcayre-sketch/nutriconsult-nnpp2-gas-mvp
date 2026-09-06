@@ -85,11 +85,16 @@ export type EntreeChaineC1 = {
   /**
    * Sélection praticien, ou `null`.
    *
-   * LE SEUL CHAMP QUE LE SERVEUR NE PEUT PAS RECALCULER ([[D-054]], arbitrage
-   * 5) : c'est un GESTE, pas une dérivation. Le cockpit passe `null` — il
-   * confirme un épisode, il ne sélectionne rien. Le vérificateur réinjecte la
-   * sélection soumise, que `buildDecisionCard` re-valide entièrement (auteur
-   * praticien, candidat réellement classé, décision non bloquée).
+   * UN GESTE, PAS UNE DÉRIVATION — mais un geste désormais CONSIGNÉ ([[D-127]]).
+   * `D-054` arbitrage 5 le nommait « le seul champ que le serveur ne peut pas
+   * recalculer » : c'était vrai tant qu'aucune table ne le portait. Le cockpit
+   * ET le vérificateur le relisent maintenant en base, par la même fonction
+   * (`lireSelectionPriorite`), et plus depuis le corps de requête.
+   *
+   * `buildDecisionCard` le re-valide entièrement et JETTE si l'acte ne tient
+   * plus — décision bloquée, ou candidat que le recalcul ne produit plus. Ce
+   * refus est voulu ; ce qu'il ne faut pas, c'est qu'il emporte la chaîne
+   * entière. `construireChaineC1Tolerante` s'en charge côté appelant.
    */
   selectionPraticien?: DecisionPrioritySelection | null;
   /**

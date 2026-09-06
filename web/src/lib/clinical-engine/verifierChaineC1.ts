@@ -2,8 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { ORDRE_CONSULTATION_PORTEUSE, whereConsultationPorteuse } from '@/lib/consultation/consultationPorteuse';
 import { filtrerPassationsExploitables } from '@/lib/scoring/validite';
 import { canonicalJson, canonicalSha256 } from './canonical';
-import { construireChaineC1 } from './chaineC1';
 import { lireEffetsIndesirables } from './effetsIndesirablesPrisma';
+import { construireChaineC1Tolerante, lireSelectionPriorite } from './selectionPrioritePrisma';
 import { adaptRuntimeInputs } from './runtimeFromPrisma';
 import type { ConfirmedAssessmentEpisode, DecisionCard } from './types';
 
@@ -137,7 +137,7 @@ export async function refusChaineC1(
 
   let recalculee;
   try {
-    recalculee = construireChaineC1({
+    ({ chaine: recalculee } = construireChaineC1Tolerante({
       // Identifiants d'enveloppe : EXCLUS des empreintes, repris tels quels pour
       // que l'objet recalculé soit comparable champ à champ à celui qui a été
       // soumis.
@@ -149,12 +149,24 @@ export async function refusChaineC1(
       episode,
       patientContext: inputs.patientContext,
       responses: inputs.responses,
-      // Le seul champ que le serveur ne peut pas dériver ([[D-054]], arbitrage
-      // 5). Réinjecté tel quel, et RE-VALIDÉ par `buildDecisionCard` : auteur
-      // praticien, candidat réellement classé par le recalcul, décision non
-      // bloquée. Une sélection forgée sur un candidat que le serveur ne produit
-      // pas jette ici même.
-      selectionPraticien: decisionCard.selectedMainPriority ?? null,
+      // RELU EN BASE, ET PLUS RÉINJECTÉ DEPUIS LE CORPS DE REQUÊTE ([[D-127]]
+      // §1bis). `D-054` arbitrage 5 le nommait « le seul champ que le serveur ne
+      // peut pas dériver » — c'était vrai tant qu'aucune table ne le portait.
+      // Depuis que la sélection est un acte consigné, le serveur la dérive comme
+      // le reste, par la MÊME fonction que le cockpit ([[D-101]]).
+      //
+      // Ce que ce déplacement ferme : une carte forgée portant une sélection que
+      // le praticien n'a jamais posée. Elle passait auparavant, parce que le
+      // recalcul repartait de la valeur soumise — `buildDecisionCard` vérifiait
+      // seulement que le CANDIDAT était réellement classé, jamais que la
+      // SÉLECTION avait eu lieu. Désormais la comparaison canonique de contenu,
+      // quelques lignes plus bas, oppose la carte soumise à une carte construite
+      // sur la sélection RÉELLE : le motif inventé et l'horodatage forgé y
+      // divergent tous les deux.
+      //
+      // Le REPLI de `construireChaineC1Tolerante` s'applique ici comme au
+      // cockpit, et c'est obligatoire : un repli fait d'un seul côté rendrait
+      // 409 sur une carte honnête dès qu'une sélection devient inapplicable.
       // Relu en base par `entreesRuntime`, comme le contexte patient : les deux
       // sortent de la même consultation validée, par le même `adaptRuntimeInputs`.
       // Un signal lu ici et pas dans le cockpit — ou l'inverse — ferait diverger
@@ -162,7 +174,7 @@ export async function refusChaineC1(
       signauxAlerte: inputs.signauxAlerte,
       etatPopulation: inputs.etatPopulation,
       effetsIndesirables,
-    });
+    }, await lireSelectionPriorite(episode.patientId, decisionCard.decisionCardId)));
   } catch (error) {
     return `La chaîne clinique ne peut pas être recalculée sur ce dossier : ${
       error instanceof Error ? error.message : 'entrées incohérentes.'
