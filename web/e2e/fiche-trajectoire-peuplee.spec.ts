@@ -43,7 +43,10 @@ test.describe('Fiche-trajectoire peuplée (Spirale navigable)', () => {
     // Cliquer l'arc sélectionne le repère : le bouton texte reflète le même
     // état (une seule sélection, pas deux navigations) et la relecture datée
     // se monte (mécanique asOf, lecture seule).
-    await arc.click();
+    // Le centre de l'arc est aussi celui de la Spirale : sur mobile, viser ce
+    // point ambigu peut toucher l'arc « Aujourd'hui » superposé. Le haut de
+    // l'anneau T0 est sa cible tactile propre (r=16, viewBox 120, rendu 172 px).
+    await spirale.click({ position: { x: 86, y: 63 } });
     await expect(panneau.getByRole('button', { name: 'T0 · 01/06/2026' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText(/Vous lisez l’état du 01\/06\/2026/)).toBeVisible();
 
