@@ -30,12 +30,81 @@ type ResultatAffiche = {
   unite: string | null;
   preleveLe: string;
   source: string;
+  saisiLe: string;
+  supersedesResultatId: string | null;
+  /** Posé par le SERVEUR : `null` ⇒ cette ligne fait foi. */
+  corrigeeParId: string | null;
 };
 
 function formatDateHeure(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatValeur(mesure: { valeur: number; unite: string | null }): string {
+  return `${mesure.valeur}${mesure.unite ? ` ${mesure.unite}` : ''}`;
+}
+
+// Le second temps d'une correction : la valeur seule. L'analyte et la date ne
+// sont pas offerts, et ce n'est pas une simplification d'écran — le serveur
+// les relit sur la ligne visée ([[D-124]]). Les proposer ici laisserait croire
+// qu'on peut corriger l'un ou l'autre, alors que ce serait annuler la mesure.
+function CorrectionMesure({
+  mesure,
+  disabled,
+  onCorriger,
+  onAnnuler,
+}: {
+  mesure: ResultatAffiche;
+  disabled: boolean;
+  onCorriger: (valeur: number) => Promise<boolean>;
+  onAnnuler: () => void;
+}) {
+  const [valeur, setValeur] = useState(String(mesure.valeur));
+  const valeurNum = Number(valeur.replace(',', '.'));
+  const prete = valeur.trim() !== '' && Number.isFinite(valeurNum);
+
+  return (
+    <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3">
+      <p className="text-xs font-medium text-foreground">
+        Corriger la mesure du {formatDateHeure(mesure.preleveLe)}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        La valeur d’origine ({formatValeur(mesure)}) <strong>reste lisible</strong> : la correction
+        ajoute une ligne, elle n’efface rien. L’analyte et la date de prélèvement ne se corrigent
+        pas — les changer serait une autre mesure.
+      </p>
+      <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`correction-${mesure.id}`}>
+        Valeur corrigée{mesure.unite ? ` (${mesure.unite})` : ''}
+      </label>
+      <input
+        id={`correction-${mesure.id}`}
+        type="text"
+        inputMode="decimal"
+        value={valeur}
+        onChange={event => setValeur(event.target.value)}
+        className="min-h-11 w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+      />
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={disabled || !prete}
+          onClick={() => void onCorriger(valeurNum)}
+          className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          Consigner la correction
+        </button>
+        <button
+          type="button"
+          onClick={onAnnuler}
+          className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm text-foreground"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function SaisieMesure({
@@ -105,7 +174,8 @@ function SaisieMesure({
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         L’heure distingue deux prélèvements du même jour (profils salivaires, glycémies).
-        Vérifiez la valeur avant de consigner : le geste de correction n’existe pas encore.
+        Une valeur saisie de travers se corrige depuis la série : la correction ajoute une ligne
+        et laisse l’erreur visible.
       </p>
       <button
         type="button"
@@ -138,6 +208,8 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   const [analytes, setAnalytes] = useState<AnalyteChoix[]>([]);
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  /** Identifiant de la mesure en cours de correction — une seule à la fois. */
+  const [correctionDe, setCorrectionDe] = useState<string | null>(null);
   const actif = resultsEnabled && typeof idPatient === 'string' && idPatient !== '';
 
   const chargerResultats = useCallback(async () => {
@@ -192,7 +264,11 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   // intacte plutôt que de forcer une re-frappe de mémoire d'une donnée
   // clinique.
   const consigner = useCallback(
-    async (saisie: { analyteCode: string; valeur: number; preleveLe: string }): Promise<boolean> => {
+    async (
+      saisie:
+        | { analyteCode: string; valeur: number; preleveLe: string }
+        | { supersedesResultatId: string; valeur: number },
+    ): Promise<boolean> => {
       setEnvoiEnCours(true);
       setErreur(null);
       try {
@@ -236,10 +312,15 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   }
 
   const parAnalyte = new Map<string, ResultatAffiche[]>();
+  // Pour lire la correction d'une ligne corrigée : le serveur donne son
+  // identifiant, l'écran ne fait que le suivre — la règle de départage d'une
+  // fourche n'est PAS rejouée ici (elle vit dans `filCorrection`).
+  const parId = new Map<string, ResultatAffiche>();
   for (const resultat of resultats) {
     const serie = parAnalyte.get(resultat.analyteCode) ?? [];
     serie.push(resultat);
     parAnalyte.set(resultat.analyteCode, serie);
+    parId.set(resultat.id, resultat);
   }
 
   return (
@@ -287,14 +368,65 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
             <li key={code} className="rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{serie[0].analyteLibelle}</p>
               <ul className="mt-1 space-y-1">
-                {serie.map(mesure => (
-                  <li key={mesure.id} className="text-xs text-muted-foreground">
-                    {mesure.valeur}
-                    {mesure.unite ? ` ${mesure.unite}` : ''} — prélevé le{' '}
-                    {formatDateHeure(mesure.preleveLe)} (
-                    {mesure.source === 'import_labo' ? 'import laboratoire' : 'saisie praticien'})
-                  </li>
-                ))}
+                {serie.map(mesure => {
+                  const correction = mesure.corrigeeParId
+                    ? (parId.get(mesure.corrigeeParId) ?? null)
+                    : null;
+                  // `Boolean`, pas `!== null` : un champ ABSENT (payload d'une
+                  // version antérieure, réponse tronquée) vaut `undefined` et
+                  // passerait pour « corrigée » — l'écran barrerait une mesure
+                  // que personne n'a corrigée, et cacherait son geste.
+                  const corrigee = Boolean(mesure.corrigeeParId);
+                  return (
+                    <li key={mesure.id} className="text-xs text-muted-foreground">
+                      <span className={corrigee ? 'line-through' : undefined}>
+                        {formatValeur(mesure)}
+                      </span>{' '}
+                      — prélevé le {formatDateHeure(mesure.preleveLe)} (
+                      {mesure.source === 'import_labo' ? 'import laboratoire' : 'saisie praticien'})
+                      {mesure.supersedesResultatId !== null && (
+                        <span className="ml-1 text-foreground">· correction</span>
+                      )}
+                      {corrigee && (
+                        // L'erreur RESTE À L'ÉCRAN, barrée et datée : c'est le
+                        // sens de DC-30, et c'est pour cela qu'on ne filtre pas.
+                        <span className="ml-1">
+                          · corrigée
+                          {correction ? ` le ${formatDateHeure(correction.saisiLe)}` : ''}
+                          {correction ? ` en ${formatValeur(correction)}` : ''}
+                        </span>
+                      )}
+                      {!corrigee && correctionDe !== mesure.id && (
+                        <button
+                          type="button"
+                          disabled={envoiEnCours}
+                          onClick={() => {
+                            setErreur(null);
+                            setCorrectionDe(mesure.id);
+                          }}
+                          className="ml-2 min-h-11 rounded-lg border border-border px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                        >
+                          Corriger
+                        </button>
+                      )}
+                      {correctionDe === mesure.id && (
+                        <CorrectionMesure
+                          mesure={mesure}
+                          disabled={envoiEnCours}
+                          onAnnuler={() => setCorrectionDe(null)}
+                          onCorriger={async valeur => {
+                            const ok = await consigner({
+                              supersedesResultatId: mesure.id,
+                              valeur,
+                            });
+                            if (ok) setCorrectionDe(null);
+                            return ok;
+                          }}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </li>
           ))}

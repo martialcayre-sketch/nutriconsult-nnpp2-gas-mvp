@@ -7,6 +7,7 @@ import {
 } from '@/lib/patient/cycleDeVie';
 import { garderResultats, type VerdictGardeResultats } from '@/lib/biology-library/gardeResultats';
 import { validerSaisieResultat } from '@/lib/biology-library/resultats';
+import { correctionsParLigne } from '@/lib/biology-library/filCorrection';
 
 // Résultats biologiques réels du dossier (étage 2, CB-09, [[D-122]] §2) —
 // derrière `isCbResultsEnabled` (posé AVEC ce code, geste daté `D-081`).
@@ -21,17 +22,32 @@ import { validerSaisieResultat } from '@/lib/biology-library/resultats';
 // `source` est posée SERVEUR : cette surface est la saisie praticien —
 // `import_labo`, l'autre origine de la décision, attend son propre chemin.
 //
-// PAS DE ROUTE DE CORRECTION EN V1 : l'unicité (patient, analyte, horodatage)
-// refuse le doublon exact, et corriger une valeur saisie de travers est un
-// geste qui mérite son propre arbitrage (trace de l'erreur comprise, esprit
-// DC-30) — il n'existe pas encore, et c'est dit ici plutôt qu'improvisé.
-// L'ARBITRAGE, LUI, EST RENDU : `D-124` (2026-09-05) fixe le régime avant
-// tout code — nouvelle ligne chaînée `supersedes_resultat_id`, index unique
-// rendu PARTIEL (`WHERE supersedes_resultat_id IS NULL`), valeur et unité
-// seulement. Conséquence à connaître avant de toucher à cette route : le 409
-// `doublon_mesure` ci-dessous reste un `P2002` et ne bouge pas — seule la
-// correction sort de l'index. Le geste se livre au LOT-02 de « Biologie
-// exploitée », migration seule dans sa PR.
+// LA CORRECTION EST UNE NOUVELLE LIGNE, JAMAIS UN `update` ([[D-124]]) —
+// patron maison des chaînes `supersedes_*`, esprit `DC-30` : une erreur se
+// signale, elle ne disparaît pas. Le POST porte donc deux gestes :
+//
+//   • `supersedesResultatId` ABSENT  → saisie neuve. Soumise à l'unicité
+//     (partielle, `WHERE supersedes_resultat_id IS NULL`) : le 409
+//     `doublon_mesure` est un `P2002` et n'a pas bougé d'un pouce.
+//   • `supersedesResultatId` PRÉSENT → correction. La ligne sort de l'index
+//     parce que sa chaîne n'est pas nulle — et c'est précisément pourquoi la
+//     validation de la cible N'EST PAS FACULTATIVE : une chaîne acceptée sans
+//     contrôle contournerait la garde anti-doublon autant de fois qu'on veut.
+//
+// LES QUATRE CONTRÔLES DUS, et comment ils sont tenus. `D-124` en exigeait
+// quatre : cible existante, même dossier, même analyte, même date de
+// prélèvement, tête de fil. Deux d'entre eux ne sont pas VÉRIFIÉS ici, ils
+// sont rendus IMPOSSIBLES : l'analyte et la date de prélèvement ne sont pas
+// pris du client, ils sont RELUS SUR LA LIGNE VISÉE — même discipline que
+// `source` et que l'unité. Restent trois lectures : la cible existe et
+// appartient au dossier (une seule requête, `where { id, idPatient }` — une
+// cible d'un autre dossier est « introuvable », et rien ne fuite de son
+// existence), et personne ne la supplante déjà.
+//
+// PÉRIMÈTRE V1 : valeur et unité seulement. L'unité se corrige comme elle se
+// pose — relue sur l'analyte au catalogue, le client n'a aucune autorité
+// dessus. Corriger l'analyte ou la date serait ANNULER une mesure et en
+// saisir une autre : la suppression reste hors périmètre.
 
 const ROUTE_JOURNAL = '/api/praticien/biologie/resultats';
 
@@ -43,6 +59,17 @@ export type ResultatConsigne = {
   unite: string | null;
   preleveLe: string;
   source: string;
+  /** Horodatage serveur de la saisie — inantidatable, et il date la correction. */
+  saisiLe: string;
+  /** La ligne que celle-ci corrige, `null` si c'est une saisie neuve. */
+  supersedesResultatId: string | null;
+  /**
+   * L'identifiant de la ligne qui CORRIGE celle-ci, `null` si elle est
+   * courante. Calculé au SERVEUR, jamais à l'écran : la règle de départage
+   * d'une fourche vit à un seul endroit, sinon deux surfaces raconteraient
+   * deux histoires du même dossier.
+   */
+  corrigeeParId: string | null;
 };
 
 export type ResultatsGetResponse =
@@ -64,6 +91,12 @@ const MESSAGES_REFUS_SAISIE: Record<string, string> = {
   doublon_mesure:
     'Une mesure de cet analyte existe déjà pour ce patient à cet horodatage exact. '
     + 'Deux prélèvements du même jour se distinguent par l’heure.',
+  correction_cible_inconnue:
+    'La mesure à corriger est introuvable dans ce dossier. Relisez la série : elle a pu '
+    + 'être corrigée ailleurs entre-temps.',
+  correction_deja_corrigee:
+    'Cette mesure a déjà été corrigée : c’est la correction la plus récente qui se corrige, '
+    + 'jamais une version dépassée. Relisez la série.',
 };
 
 function echecGet(reason: string, error: string, status: number) {
@@ -82,7 +115,7 @@ function depuisVerdictPost(verdict: Exclude<VerdictGardeResultats, { ok: true }>
   return echecPost(verdict.reason, verdict.error, verdict.status);
 }
 
-function versConsigne(ligne: {
+type LigneLue = {
   id: string;
   analyteCode: string;
   /** `Decimal` du client Prisma — `Number()` le lit ; typé par sa capacité. */
@@ -90,8 +123,12 @@ function versConsigne(ligne: {
   unite: string | null;
   preleveLe: Date;
   source: string;
+  saisiLe: Date;
+  supersedesResultatId: string | null;
   analyte: { libelle: string };
-}): ResultatConsigne {
+};
+
+function versConsigne(ligne: LigneLue, corrigeeParId: string | null = null): ResultatConsigne {
   return {
     id: ligne.id,
     analyteCode: ligne.analyteCode,
@@ -100,8 +137,24 @@ function versConsigne(ligne: {
     unite: ligne.unite,
     preleveLe: ligne.preleveLe.toISOString(),
     source: ligne.source,
+    saisiLe: ligne.saisiLe.toISOString(),
+    supersedesResultatId: ligne.supersedesResultatId,
+    corrigeeParId,
   };
 }
+
+/** Les colonnes rendues à la frontière — une seule liste, deux appels. */
+const CHAMPS_LUS = {
+  id: true,
+  analyteCode: true,
+  valeur: true,
+  unite: true,
+  preleveLe: true,
+  source: true,
+  saisiLe: true,
+  supersedesResultatId: true,
+  analyte: { select: { libelle: true } },
+} as const;
 
 export async function GET(req: Request) {
   try {
@@ -112,29 +165,41 @@ export async function GET(req: Request) {
 
     const lignes = await prisma.resultatBiologique.findMany({
       where: { idPatient },
-      orderBy: [{ analyteCode: 'asc' }, { preleveLe: 'asc' }],
-      select: {
-        id: true,
-        analyteCode: true,
-        valeur: true,
-        unite: true,
-        preleveLe: true,
-        source: true,
-        analyte: { select: { libelle: true } },
-      },
+      orderBy: [{ analyteCode: 'asc' }, { preleveLe: 'asc' }, { saisiLe: 'asc' }],
+      select: CHAMPS_LUS,
     });
+
+    // LA SÉRIE EST RENDUE ENTIÈRE, corrections ET corrigées : une erreur se
+    // signale, elle ne disparaît pas (`DC-30`). C'est le marquage qui dit
+    // laquelle fait foi — pas un filtre, qui effacerait la trace.
+    const corrections = correctionsParLigne(
+      lignes.map(l => ({
+        id: l.id,
+        supersedesResultatId: l.supersedesResultatId,
+        saisiLe: l.saisiLe.toISOString(),
+      })),
+    );
 
     return NextResponse.json<ResultatsGetResponse>({
       ok: true,
-      resultats: lignes.map(versConsigne),
+      resultats: lignes.map(l => versConsigne(l, corrections.get(l.id)?.id ?? null)),
     });
   } catch (err) {
-    console.error('[praticien/biologie/resultats GET]', err instanceof Error ? err.message : String(err));
+    // JAMAIS `err.message` : un `PrismaClientValidationError` rend ses
+    // arguments — dont des valeurs du dossier — et partirait dans les logs.
+    console.error('[praticien/biologie/resultats GET] lecture refusée :', err instanceof Error ? err.name : 'inconnue');
     return echecGet('server_error', 'Erreur technique.', 500);
   }
 }
 
-type PostBody = { idPatient?: unknown; analyteCode?: unknown; valeur?: unknown; preleveLe?: unknown };
+type PostBody = {
+  idPatient?: unknown;
+  analyteCode?: unknown;
+  valeur?: unknown;
+  preleveLe?: unknown;
+  /** Présent ⇒ correction de cette ligne-là ; absent ⇒ saisie neuve. */
+  supersedesResultatId?: unknown;
+};
 
 export async function POST(req: Request) {
   try {
@@ -151,10 +216,15 @@ export async function POST(req: Request) {
     }
 
     const idPatient = typeof body.idPatient === 'string' ? body.idPatient.trim() : '';
-    // PAS d'`acces` ici : ce POST ne LIT rien du dossier (contrairement aux
-    // POST courrier/document patient, qui dérivent la proposition entière) —
-    // journaliser une lecture qui n'a pas eu lieu fausserait la piste d'audit
-    // GD-1 (même motif que l'ordre des gardes dans `gardeProposition`).
+    // PAS d'`acces` ici, et le motif a changé de forme avec la correction, donc
+    // il se réécrit plutôt qu'il ne se recopie. Ce POST ne DÉRIVE aucun contenu
+    // clinique du dossier — contrairement aux POST courrier/document patient,
+    // qui dérivent la proposition entière et journalisent pour cela. En
+    // correction, il lit UNE ligne, et seulement pour en recopier l'analyte et
+    // la date de prélèvement dans la nouvelle : rien que le praticien ne
+    // vienne d'obtenir par le GET, qui lui a journalisé son accès. Journaliser
+    // une seconde fois inscrirait au registre une lecture qui n'a pas eu lieu,
+    // ce que `GD-1` refuse autant que l'omission inverse.
     // L'écriture, elle, est tracée par la ligne consignée (saisi_par, saisi_le).
     const garde = await garderResultats(idPatient);
     if (!garde.ok) return depuisVerdictPost(garde);
@@ -167,7 +237,54 @@ export async function POST(req: Request) {
       return echecPost(RAISON_DOSSIER_CLOS, MESSAGE_DOSSIER_CLOS, 409);
     }
 
-    const analyteCode = typeof body.analyteCode === 'string' ? body.analyteCode.trim() : '';
+    const supersedesResultatId =
+      typeof body.supersedesResultatId === 'string' ? body.supersedesResultatId.trim() : '';
+
+    // LA CIBLE D'UNE CORRECTION, en une seule requête : `where { id, idPatient }`
+    // pose l'existence ET l'appartenance au dossier d'un coup. Une cible d'un
+    // AUTRE dossier est « introuvable » — le refus ne dit pas qu'elle existe
+    // ailleurs, et un identifiant deviné n'apprend rien à celui qui l'essaie.
+    const cible = supersedesResultatId
+      ? await prisma.resultatBiologique.findFirst({
+          where: { id: supersedesResultatId, idPatient },
+          select: { id: true, analyteCode: true, preleveLe: true },
+        })
+      : null;
+    if (supersedesResultatId && !cible) {
+      return echecPost(
+        'correction_cible_inconnue',
+        MESSAGES_REFUS_SAISIE.correction_cible_inconnue,
+        409,
+      );
+    }
+    if (cible) {
+      // TÊTE DE FIL. La base ACCEPTE la fourche — le contrat SQL le prouve
+      // exprès —, la route la refuse : on corrige la version qui fait foi,
+      // pas une version déjà dépassée. Détection applicative, donc même
+      // portée que la garde du document patient (`D-123`) : elle ferme le cas
+      // séquentiel, pas la course de deux corrections simultanées, que la
+      // règle de départage du fil rend inoffensive à l'affichage.
+      const deja = await prisma.resultatBiologique.findFirst({
+        where: { idPatient, supersedesResultatId: cible.id },
+        select: { id: true },
+      });
+      if (deja) {
+        return echecPost(
+          'correction_deja_corrigee',
+          MESSAGES_REFUS_SAISIE.correction_deja_corrigee,
+          409,
+        );
+      }
+    }
+
+    // L'ANALYTE EST RELU SUR LA CIBLE en correction : le client n'a aucune
+    // autorité dessus, exactement comme sur l'unité et sur `source`. Corriger
+    // l'analyte serait annuler une mesure et en saisir une autre.
+    const analyteCode = cible
+      ? cible.analyteCode
+      : typeof body.analyteCode === 'string'
+        ? body.analyteCode.trim()
+        : '';
     const analyte = analyteCode
       ? await prisma.biologyAnalyte.findUnique({
           where: { code: analyteCode },
@@ -177,12 +294,20 @@ export async function POST(req: Request) {
     if (!analyte) {
       return echecPost('analyte_inconnu', MESSAGES_REFUS_SAISIE.analyte_inconnu, 409);
     }
-    if (!analyte.actif) {
+    // Un analyte RETIRÉ du catalogue interdit une mesure NEUVE, jamais une
+    // correction : refuser enfermerait une valeur fausse pour toujours dans le
+    // dossier, sans aucun geste pour la reprendre.
+    if (!analyte.actif && !cible) {
       return echecPost('analyte_inactif', MESSAGES_REFUS_SAISIE.analyte_inactif, 409);
     }
 
     const verdict = validerSaisieResultat(
-      { valeur: body.valeur, preleveLe: body.preleveLe },
+      {
+        valeur: body.valeur,
+        // La date vient de la LIGNE en correction, jamais du corps : elle est
+        // déjà passée par cette même validation le jour de la saisie.
+        preleveLe: cible ? cible.preleveLe.toISOString() : body.preleveLe,
+      },
       new Date(),
     );
     if (!verdict.ok) {
@@ -207,16 +332,11 @@ export async function POST(req: Request) {
           preleveLe: verdict.preleveLe,
           source: 'saisie_praticien',
           saisiPar: garde.email,
+          // Le maillon. `null` en saisie neuve — c'est LUI qui décide si la
+          // ligne tombe sous l'unicité partielle ou en sort.
+          supersedesResultatId: cible?.id ?? null,
         },
-        select: {
-          id: true,
-          analyteCode: true,
-          valeur: true,
-          unite: true,
-          preleveLe: true,
-          source: true,
-          analyte: { select: { libelle: true } },
-        },
+        select: CHAMPS_LUS,
       });
       return NextResponse.json<ResultatsPostResponse>(
         { ok: true, resultat: versConsigne(ligne) },
@@ -237,7 +357,11 @@ export async function POST(req: Request) {
       return echecPost('server_error', 'Erreur technique.', 500);
     }
   } catch (err) {
-    console.error('[praticien/biologie/resultats POST]', err instanceof Error ? err.message : String(err));
+    // Même discipline que le catch intérieur, qui l'écrivait déjà en toutes
+    // lettres : JAMAIS `err.message`. Ce catch-ci enveloppe les lectures du
+    // dossier (cible, tête de fil) — un `PrismaClientValidationError` y rendrait
+    // ses arguments, et une valeur mesurée partirait dans les logs.
+    console.error('[praticien/biologie/resultats POST] refus :', err instanceof Error ? err.name : 'inconnue');
     return echecPost('server_error', 'Erreur technique.', 500);
   }
 }

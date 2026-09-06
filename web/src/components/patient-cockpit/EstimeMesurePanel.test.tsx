@@ -218,3 +218,150 @@ describe('EstimeMesurePanel — drapeau levé (étage 2, D-122 §2)', () => {
     });
   });
 });
+
+describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
+  const ORIGINE = {
+    id: 'r1',
+    analyteCode: 'BIO_FERRITINE',
+    analyteLibelle: 'Ferritine',
+    valeur: 42.5,
+    unite: 'µg/L',
+    preleveLe: '2026-09-01T08:00:00.000Z',
+    source: 'saisie_praticien',
+    saisiLe: '2026-09-01T09:00:00.000Z',
+    supersedesResultatId: null,
+    corrigeeParId: null,
+  };
+
+  /** `resultats` sert le GET ; `poste` capte le corps du POST. */
+  function monterAvec(resultats: unknown[], reponsePost?: { ok: boolean; status: number; error?: string }) {
+    const corps: unknown[] = [];
+    const fetchMock = vi.fn(async (entree: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(entree);
+      if (url.includes('/api/praticien/biologie/catalogue')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            analytes: [{ code: 'BIO_FERRITINE', libelle: 'Ferritine', unite: 'µg/L' }],
+          }),
+        } as Response;
+      }
+      if (init?.method === 'POST') {
+        corps.push(JSON.parse(String(init.body)));
+        const r = reponsePost ?? { ok: true, status: 201 };
+        return {
+          ok: r.ok,
+          status: r.status,
+          json: async () => ({ ok: r.ok, error: r.error }),
+        } as Response;
+      }
+      return { ok: true, status: 200, json: async () => ({ ok: true, resultats }) } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <CbFeatureProvider enabled resultsEnabled>
+        <EstimeMesurePanel idPatient="PAT1" />
+      </CbFeatureProvider>,
+    );
+    return { corps };
+  }
+
+  it('l’écran ne promet plus que la correction n’existe pas', async () => {
+    monterAvec([ORIGINE]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/n’existe pas encore/)).toBeNull();
+  });
+
+  it('une mesure corrigée RESTE à l’écran, barrée, avec la valeur et la date de sa correction', async () => {
+    const correction = {
+      ...ORIGINE,
+      id: 'r2',
+      valeur: 45.5,
+      saisiLe: '2026-09-02T09:00:00.000Z',
+      supersedesResultatId: 'r1',
+    };
+    monterAvec([{ ...ORIGINE, corrigeeParId: 'r2' }, correction]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+
+    // L'ERREUR NE DISPARAÎT PAS (DC-30) : elle est barrée, pas filtrée.
+    const origine = screen.getByText('42.5 µg/L');
+    expect(origine.className).toContain('line-through');
+    expect(screen.getByText(/corrigée le .* en 45\.5 µg\/L/)).toBeTruthy();
+    // Et la correction se signale comme telle.
+    expect(screen.getByText('· correction')).toBeTruthy();
+  });
+
+  it('une mesure DÉJÀ corrigée n’offre pas « Corriger » — on corrige la version qui fait foi', async () => {
+    const correction = { ...ORIGINE, id: 'r2', valeur: 45.5, supersedesResultatId: 'r1' };
+    monterAvec([{ ...ORIGINE, corrigeeParId: 'r2' }, correction]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    // Une seule ligne est corrigible : la tête de fil.
+    expect(screen.getAllByRole('button', { name: 'Corriger' })).toHaveLength(1);
+  });
+
+  it('corriger poste la CHAÎNE et la valeur — jamais l’analyte ni la date', async () => {
+    const { corps } = monterAvec([ORIGINE]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+
+    // Le second temps ne propose que la valeur : offrir l'analyte ou la date
+    // laisserait croire qu'on peut les corriger, alors que ce serait annuler.
+    expect(screen.getByLabelText(/Valeur corrigée/)).toBeTruthy();
+    expect(screen.getByText(/reste lisible/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Valeur corrigée/), { target: { value: '45,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Consigner la correction' }));
+
+    await waitFor(() => expect(corps).toHaveLength(1));
+    expect(corps[0]).toEqual({
+      idPatient: 'PAT1',
+      supersedesResultatId: 'r1',
+      valeur: 45.5,
+    });
+  });
+
+  it('le champ s’ouvre PRÉ-REMPLI de la valeur d’origine : on corrige, on ne resaisit pas', async () => {
+    monterAvec([ORIGINE]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    expect((screen.getByLabelText(/Valeur corrigée/) as HTMLInputElement).value).toBe('42.5');
+  });
+
+  it('un refus du serveur se DIT et laisse le second temps ouvert — pas de saisie perdue', async () => {
+    monterAvec([ORIGINE], {
+      ok: false,
+      status: 409,
+      error: 'Cette mesure a déjà été corrigée : relisez la série.',
+    });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.change(screen.getByLabelText(/Valeur corrigée/), { target: { value: '45,5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Consigner la correction' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    expect(screen.getByText(/déjà été corrigée/)).toBeTruthy();
+    // Le formulaire reste ouvert, la valeur frappée est encore là.
+    expect((screen.getByLabelText(/Valeur corrigée/) as HTMLInputElement).value).toBe('45,5');
+  });
+
+  it('« Annuler » referme le second temps sans rien poster', async () => {
+    const { corps } = monterAvec([ORIGINE]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
+    expect(screen.queryByLabelText(/Valeur corrigée/)).toBeNull();
+    expect(corps).toHaveLength(0);
+  });
+
+  it('un `corrigeeParId` ABSENT ne barre rien : une mesure que personne n’a corrigée reste corrigible', async () => {
+    // Réponse d'une version antérieure, ou tronquée : `undefined` ne doit pas
+    // se lire comme « corrigée » — sinon l'écran barre et retire le geste.
+    const sansChamp = { ...ORIGINE } as Record<string, unknown>;
+    delete sansChamp.corrigeeParId;
+    monterAvec([sansChamp]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getByText('42.5 µg/L').className).not.toContain('line-through');
+    expect(screen.getByRole('button', { name: 'Corriger' })).toBeTruthy();
+  });
+});
