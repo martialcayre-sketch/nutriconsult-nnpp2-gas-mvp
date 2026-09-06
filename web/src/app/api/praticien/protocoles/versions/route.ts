@@ -6,10 +6,12 @@ import { buildProtocolDraft } from '@/lib/clinical-engine/protocolDraft';
 import { refusPreconditionsPersistance } from '@/lib/clinical-engine/preconditionsT0Prisma';
 import { lireAncresPersistees, refusAncreNonRecevable } from '@/lib/protocol/ancresPersistees';
 import { RAISON_DIVERGENCE, refusChaineC1 } from '@/lib/clinical-engine/verifierChaineC1';
+import { VERSION_PROTOCOL_DRAFT_V4 } from '@/lib/clinical-engine/types';
 import type {
   ConfirmedAssessmentEpisode,
   DecisionCard,
   ProtocolAction,
+  ProtocolDraft,
   TherapeuticLoad,
 } from '@/lib/clinical-engine/types';
 import {
@@ -54,6 +56,11 @@ type Submission = {
   therapeuticLoad?: TherapeuticLoad;
   adviceSheetRef?: string | null;
   limitations?: string[];
+  /**
+   * Le contrat de payload demandé ([[D-129]]). Absent ⇒ `c1-protocol-draft-v1`,
+   * comportement historique. Seul `c1-protocol-draft-v4` peut être demandé.
+   */
+  version?: ProtocolDraft['version'];
 };
 
 type PostBody = {
@@ -209,6 +216,76 @@ export async function POST(req: Request): Promise<NextResponse<PostResponse>> {
       }
     }
 
+    // ── LE CONTRAT DE PAYLOAD DEVIENT DEMANDABLE ([[D-129]]) ────────────────
+    //
+    // `buildProtocolDraft` construit `c1-protocol-draft-v1` en l'absence de
+    // `version`, et V1 REFUSE `interventionStatus` comme `waitFor`. Cette route
+    // — unique appelant de production — n'en passait aucune : aucune intention
+    // `conditionnelle_biologie` n'était persistable, et toute la chaîne LOT-03
+    // restait INATTEIGNABLE depuis l'application (la route d'arbitrage refuse
+    // une intention d'un autre statut ; `refusResolutionSansArbitrage` itère des
+    // intentions qui n'existaient jamais). Même forme que [[D-127]] : un
+    // invariant serveur sans producteur.
+    //
+    // LA VERSION RESTE EXPLICITE, JAMAIS DÉDUITE DU PAYLOAD. C'est la doctrine
+    // de `protocolDraft.ts` — « exige un payload V4 EXPLICITE » — et la déduire
+    // d'un champ présent laisserait le client choisir son contrat par omission.
+    //
+    // UNE SEULE VALEUR EST DEMANDABLE. V2 et V3 ont leurs propres surfaces
+    // (référence alimentaire, catalogue de compléments) et leurs propres
+    // vérifications ; cette décision n'ouvre que ce qu'elle nomme.
+    const versionDemandee = submission.version;
+    if (versionDemandee !== undefined && versionDemandee !== VERSION_PROTOCOL_DRAFT_V4) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: 'version_inconnue',
+          error: 'Seul le contrat de protocole V4 peut être demandé explicitement.',
+        },
+        { status: 400 },
+      );
+    }
+
+    // V4 OUVRE AUSSI `supplementCatalogRef` DANS LE MOTEUR (`normalizeActions`
+    // l'accepte en V3 comme en V4), et cette route ne le vérifie contre AUCUN
+    // catalogue — contrairement à `foodCompassRef`, recalculée puis comparée
+    // plus bas. L'accepter au passage ferait persister une référence que
+    // personne n'a contrôlée. Elle reste donc refusée, exactement comme
+    // aujourd'hui ; le refus n'est explicite QUE sur le chemin V4, pour laisser
+    // les autres payloads au message du moteur, inchangé.
+    if (
+      versionDemandee === VERSION_PROTOCOL_DRAFT_V4
+      && (submission.actions ?? []).some(action => action.supplementCatalogRef !== undefined)
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: 'reference_non_verifiee',
+          error: 'Une référence catalogue de compléments ne s’enregistre pas par cette route.',
+        },
+        { status: 400 },
+      );
+    }
+
+    // UNE VERSION V4 NE SE RÉVISE PAS EN V1. Le cas « statut conservé » est déjà
+    // refusé par le moteur (V1 interdit `interventionStatus`) ; c'est le cas
+    // « statut RETIRÉ » que ce refus ferme, et il est le plus grave : une
+    // intention résolue `non_indiquee_actuellement` redeviendrait une action
+    // ordinaire, et la résolution clinique s'effacerait sans laisser de trace.
+    if (
+      activeDraft?.version === VERSION_PROTOCOL_DRAFT_V4
+      && versionDemandee !== VERSION_PROTOCOL_DRAFT_V4
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: 'version_contrat_incompatible',
+          error: 'Ce protocole est au contrat V4 : sa révision doit l’être aussi.',
+        },
+        { status: 409 },
+      );
+    }
+
     // Construction serveur : validations + hash du moteur clinique.
     const now = new Date().toISOString();
     let draft;
@@ -300,6 +377,9 @@ export async function POST(req: Request): Promise<NextResponse<PostResponse>> {
         therapeuticLoad: submission.therapeuticLoad as TherapeuticLoad,
         limitations: submission.limitations ?? [],
         review: { reviewedAt: now, reviewerRole: 'practitioner', confirmation: 'content_reviewed' },
+        // `undefined` ⇒ le moteur retombe sur `c1-protocol-draft-v1` : les
+        // payloads déjà persistés gardent exactement leur empreinte.
+        version: versionDemandee,
       });
       draft = hasC5Reference
         ? buildFoodCompassProtocolV2FromSource({
