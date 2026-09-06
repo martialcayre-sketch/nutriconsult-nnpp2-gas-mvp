@@ -89,8 +89,15 @@ const MESSAGES_REFUS_SAISIE: Record<string, string> = {
   analyte_inconnu: 'Cet analyte n’existe pas au catalogue.',
   analyte_inactif: 'Cet analyte est inactif au catalogue : pas de nouvelle mesure.',
   doublon_mesure:
-    'Une mesure de cet analyte existe déjà pour ce patient à cet horodatage exact. '
-    + 'Deux prélèvements du même jour se distinguent par l’heure.',
+    'Une mesure de cet analyte — ou sa correction — existe déjà pour ce patient à cet '
+    + 'horodatage exact. Deux prélèvements du même jour se distinguent par l’heure ; '
+    + 'une valeur à reprendre se corrige depuis la série.',
+  correction_cible_invalide:
+    'La mesure à corriger est mal désignée. Reprenez le geste depuis la série plutôt que '
+    + 'de consigner une mesure neuve.',
+  correction_source_labo:
+    'Une mesure issue d’un import laboratoire ne se corrige pas par une saisie praticien : '
+    + 'ce chemin-là a son propre arbitrage, il n’est pas ouvert.',
   correction_cible_inconnue:
     'La mesure à corriger est introuvable dans ce dossier. Relisez la série : elle a pu '
     + 'être corrigée ailleurs entre-temps.',
@@ -98,6 +105,20 @@ const MESSAGES_REFUS_SAISIE: Record<string, string> = {
     'Cette mesure a déjà été corrigée : c’est la correction la plus récente qui se corrige, '
     + 'jamais une version dépassée. Relisez la série.',
 };
+
+/**
+ * Ce qu'on a le droit d'écrire d'une erreur : son NOM et son CODE Prisma, et
+ * rien d'autre. `err.message` rendrait les arguments d'un
+ * `PrismaClientValidationError` — valeur mesurée, identifiant de dossier. Le
+ * nom seul ne dit presque rien en production (`Error`,
+ * `PrismaClientKnownRequestError`) ; le code, lui, est structurel et sans
+ * donnée patient — c'est lui qui rend un 500 diagnosticable.
+ */
+function signature(err: unknown): string {
+  const nom = err instanceof Error ? err.name : 'inconnue';
+  const code = (err as { code?: unknown }).code;
+  return typeof code === 'string' ? `${nom}/${code}` : nom;
+}
 
 function echecGet(reason: string, error: string, status: number) {
   return NextResponse.json<ResultatsGetResponse>({ ok: false, reason, error }, { status });
@@ -187,7 +208,7 @@ export async function GET(req: Request) {
   } catch (err) {
     // JAMAIS `err.message` : un `PrismaClientValidationError` rend ses
     // arguments — dont des valeurs du dossier — et partirait dans les logs.
-    console.error('[praticien/biologie/resultats GET] lecture refusée :', err instanceof Error ? err.name : 'inconnue');
+    console.error('[praticien/biologie/resultats GET] lecture refusée :', signature(err));
     return echecGet('server_error', 'Erreur technique.', 500);
   }
 }
@@ -216,16 +237,16 @@ export async function POST(req: Request) {
     }
 
     const idPatient = typeof body.idPatient === 'string' ? body.idPatient.trim() : '';
-    // PAS d'`acces` ici, et le motif a changé de forme avec la correction, donc
-    // il se réécrit plutôt qu'il ne se recopie. Ce POST ne DÉRIVE aucun contenu
-    // clinique du dossier — contrairement aux POST courrier/document patient,
-    // qui dérivent la proposition entière et journalisent pour cela. En
-    // correction, il lit UNE ligne, et seulement pour en recopier l'analyte et
-    // la date de prélèvement dans la nouvelle : rien que le praticien ne
-    // vienne d'obtenir par le GET, qui lui a journalisé son accès. Journaliser
-    // une seconde fois inscrirait au registre une lecture qui n'a pas eu lieu,
-    // ce que `GD-1` refuse autant que l'omission inverse.
-    // L'écriture, elle, est tracée par la ligne consignée (saisi_par, saisi_le).
+    // PAS d'`acces` ici, AU TITRE DE LA DISPENSE D'ÉCRITURE DE `GD-1` — et
+    // c'est ce fondement-là qui vaut, pas « ce POST ne lit rien du dossier »,
+    // qui devient faux avec la correction (elle lit la ligne visée). `GD-1`
+    // exclut les écritures parce qu'elles « laissent déjà une trace datée et
+    // attribuée » : ici `saisi_par` et `saisi_le`, plus le maillon. Le dépôt a
+    // déjà tranché ce cas exact au même endroit — voir `D-118`, « le
+    // non-journal du POST change de justification, pas de comportement ».
+    // Les POST courrier/document patient, eux, journalisent : ils DÉRIVENT la
+    // proposition entière, soit une lecture substantielle qui s'ajoute à
+    // l'écriture. Recopier l'analyte et la date d'une ligne n'en est pas une.
     const garde = await garderResultats(idPatient);
     if (!garde.ok) return depuisVerdictPost(garde);
 
@@ -237,8 +258,25 @@ export async function POST(req: Request) {
       return echecPost(RAISON_DOSSIER_CLOS, MESSAGE_DOSSIER_CLOS, 409);
     }
 
+    // UNE CHAÎNE MALFORMÉE EST UN REFUS, PAS UNE BASCULE SILENCIEUSE. Un champ
+    // présent mais illisible (nombre, objet, blancs) valait auparavant
+    // « absent » : le client croyait corriger et posait une mesure NEUVE, avec
+    // l'analyte et la date qu'il avait envoyés. Changer de geste sans le dire
+    // est pire que refuser. `null` seul vaut « pas de chaîne » — c'est la
+    // valeur que porte la colonne pour une saisie neuve.
+    const chaineDemandee =
+      body.supersedesResultatId !== undefined && body.supersedesResultatId !== null;
     const supersedesResultatId =
       typeof body.supersedesResultatId === 'string' ? body.supersedesResultatId.trim() : '';
+    if (chaineDemandee && (supersedesResultatId === '' || supersedesResultatId.length > 64)) {
+      // Même discipline de borne que `idPatient` dans `garderResultats` : une
+      // chaîne arbitrairement longue ne part pas en requête.
+      return echecPost(
+        'correction_cible_invalide',
+        MESSAGES_REFUS_SAISIE.correction_cible_invalide,
+        400,
+      );
+    }
 
     // LA CIBLE D'UNE CORRECTION, en une seule requête : `where { id, idPatient }`
     // pose l'existence ET l'appartenance au dossier d'un coup. Une cible d'un
@@ -247,13 +285,27 @@ export async function POST(req: Request) {
     const cible = supersedesResultatId
       ? await prisma.resultatBiologique.findFirst({
           where: { id: supersedesResultatId, idPatient },
-          select: { id: true, analyteCode: true, preleveLe: true },
+          select: { id: true, analyteCode: true, preleveLe: true, source: true },
         })
       : null;
     if (supersedesResultatId && !cible) {
       return echecPost(
         'correction_cible_inconnue',
         MESSAGES_REFUS_SAISIE.correction_cible_inconnue,
+        409,
+      );
+    }
+    if (cible && cible.source !== 'saisie_praticien') {
+      // UNE MESURE DE LABORATOIRE NE SE CORRIGE PAS PAR UNE SAISIE PRATICIEN.
+      // `source` est posée serveur à `saisie_praticien` : sans cette garde, la
+      // valeur rendue par un laboratoire passerait barrée sous une valeur
+      // frappée à la main, dans une surface dont l'en-tête dit qu'`import_labo`
+      // attend son propre chemin. Latent aujourd'hui (aucune ligne d'import
+      // n'existe) ; la garde est posée AVANT que le cas n'arrive, et la
+      // question est portée au registre plutôt que tranchée en silence.
+      return echecPost(
+        'correction_source_labo',
+        MESSAGES_REFUS_SAISIE.correction_source_labo,
         409,
       );
     }
@@ -350,10 +402,7 @@ export async function POST(req: Request) {
       }
       // JAMAIS `err.message` : un PrismaClientValidationError rend ses
       // arguments — valeur mesurée comprise — et partirait dans les logs.
-      console.error(
-        '[praticien/biologie/resultats POST] consignation refusée :',
-        err instanceof Error ? err.name : 'inconnue',
-      );
+      console.error('[praticien/biologie/resultats POST] consignation refusée :', signature(err));
       return echecPost('server_error', 'Erreur technique.', 500);
     }
   } catch (err) {
@@ -361,7 +410,7 @@ export async function POST(req: Request) {
     // lettres : JAMAIS `err.message`. Ce catch-ci enveloppe les lectures du
     // dossier (cible, tête de fil) — un `PrismaClientValidationError` y rendrait
     // ses arguments, et une valeur mesurée partirait dans les logs.
-    console.error('[praticien/biologie/resultats POST] refus :', err instanceof Error ? err.name : 'inconnue');
+    console.error('[praticien/biologie/resultats POST] refus :', signature(err));
     return echecPost('server_error', 'Erreur technique.', 500);
   }
 }

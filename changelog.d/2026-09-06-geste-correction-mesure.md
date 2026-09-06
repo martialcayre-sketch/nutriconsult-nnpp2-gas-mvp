@@ -35,13 +35,33 @@ n'apprend rien à qui devine un identifiant), et personne ne la supplante déjà
 correction : refuser enfermerait une valeur fausse pour toujours dans le
 dossier, sans aucun geste pour la reprendre.
 
-La règle de départage d'une fourche — deux corrections de la même ligne — vit
-**au serveur seulement** (`filCorrection`), et l'écran ne fait que suivre
-l'identifiant qu'on lui donne : deux surfaces ne peuvent pas raconter deux
-histoires du même dossier. La garde applicative de tête de fil ferme le cas
-séquentiel, pas la course de deux corrections simultanées — même portée que
-`D-123`, et c'est précisément cette règle de départage qui la rend inoffensive
-à l'affichage.
+**Une seule valeur fait foi par mesure, fourche comprise.** La garde
+applicative de tête de fil ferme le cas séquentiel, pas la course de deux
+corrections simultanées — même portée que `D-123`. Ce qui rend cette course
+inoffensive, c'est l'**élection** faite au serveur : les lignes d'une même
+mesure sont regroupées par la racine de leur chaîne, et une seule y est
+désignée courante — la plus récente, l'identifiant départageant à horodatage
+égal. Sans cette élection, les deux branches d'une fourche seraient sorties
+« non supplantées » et se seraient prolongées chacune de son côté. La règle vit
+**au serveur seulement** ; l'écran suit l'identifiant qu'on lui donne, si bien
+que deux surfaces ne peuvent pas raconter deux histoires du même dossier.
+
+**L'écran annonce l'unité qui sera consignée**, pas celle d'origine. Le serveur
+relit l'unité sur l'analyte au catalogue : si elle a changé depuis la mesure,
+le second temps le **dit** et nomme les deux. Afficher l'ancienne ferait taper
+un nombre sous un libellé faux — sur une donnée clinique, un facteur mille
+silencieux.
+
+**Une mesure d'import laboratoire ne se corrige pas par une saisie praticien.**
+La garde est posée avant que le cas n'existe : sans elle, une valeur rendue par
+un laboratoire passerait barrée sous une valeur frappée à la main, dans une
+surface dont le contrat dit qu'`import_labo` attend son propre chemin.
+
+**Une chaîne malformée est un refus, jamais une bascule silencieuse.** Un
+identifiant de cible envoyé vide, en nombre ou en objet produisait une mesure
+**neuve** avec l'analyte et la date du client : le geste changeait sans le
+dire. C'est désormais un 400, et la longueur est bornée comme celle de
+l'identifiant de dossier.
 
 ### Corrigé
 

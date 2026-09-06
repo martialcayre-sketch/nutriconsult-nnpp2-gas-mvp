@@ -298,13 +298,13 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     monterAvec([{ ...ORIGINE, corrigeeParId: 'r2' }, correction]);
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
     // Une seule ligne est corrigible : la tête de fil.
-    expect(screen.getAllByRole('button', { name: 'Corriger' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Corriger la mesure du/ })).toHaveLength(1);
   });
 
   it('corriger poste la CHAÎNE et la valeur — jamais l’analyte ni la date', async () => {
     const { corps } = monterAvec([ORIGINE]);
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
 
     // Le second temps ne propose que la valeur : offrir l'analyte ou la date
     // laisserait croire qu'on peut les corriger, alors que ce serait annuler.
@@ -324,7 +324,7 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
   it('le champ s’ouvre PRÉ-REMPLI de la valeur d’origine : on corrige, on ne resaisit pas', async () => {
     monterAvec([ORIGINE]);
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     expect((screen.getByLabelText(/Valeur corrigée/) as HTMLInputElement).value).toBe('42.5');
   });
 
@@ -335,7 +335,7 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
       error: 'Cette mesure a déjà été corrigée : relisez la série.',
     });
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     fireEvent.change(screen.getByLabelText(/Valeur corrigée/), { target: { value: '45,5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Consigner la correction' }));
 
@@ -348,10 +348,52 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
   it('« Annuler » referme le second temps sans rien poster', async () => {
     const { corps } = monterAvec([ORIGINE]);
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
-    fireEvent.click(screen.getByRole('button', { name: 'Corriger' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Annuler' }));
     expect(screen.queryByLabelText(/Valeur corrigée/)).toBeNull();
     expect(corps).toHaveLength(0);
+  });
+
+  it('sur une FOURCHE, un seul geste est offert : une seule valeur fait foi', async () => {
+    // Le serveur marque la branche perdante comme corrigée (contre-revue M1) :
+    // l'écran ne doit offrir qu'UN bouton, sans quoi deux valeurs concurrentes
+    // se prolongeraient chacune de son côté.
+    monterAvec([
+      { ...ORIGINE, corrigeeParId: 'r3' },
+      { ...ORIGINE, id: 'r2', valeur: 45.5, supersedesResultatId: 'r1', corrigeeParId: 'r3' },
+      { ...ORIGINE, id: 'r3', valeur: 46, supersedesResultatId: 'r1', corrigeeParId: null },
+    ]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getAllByRole('button', { name: /^Corriger la mesure du/ })).toHaveLength(1);
+  });
+
+  it('le label annonce l’unité DU CATALOGUE, et signale qu’elle a changé', async () => {
+    // Le serveur relit l'unité sur l'analyte : afficher celle d'origine ferait
+    // taper un nombre sous un libellé faux — sur une donnée clinique, un
+    // facteur 1000 silencieux (contre-revue M2).
+    monterAvec([{ ...ORIGINE, unite: 'mg/L' }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByLabelText(/Valeur corrigée \(µg\/L\)/)).toBeTruthy();
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
+  });
+
+  it('ouvrir le second temps porte le focus sur le champ, et ferme les autres gestes', async () => {
+    monterAvec([
+      ORIGINE,
+      { ...ORIGINE, id: 'r9', preleveLe: '2026-09-02T08:00:00.000Z', valeur: 50 },
+    ]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    const gestes = screen.getAllByRole('button', { name: /^Corriger la mesure du/ });
+    expect(gestes).toHaveLength(2);
+    fireEvent.click(gestes[0]);
+
+    // Focus : sans lui, le bouton disparaît et l'utilisateur clavier perd sa
+    // place sans savoir que le formulaire s'est ouvert.
+    expect(document.activeElement).toBe(screen.getByLabelText(/Valeur corrigée/));
+    // Et l'autre geste est fermé : en changer jetterait la valeur en frappe.
+    const restant = screen.getByRole('button', { name: /^Corriger la mesure du/ });
+    expect((restant as HTMLButtonElement).disabled).toBe(true);
   });
 
   it('un `corrigeeParId` ABSENT ne barre rien : une mesure que personne n’a corrigée reste corrigible', async () => {
@@ -362,6 +404,6 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     monterAvec([sansChamp]);
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
     expect(screen.getByText('42.5 µg/L').className).not.toContain('line-through');
-    expect(screen.getByRole('button', { name: 'Corriger' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Corriger la mesure du/ })).toBeTruthy();
   });
 });

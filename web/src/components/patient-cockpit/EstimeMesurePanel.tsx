@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { useCbResultsEnabled } from './CbFeatureProvider';
 
@@ -52,18 +52,38 @@ function formatValeur(mesure: { valeur: number; unite: string | null }): string 
 // qu'on peut corriger l'un ou l'autre, alors que ce serait annuler la mesure.
 function CorrectionMesure({
   mesure,
+  analyteAuCatalogue,
   disabled,
   onCorriger,
   onAnnuler,
 }: {
   mesure: ResultatAffiche;
+  /** L'analyte TEL QU'IL EST AUJOURD'HUI, ou `null` s'il n'est plus servi. */
+  analyteAuCatalogue: AnalyteChoix | null;
   disabled: boolean;
   onCorriger: (valeur: number) => Promise<boolean>;
   onAnnuler: () => void;
 }) {
   const [valeur, setValeur] = useState(String(mesure.valeur));
+  const champ = useRef<HTMLInputElement | null>(null);
   const valeurNum = Number(valeur.replace(',', '.'));
   const prete = valeur.trim() !== '' && Number.isFinite(valeurNum);
+
+  // LE LABEL DOIT DIRE L'UNITÉ QUI SERA CONSIGNÉE, pas celle d'origine. Le
+  // serveur relit l'unité sur l'analyte au catalogue : si elle a changé depuis
+  // la mesure, afficher l'ancienne ferait taper un nombre sous un libellé
+  // faux — sur une donnée clinique, un facteur 1000 silencieux. Et le cas
+  // n'est pas théorique : la correction est ouverte aux analytes retirés,
+  // c'est-à-dire là où le catalogue a bougé (contre-revue du 2026-09-06, M2).
+  const uniteConsignee = analyteAuCatalogue ? analyteAuCatalogue.unite : null;
+  const uniteChange = analyteAuCatalogue !== null && uniteConsignee !== mesure.unite;
+
+  // Le focus suit le geste : sans cela, le bouton « Corriger » disparaît et le
+  // focus retombe sur le document — un utilisateur clavier perd sa place et
+  // n'apprend pas que le second temps s'est ouvert.
+  useEffect(() => {
+    champ.current?.focus();
+  }, []);
 
   return (
     <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3">
@@ -75,11 +95,32 @@ function CorrectionMesure({
         ajoute une ligne, elle n’efface rien. L’analyte et la date de prélèvement ne se corrigent
         pas — les changer serait une autre mesure.
       </p>
+      {uniteChange && (
+        <p role="alert" className="mt-1 text-xs text-status-warning">
+          L’unité de cet analyte a changé au catalogue depuis cette mesure : la correction sera
+          consignée en <strong>{uniteConsignee ?? 'aucune unité'}</strong>, alors que l’originale
+          est en <strong>{mesure.unite ?? 'aucune unité'}</strong>.
+        </p>
+      )}
+      {analyteAuCatalogue === null && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Cet analyte n’est plus servi par le catalogue : l’unité sera celle qu’il y porte au
+          moment de consigner.
+        </p>
+      )}
       <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`correction-${mesure.id}`}>
-        Valeur corrigée{mesure.unite ? ` (${mesure.unite})` : ''}
+        Valeur corrigée
+        {analyteAuCatalogue
+          ? uniteConsignee
+            ? ` (${uniteConsignee})`
+            : ''
+          : mesure.unite
+            ? ` (${mesure.unite} — à confirmer au catalogue)`
+            : ''}
       </label>
       <input
         id={`correction-${mesure.id}`}
+        ref={champ}
         type="text"
         inputMode="decimal"
         value={valeur}
@@ -399,7 +440,14 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
                       {!corrigee && correctionDe !== mesure.id && (
                         <button
                           type="button"
-                          disabled={envoiEnCours}
+                          // Désactivé tant qu'un autre second temps est ouvert :
+                          // en changer démonterait le formulaire et jetterait
+                          // la valeur en cours de frappe, alors qu'on protège
+                          // soigneusement cette même saisie contre un refus.
+                          disabled={envoiEnCours || correctionDe !== null}
+                          // Un nom accessible DATÉ : sans lui, n boutons
+                          // « Corriger » sont indiscernables au lecteur d'écran.
+                          aria-label={`Corriger la mesure du ${formatDateHeure(mesure.preleveLe)}`}
                           onClick={() => {
                             setErreur(null);
                             setCorrectionDe(mesure.id);
@@ -412,6 +460,9 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
                       {correctionDe === mesure.id && (
                         <CorrectionMesure
                           mesure={mesure}
+                          analyteAuCatalogue={
+                            analytes.find(a => a.code === mesure.analyteCode) ?? null
+                          }
                           disabled={envoiEnCours}
                           onAnnuler={() => setCorrectionDe(null)}
                           onCorriger={async valeur => {

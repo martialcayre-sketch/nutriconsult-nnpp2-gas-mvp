@@ -131,6 +131,36 @@ la forme ni le périmètre ; toutes complètent ce que la décision disait trop 
    est elle-même **tête de fil**. La décision n'en nommait qu'une (« même
    clé ») ; les quatre sont portées au Done du LOT-02.
 
+**Suivi (2026-09-06) — le geste livré, et deux corrections au suivi du
+2026-09-05** (contre-revue de la PR #887, verdict NO-GO initial, levé).
+
+5. **Le §3 ci-dessus était juste sur le diagnostic, trompeur sur le remède.**
+   Il disait que le geste devrait « grouper puis adapter » — la première
+   écriture a compris qu'il fallait *supprimer* le groupement, au motif exact
+   qu'une correction hérite de l'analyte et de la date de sa cible. Le motif
+   est bon ; la conséquence tirée ne l'était pas. `resolveActiveVersion` fait
+   **deux** choses — délimiter le groupe **et** y élire une tête — et seule la
+   première devenait inutile. Sans élection, **les deux branches d'une fourche
+   sortaient courantes** : deux valeurs faisaient foi pour la même mesure, avec
+   deux gestes offerts à l'écran. Le groupement par `(analyte, date)` est donc
+   **remplacé par un groupement par RACINE DE CHAÎNE** — strictement
+   équivalent, puisque toute ligne d'une clé descend d'une seule racine et que
+   l'index partiel n'en tolère qu'une —, **pas supprimé**. L'élection, elle,
+   est reprise telle quelle.
+6. **Une mesure d'`import_labo` ne se corrige pas par une saisie praticien**,
+   et cette garde est posée avant que le cas n'existe (aucune ligne d'import
+   n'a jamais été écrite). Sans elle, la valeur d'un laboratoire passerait
+   barrée sous une valeur frappée à la main, alors que la route déclare
+   qu'`import_labo` attend son propre chemin. **Arbitrage à confirmer** : c'est
+   le choix conservateur, il se rouvrira avec le chemin d'import.
+
+En revanche, ce que le §4 exigeait est tenu **plus fort que demandé** : les
+quatre validations dues ne sont pas quatre contrôles, mais deux impossibilités
+(analyte et date relus sur la cible, jamais pris du client) et trois lectures
+gardées. L'écart « clé déjà occupée » que cette décision nommait comme dû au
+geste est **fermé par construction** — une correction porte forcément la clé de
+ce qu'elle corrige.
+
 ### D-123 — La course de deux consignations simultanées n'est pas due : la garde applicative suffit, et le détecteur existe désormais
 
 - Date : 2026-09-04

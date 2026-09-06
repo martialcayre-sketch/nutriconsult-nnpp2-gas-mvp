@@ -136,7 +136,7 @@ describe('GET — la série du dossier, journalisée (GD-1)', () => {
     });
   });
 
-  it('sur une FOURCHE, le serveur désigne la plus récente — l’écran ne rejoue pas la règle', async () => {
+  it('sur une FOURCHE, UNE SEULE ligne reste courante — les deux branches ne font pas foi ensemble', async () => {
     const autre = {
       ...LIGNE_CORRECTION,
       id: 'res3',
@@ -145,7 +145,15 @@ describe('GET — la série du dossier, journalisée (GD-1)', () => {
     };
     prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, LIGNE_CORRECTION, autre]);
     const payload = await (await GET(getRequest('PAT1'))).json();
+    // La branche PERDANTE (`res2`) n'est supplantée par personne au sens du
+    // chaînage, et sortait pourtant courante avant la contre-revue (M1) :
+    // deux valeurs faisaient foi pour la même mesure.
+    const courantes = payload.resultats.filter(
+      (r: { corrigeeParId: string | null }) => r.corrigeeParId === null,
+    );
+    expect(courantes.map((r: { id: string }) => r.id)).toEqual(['res3']);
     expect(payload.resultats[0].corrigeeParId).toBe('res3');
+    expect(payload.resultats[1].corrigeeParId).toBe('res3');
   });
 
   it('la lecture est bornée AU DOSSIER : un refactor qui perd le `where` servirait tout le monde', async () => {
@@ -321,6 +329,7 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
     id: 'res1',
     analyteCode: 'BIO_FERRITINE',
     preleveLe: new Date('2026-09-01T08:00:00.000Z'),
+    source: 'saisie_praticien',
   };
   const CORRECTION = { idPatient: 'PAT1', supersedesResultatId: 'res1', valeur: 45.5 };
 
@@ -480,7 +489,9 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
     expect(prisma.journalAccesDossier.create).not.toHaveBeenCalled();
   });
 
-  it('une chaîne blanche vaut ABSENCE de chaîne : saisie neuve, pas correction muette', async () => {
+  it('une chaîne BLANCHE est un refus, jamais une bascule silencieuse en saisie neuve', async () => {
+    // Le défaut nommé par la contre-revue (m3) : le client croyait corriger et
+    // posait une mesure NEUVE, avec l'analyte et la date qu'il avait envoyés.
     const response = await POST(
       postRequest({
         idPatient: 'PAT1',
@@ -490,12 +501,12 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
         supersedesResultatId: '   ',
       }),
     );
-    expect(response.status).toBe(201);
-    expect(prisma.resultatBiologique.findFirst).not.toHaveBeenCalled();
-    expect(prisma.resultatBiologique.create.mock.calls[0][0].data.supersedesResultatId).toBeNull();
+    expect(response.status).toBe(400);
+    expect((await response.json()).reason).toBe('correction_cible_invalide');
+    expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
   });
 
-  it('une chaîne NON textuelle est ignorée plutôt que servie telle quelle à la base', async () => {
+  it('une chaîne NON textuelle est un refus, et ne part jamais en requête', async () => {
     const response = await POST(
       postRequest({
         idPatient: 'PAT1',
@@ -505,7 +516,53 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
         supersedesResultatId: { $ne: null },
       }),
     );
+    expect(response.status).toBe(400);
+    expect(prisma.resultatBiologique.findFirst).not.toHaveBeenCalled();
+    expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
+  });
+
+  it('une chaîne démesurée est bornée comme l’est `idPatient` — elle ne part pas en requête', async () => {
+    const response = await POST(
+      postRequest({ ...CORRECTION, supersedesResultatId: 'x'.repeat(65) }),
+    );
+    expect(response.status).toBe(400);
+    expect(prisma.resultatBiologique.findFirst).not.toHaveBeenCalled();
+  });
+
+  it('`null` explicite vaut ABSENCE de chaîne : c’est la valeur d’une saisie neuve', async () => {
+    const response = await POST(
+      postRequest({
+        idPatient: 'PAT1',
+        analyteCode: 'BIO_FERRITINE',
+        valeur: 42.5,
+        preleveLe: '2026-09-01T08:00:00.000Z',
+        supersedesResultatId: null,
+      }),
+    );
     expect(response.status).toBe(201);
     expect(prisma.resultatBiologique.create.mock.calls[0][0].data.supersedesResultatId).toBeNull();
+  });
+
+  it('une mesure d’IMPORT LABORATOIRE ne se corrige pas par une saisie praticien', async () => {
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce({
+      ...CIBLE,
+      source: 'import_labo',
+    });
+    const response = await POST(postRequest(CORRECTION));
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toBe('correction_source_labo');
+    expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
+  });
+
+  it('corriger une CORRECTION est légitime : c’est elle la tête de fil', async () => {
+    prisma.resultatBiologique.findFirst
+      .mockResolvedValueOnce({ ...CIBLE, id: 'res2' })
+      .mockResolvedValueOnce(null);
+    prisma.resultatBiologique.create.mockResolvedValue(LIGNE_CORRECTION);
+    const response = await POST(
+      postRequest({ ...CORRECTION, supersedesResultatId: 'res2' }),
+    );
+    expect(response.status).toBe(201);
+    expect(prisma.resultatBiologique.create.mock.calls[0][0].data.supersedesResultatId).toBe('res2');
   });
 });
