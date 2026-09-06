@@ -802,8 +802,15 @@ export function ClinicalRuntimeSection({
         // Un refus de précondition porte un message FRANÇAIS et ACTIONNABLE
         // (ce qui manque au dossier) : le replier sur « erreur technique »
         // laisserait le praticien sans le geste à faire (D-052).
+        //
+        // `episode_ecrit_ailleurs` EN FAIT PARTIE (`D-129`) : une collision
+        // d'écriture n'est pas « les réponses ont changé ». La replier sur
+        // `proposal_stale` rechargeait la proposition en posant un notice
+        // emprunté, donc faux, et jetait le message du serveur.
         if (payload.status === 'unavailable'
-          && (reason === 'preconditions_non_remplies' || reason === 'motif_contournement_manquant')) {
+          && (reason === 'preconditions_non_remplies'
+            || reason === 'motif_contournement_manquant'
+            || reason === 'episode_ecrit_ailleurs')) {
           setRefus(payload.error);
           return;
         }

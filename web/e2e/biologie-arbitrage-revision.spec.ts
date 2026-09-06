@@ -96,7 +96,7 @@ function soumission(
   interventionStatus: 'conditionnelle_biologie' | 'active' | 'non_indiquee_actuellement',
 ) {
   return {
-    // LE CONTRAT EST DEMANDÉ, JAMAIS DÉDUIT ([[D-129]]) : un statut
+    // LE CONTRAT EST DEMANDÉ, JAMAIS DÉDUIT ([[D-130]]) : un statut
     // d'intervention n'existe qu'en V4, et la route refuse de choisir le
     // contrat à la place de qui soumet. Les trois soumissions le portent — une
     // révision qui l'omettrait retomberait en V1 et serait refusée en 409.

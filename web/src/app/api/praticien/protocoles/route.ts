@@ -24,6 +24,7 @@ import {
 } from '@/lib/praticien/appartenance';
 import { journaliserAccesDossier } from '@/lib/praticien/journalAcces';
 import { EXCLURE_INSTANTANES_JA } from '@/lib/food-observation/contract';
+import { canonicalSha256 } from '@/lib/clinical-engine/canonical';
 
 // Gabarit littéral pour le journal des accès (G-TRUST-04) — jamais l'URL reçue.
 const ROUTE_JOURNAL = '/api/praticien/protocoles';
@@ -157,7 +158,23 @@ export async function POST(req: Request): Promise<NextResponse<PersistResponse>>
     // pas le dossier d'un patient qu'on n'a pas prouvé sien. 422 et non 409 —
     // ici 409 n'est pas utilisé, et sur la route sœur il porte déjà le conflit
     // de version, que le client traite en rechargeant l'historique.
-    const refusPreconditions = await refusPreconditionsPersistance(episode, emailPraticien(session) ?? '');
+    // La ligne d'abord : elle sert au garde des préconditions (les traces déjà
+    // écrites) ET au contrôle de divergence ci-dessous.
+    const ligneEpisode = await prisma.assessmentEpisode.findUnique({
+      where: { id: episode.assessmentEpisodeId },
+      // `payload` en plus de l'empreinte : il porte les contournements DÉJÀ
+      // écrits, seule preuve qu'un arbitrage a eu lieu (`D-129`). Sans lui, un
+      // contournement dont la condition s'est résolue depuis serait refusé
+      // comme « sans objet » — et le dossier deviendrait inenregistrable.
+      select: { payloadHash: true, payload: true },
+    });
+    const tracesEnBase = (() => {
+      const brut = ligneEpisode?.payload;
+      if (brut === null || typeof brut !== 'object' || Array.isArray(brut)) return [];
+      const champ = (brut as { preconditionOverrides?: unknown }).preconditionOverrides;
+      return Array.isArray(champ) ? (champ as { conditionId?: string }[]) : [];
+    })();
+    const refusPreconditions = await refusPreconditionsPersistance(episode, emailPraticien(session) ?? '', tracesEnBase);
     if (refusPreconditions) {
       return NextResponse.json(
         { ok: false, reason: 'preconditions_non_remplies', error: refusPreconditions },
@@ -185,6 +202,24 @@ export async function POST(req: Request): Promise<NextResponse<PersistResponse>>
     // ouvre son cycle, un jalon de mesure rejoint le cycle du rang le plus haut
     // déjà ouvert à sa date.
     const cycleId = resolveCycleId({ episode, ancresCandidates: ancres });
+
+    // L'ÉPISODE REÇU DOIT ÊTRE CELUI QUI EST ENREGISTRÉ (`D-129`). Cette route
+    // n'est PAS l'écrivain de l'acte : elle le reçoit du navigateur. Son
+    // `upsert(..., update: {})` avalait donc une divergence en silence, sous une
+    // réponse `ok: true` — un épisode périmé citait la ligne d'un autre contenu
+    // et le praticien n'en savait rien. On refuse plutôt que d'avaler ; c'est le
+    // cockpit, seul écrivain de l'acte, qui met la ligne à jour.
+    if (ligneEpisode && ligneEpisode.payloadHash !== canonicalSha256(episode)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          reason: 'preconditions_non_remplies',
+          error:
+            'Cet épisode a été re-confirmé depuis. Rechargez la fiche pour repartir de la mesure enregistrée.',
+        },
+        { status: 422 },
+      );
+    }
 
     // Transaction : épisode puis protocole, idempotents par identifiant de contrat.
     // Le versionnement append-only (supersedes) relève de la route /versions

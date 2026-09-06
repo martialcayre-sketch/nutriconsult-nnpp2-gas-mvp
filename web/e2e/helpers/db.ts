@@ -234,7 +234,7 @@ export async function lireRatifications(
  * rideau en sort — `Q_MOD_03`, le canal de plainte, ne rend plus aucune mesure
  * sur l'épisode confirmé, la table des priorités devient inévaluable et
  * l'abstention est requise. Le second projet Playwright ne voyait donc plus
- * aucun candidat là où le premier en voyait ([[D-129]], dette nommée).
+ * aucun candidat là où le premier en voyait ([[D-130]], dette nommée).
  *
  * Capture en mémoire du worker : `workers: 1`, et capture et restitution vivent
  * dans le `beforeAll`/`afterAll` d'un même fichier. Un worker qui redémarrerait
