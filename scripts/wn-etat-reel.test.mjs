@@ -194,6 +194,41 @@ test('gh absent : le champ PR porte disponible=false et une raison, jamais un ta
   assert.deepEqual(rapport.migrations.noms, ['20260101000000_init']);
 });
 
+/**
+ * Un faux `gh` posé en tête de `PATH`, qui rend toujours la même chose.
+ *
+ * POURQUOI. `collecterPrOuvertes` appelle `gh pr list --json
+ * number,title,isDraft,updatedAt` — un appel LIVE à l'API GitHub. N1 compare
+ * deux exécutions par `deepEqual` : il comparait donc des données que GitHub
+ * fait bouger tout seul. Deux causes le faisaient rougir, aucune n'ayant le
+ * moindre rapport avec le code testé :
+ *
+ *   • une PR dont le CI TOURNE pendant la passe — son `updatedAt` change entre
+ *     les deux spawns. C'est-à-dire la situation NORMALE juste après un push,
+ *     et donc précisément le moment où l'on joue T2 (constaté le 2026-09-06,
+ *     PR #888 : T2 sortait en 1 avant même la phase Vitest, et le banc était
+ *     vert cinq fois de suite en isolation) ;
+ *   • un `gh` qui échoue d'un seul côté — `disponible` bascule, `deepEqual`
+ *     avec.
+ *
+ * Le stub supprime la course SANS rien retirer : les deux exécutions
+ * traversent le même chemin de code, `cwd: racine` compris, et le cas NOMINAL
+ * (`disponible: true`) devient joué de façon déterministe — il ne l'était par
+ * aucun banc, celui de la ligne 159 ne couvrant que `gh` absent.
+ */
+function posePasserelleGhDeterministe() {
+  const dossier = fs.mkdtempSync(path.join(os.tmpdir(), 'wn-etat-reel-gh-'));
+  const faux = path.join(dossier, 'gh');
+  fs.writeFileSync(
+    faux,
+    '#!/bin/sh\n'
+      + 'echo \'[{"number":1,"title":"banc","isDraft":false,'
+      + '"updatedAt":"2026-01-01T00:00:00Z"}]\'\n',
+  );
+  fs.chmodSync(faux, 0o755);
+  return { dossier, PATH: `${dossier}${path.delimiter}${process.env.PATH ?? ''}` };
+}
+
 test("N1 — régression : le rapport ne dépend pas du cwd d'appel", () => {
   // Reproduction exacte du bug trouvé par la revue : `cd web && node
   // ../scripts/wn-etat-reel.mjs` rendait 0 écart en code 0, parce que
@@ -202,22 +237,47 @@ test("N1 — régression : le rapport ne dépend pas du cwd d'appel", () => {
   // MÊME dépôt et exige un rapport identique — c'est la seule façon de tester
   // la résolution de racine du CLI, puisqu'elle est désormais dérivée de
   // l'emplacement du fichier et non plus injectable par `cwd`.
-  const depuisRacine = spawnSync(process.execPath, [SCRIPT], { cwd: REPO_ROOT, encoding: 'utf8' });
-  const depuisWeb = spawnSync(process.execPath, [SCRIPT], { cwd: path.join(REPO_ROOT, 'web'), encoding: 'utf8' });
+  //
+  // La seule source non déterministe du rapport est neutralisée : voir
+  // `posePasserelleGhDeterministe`.
+  const passerelle = posePasserelleGhDeterministe();
+  const env = { ...process.env, PATH: passerelle.PATH };
+  try {
+    const depuisRacine = spawnSync(process.execPath, [SCRIPT], {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      env,
+    });
+    const depuisWeb = spawnSync(process.execPath, [SCRIPT], {
+      cwd: path.join(REPO_ROOT, 'web'),
+      encoding: 'utf8',
+      env,
+    });
 
-  assert.equal(depuisRacine.status, 0, depuisRacine.stderr);
-  assert.equal(depuisWeb.status, 0, depuisWeb.stderr);
+    assert.equal(depuisRacine.status, 0, depuisRacine.stderr);
+    assert.equal(depuisWeb.status, 0, depuisWeb.stderr);
 
-  const rapportRacine = JSON.parse(depuisRacine.stdout);
-  const rapportWeb = JSON.parse(depuisWeb.stdout);
+    const rapportRacine = JSON.parse(depuisRacine.stdout);
+    const rapportWeb = JSON.parse(depuisWeb.stdout);
 
-  // `genereLe` porte l'horodatage d'exécution : seul champ qui peut varier
-  // légitimement entre les deux appels.
-  delete rapportRacine.genereLe;
-  delete rapportWeb.genereLe;
+    // LE STUB A-T-IL SEULEMENT PRIS ? Sans cette garde, un faux `gh`
+    // introuvable ou non exécutable ferait rendre `disponible: false` aux DEUX
+    // exécutions : le `deepEqual` resterait vert et le banc aurait
+    // silencieusement cessé de couvrir le chemin nominal — la classe « un
+    // garde qui ne descend pas assez bas », déjà rencontrée sur ce dépôt.
+    assert.equal(rapportRacine.prOuvertes.disponible, true, 'le faux `gh` n’a pas été appelé');
+    assert.deepEqual(rapportRacine.prOuvertes.prs.map(pr => pr.number), [1]);
 
-  assert.deepEqual(rapportWeb.ecarts, rapportRacine.ecarts);
-  assert.deepEqual(rapportWeb, rapportRacine);
+    // `genereLe` porte l'horodatage d'exécution : seul champ qui peut varier
+    // légitimement entre les deux appels.
+    delete rapportRacine.genereLe;
+    delete rapportWeb.genereLe;
+
+    assert.deepEqual(rapportWeb.ecarts, rapportRacine.ecarts);
+    assert.deepEqual(rapportWeb, rapportRacine);
+  } finally {
+    fs.rmSync(passerelle.dossier, { recursive: true, force: true });
+  }
 });
 
 test('N3 — le registre de certification réel est instrument_registry.json, 65 instruments', () => {
