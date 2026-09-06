@@ -20,6 +20,7 @@ import type {
   VocabulaireCreationApiResponse,
 } from '@/app/api/praticien/regles/vocabulaire/route';
 import type { ReglesPrevisualisationApiResponse } from '@/app/api/praticien/regles/previsualisation/route';
+import type { SourceCreationApiResponse } from '@/app/api/praticien/regles/sources/route';
 
 // Atelier de règles cliniques v1 (C4, LOT-03b) — le pendant de l'Atelier
 // corpus pour le référentiel du moteur d'intention. L'écran matérialise le
@@ -877,6 +878,122 @@ function FormulaireVocabulaire({
   );
 }
 
+// ─── Encart « référence source » ([[D-131]]) ────────────────────────────────
+//
+// LE CHAMP QUE LE FORMULAIRE DE RÈGLE EXIGEAIT SANS QU'ON PUISSE LE REMPLIR. La
+// source est obligatoire sur toute règle (`validerContenuRegle` : « une règle
+// sans source ne peut pas exister »), la liste déroulante la propose — et rien
+// ne pouvait l'alimenter. L'atelier ne pouvait donc pas créer sa première règle.
+//
+// SAISIE À LA MAIN, ET C'EST LA DOCTRINE : la décision n°11 du moteur
+// d'intention interdit toute écriture en base active depuis une source externe,
+// et l'audit des sources conclut à la curation manuelle praticien — l'ANSES ne
+// publie aucun format machine.
+
+function FormulaireSource({
+  desactive,
+  onAjoute,
+}: {
+  desactive: boolean;
+  onAjoute: () => void;
+}) {
+  const [citation, setCitation] = useState('');
+  const [lienUrl, setLienUrl] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [succes, setSucces] = useState('');
+
+  const pret = citation.trim().length > 0;
+
+  const soumettre = async () => {
+    if (!pret || envoi) return;
+    setEnvoi(true);
+    setErreur('');
+    setSucces('');
+    try {
+      const reponse = await fetch('/api/praticien/regles/sources', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          citation: citation.trim(),
+          ...(lienUrl.trim() ? { lienUrl: lienUrl.trim() } : {}),
+        }),
+      });
+      const payload = (await reponse.json()) as SourceCreationApiResponse;
+      if (!reponse.ok || !payload.ok) {
+        // LE MESSAGE DU SERVEUR EST LE MESSAGE : il nomme le refus (citation
+        // vide, lien non ouvrable, source déjà présente). Le remplacer par un
+        // texte d'écran perdrait la seule information utile.
+        setErreur(payload.ok ? 'La source n’a pas pu être ajoutée.' : payload.error);
+        return;
+      }
+      setSucces(`Source ajoutée : « ${payload.source.citation} ».`);
+      setCitation('');
+      setLienUrl('');
+      onAjoute();
+    } catch {
+      setErreur('La source n’a pas pu être ajoutée.');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  const fige = desactive || envoi;
+  return (
+    <details className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <summary className="cursor-pointer font-display text-lg font-semibold text-foreground">
+        Références sources
+      </summary>
+      <div className="mt-3 flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          Toute règle cite une source, et la citation est saisie ici, à la main :
+          aucun flux externe n&apos;écrit dans ce référentiel. Le lien est
+          facultatif — s&apos;il est renseigné, il doit être ouvrable.
+        </p>
+        <label className="text-sm font-medium text-foreground">
+          Citation
+          <textarea
+            aria-label="Citation de la source"
+            value={citation}
+            disabled={fige}
+            rows={2}
+            maxLength={1000}
+            onChange={(event) => setCitation(event.target.value)}
+            placeholder="auteur, titre, date — de quoi retrouver la source"
+            className={`${classeChamp()} mt-1 w-full font-normal`}
+          />
+        </label>
+        <label className="text-sm font-medium text-foreground">
+          Lien (facultatif)
+          <input
+            type="url"
+            aria-label="Lien de la source"
+            value={lienUrl}
+            disabled={fige}
+            maxLength={2000}
+            onChange={(event) => setLienUrl(event.target.value)}
+            placeholder="https://…"
+            className={`${classeChamp()} mt-1 w-full font-normal`}
+          />
+        </label>
+        {erreur && (
+          <p role="alert" className="rounded-lg border border-accent bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
+            {erreur}
+          </p>
+        )}
+        {succes && (
+          <p role="status" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+            {succes}
+          </p>
+        )}
+        <Button className="self-start" disabled={fige || !pret} onClick={() => void soumettre()}>
+          Ajouter la source
+        </Button>
+      </div>
+    </details>
+  );
+}
+
 // ─── Panneau principal ──────────────────────────────────────────────────────
 
 export function AtelierReglesPanel() {
@@ -1089,6 +1206,12 @@ export function AtelierReglesPanel() {
       )}
 
       <FormulaireVocabulaire desactive={enEnvoi} onAjoute={() => void chargerVocabulaire()} />
+      {/* La source suit le vocabulaire : même nature — de la donnée gouvernée à
+          la main, jamais un déploiement — et c'est elle que le formulaire de
+          règle exige ([[D-131]]). Le rechargement du vocabulaire est le même :
+          la nouvelle source doit apparaître dans la liste déroulante sans
+          recharger la page, sinon elle serait créée puis introuvable. */}
+      <FormulaireSource desactive={enEnvoi} onAjoute={() => void chargerVocabulaire()} />
 
       <div role="tablist" aria-label="Statut des règles" className="flex gap-2">
         {ONGLETS.map((onglet, index) => {

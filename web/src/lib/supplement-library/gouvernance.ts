@@ -61,6 +61,15 @@ export const LABEL_MAX = 200;
 export const CATEGORIE_MAX = 100;
 
 /**
+ * Bornes d'une référence source ([[D-131]]). Une citation est un texte
+ * bibliographique — plus long qu'un libellé de vocabulaire, borné tout de même :
+ * la colonne est libre en base, et une citation de dix mille signes ne se relit
+ * pas dans la liste déroulante où la règle vient la choisir.
+ */
+export const CITATION_MAX = 1000;
+export const LIEN_URL_MAX = 2000;
+
+/**
  * Borne du nombre d'ingrédients servis par le vocabulaire de l'atelier (C4-1c),
  * le référentiel Compl'Alim en versant ~2 000 d'un coup. Non réglable par le
  * client. Elle vit ICI et non dans la route : Next.js refuse tout export de

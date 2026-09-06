@@ -14,6 +14,7 @@ const URL_VALIDATION = '/api/praticien/regles/validation';
 const URL_DESACTIVATION = '/api/praticien/regles/desactivation';
 const URL_REVISION = '/api/praticien/regles/revision';
 const URL_PREVISUALISATION = '/api/praticien/regles/previsualisation';
+const URL_SOURCES = '/api/praticien/regles/sources';
 
 const REGLE = {
   id: 'regle_1',
@@ -163,6 +164,11 @@ function router(
       if (url === URL_VOCABULAIRE) {
         return Promise.resolve(
           json({ ok: true, type: 'intention', entree: VOCABULAIRE.intentions[0] }),
+        );
+      }
+      if (url === URL_SOURCES) {
+        return Promise.resolve(
+          json({ ok: true, source: { id: 'src_2', citation: 'ANSES, avis du 2024-03-12.', lienUrl: null } }, true),
         );
       }
       return Promise.resolve(json({}, false));
@@ -743,6 +749,94 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
         labelFr: 'Stress chronique',
         categorie: 'stress',
       });
+    });
+  });
+
+  // ── RÉFÉRENCES SOURCES (`D-131`) ──────────────────────────────────────────
+  //
+  // Le formulaire de règle EXIGE une source et la propose en liste ; rien ne
+  // pouvait l'alimenter. Ces cas prouvent le geste qui manquait — et le
+  // rechargement, sans lequel la source serait créée puis introuvable.
+  it('ajoute une référence source et RECHARGE le vocabulaire qui la sert', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+    const lecturesVocabulaire = () => fetchMock.mock.calls.filter(
+      (appel) => appel[0] === URL_VOCABULAIRE
+        && (appel[1] as { method?: string } | undefined)?.method !== 'POST',
+    ).length;
+    const lecturesAvant = lecturesVocabulaire();
+
+    fireEvent.change(screen.getByLabelText('Citation de la source'), {
+      target: { value: '  ANSES, avis du 2024-03-12.  ' },
+    });
+    fireEvent.change(screen.getByLabelText('Lien de la source'), {
+      target: { value: 'https://www.anses.fr/avis' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter la source' }));
+
+    await waitFor(() => {
+      const posts = appelsPost();
+      expect(posts).toHaveLength(1);
+      expect(posts[0][0]).toBe(URL_SOURCES);
+      // Détourée à l'écran comme au serveur : deux blancs de copier-coller ne
+      // doivent pas produire deux sources.
+      expect(JSON.parse(posts[0][1].body)).toEqual({
+        citation: 'ANSES, avis du 2024-03-12.',
+        lienUrl: 'https://www.anses.fr/avis',
+      });
+    });
+    // La liste déroulante des sources est relue : sans cela, la source
+    // existerait en base et resterait absente du formulaire de règle.
+    await waitFor(() => {
+      expect(lecturesVocabulaire()).toBeGreaterThan(lecturesAvant);
+    });
+  });
+
+  it('n’envoie pas de lien vide, et ferme le bouton tant que la citation manque', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+    const bouton = screen.getByRole('button', { name: 'Ajouter la source' });
+    expect((bouton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Citation de la source'), { target: { value: '   ' } });
+    expect((bouton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Citation de la source'), {
+      target: { value: 'ANSES, avis du 2024-03-12.' },
+    });
+    fireEvent.click(bouton);
+    await waitFor(() => {
+      // La clé `lienUrl` est ABSENTE, pas vide : la route distingue « pas de
+      // lien » d'un lien illisible, et une chaîne vide serait le second.
+      expect(JSON.parse(appelsPost()[0][1].body)).toEqual({
+        citation: 'ANSES, avis du 2024-03-12.',
+      });
+    });
+  });
+
+  it('rend le refus du serveur tel quel — la source déjà présente', async () => {
+    fetchMock.mockImplementation(
+      router({
+        posts: {
+          [URL_SOURCES]: {
+            ok: false,
+            payload: {
+              ok: false,
+              reason: 'citation_deja_presente',
+              error: 'Cette source figure déjà au référentiel — citez celle qui existe plutôt que d’en créer une seconde.',
+            },
+          },
+        },
+      }),
+    );
+    await attendreLaListe();
+    fireEvent.change(screen.getByLabelText('Citation de la source'), {
+      target: { value: 'Revue Micronutrition, 2024' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter la source' }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/figure déjà au référentiel/)).toBeTruthy();
     });
   });
 
