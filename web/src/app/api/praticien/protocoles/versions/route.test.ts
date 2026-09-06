@@ -10,7 +10,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn() },
+    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     arbitrageBiologique: { findMany: vi.fn() },
     // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
@@ -169,6 +169,10 @@ describe('POST /api/praticien/protocoles/versions', () => {
     // Contenu de la version active (GET) : nul par défaut, l'historique reste servi.
     prisma.protocolDraft.findUnique.mockResolvedValue(null);
     signerTablePriorites();
+    // Défaut honnête : aucune ligne d'épisode en base. `vi.clearAllMocks()` vide
+    // les appels mais GARDE les implémentations — sans ce reset, un banc qui
+    // pose une ligne divergente la laisse fuir sur tous les suivants.
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -177,6 +181,86 @@ describe('POST /api/praticien/protocoles/versions', () => {
 
   // PRÉCONDITIONS T0 (D-052) : le seul point de persistance réellement appelé
   // par l'application. Refus AVANT la lecture du fil de versions.
+
+  // `D-129` — LA ROUTE VIVANTE. Le mutation testing de la revue adverse a montré
+  // que neutraliser entièrement cette garde laissait 102 bancs sur 102 au vert :
+  // le lot avait posé son seul banc sur `POST /api/praticien/protocoles`, route
+  // qu'AUCUN écran n'appelle, et zéro ici, la seule qui ait un appelant.
+  //
+  // Cette route n'est pas l'écrivain de l'acte : elle reçoit l'épisode du
+  // navigateur. Son `upsert(..., update: {})` avalait la divergence en silence,
+  // sous `ok: true`.
+  it('refuse un épisode divergent de la ligne enregistrée, au lieu de l’avaler (422)', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: 'empreinte-dune-autre-mesure',
+    });
+    const res = await POST(postRequest({ episode, decisionCard, submission }));
+    expect(res.status).toBe(422);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  // ★ LE PENDANT, ET C'EST LE CHEMIN DE PRODUCTION. Sans lui, remplacer la garde
+  // par « refuser TOUTE ligne existante » passait au vert — alors que le cockpit
+  // écrit toujours la ligne d'abord, donc ce correctif-là aurait refusé chaque
+  // enregistrement réel.
+  // `D-129` §3 bis SUR LA ROUTE VIVANTE. Le mutation testing de la 3e revue a
+  // montré que ne PAS passer les traces en base depuis ici laissait la suite au
+  // vert : le lot avait mis ses bancs de la règle sur `POST /protocoles`, que
+  // rien n'appelle. C'est l'asymétrie qu'il condamne lui-même, reproduite.
+  //
+  // Le parcours : un contournement a été rendu, sa condition s'est RÉSOLUE
+  // depuis. Sans la trace en base, le garde le refuse comme « sans objet » et le
+  // dossier devient inenregistrable.
+  it('accepte un contournement dont la condition s’est résolue, s’il est DÉJÀ en base', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    const trace = {
+      conditionId: 'contradictions_ouvertes',
+      motif: 'Vue en entretien.',
+      decidePar: 'praticien@wellneuro.fr',
+      decideLe: episode.confirmedAt as string,
+    };
+    const chaine = chaineC1DeReference({
+      selection: CANDIDAT_RANG_1,
+      episode: { ...episode, preconditionOverrides: [trace] },
+    });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(chaine.episode),
+      payload: { preconditionOverrides: [trace] },
+    });
+    const res = await POST(postRequest({
+      episode: chaine.episode,
+      decisionCard: chaine.decisionCard,
+      submission,
+    }));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  // Et la lecture qui le rend possible : `payload` DOIT être dans le `select`.
+  // Les doubles ignorent cet argument — sans cette assertion, le retirer
+  // laissait tout au vert alors que la règle entière mourait.
+  it('lit le `payload` de la ligne, pas seulement son empreinte', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    await POST(postRequest({ episode, decisionCard, submission }));
+    const [lecture] = prisma.assessmentEpisode.findUnique.mock.calls[0];
+    expect(lecture.select).toMatchObject({ payload: true, payloadHash: true });
+  });
+
+  it('laisse passer l’épisode dont l’empreinte correspond à la ligne (200)', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(episode),
+    });
+    const res = await POST(postRequest({ episode, decisionCard, submission }));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
   it('refuse la persistance d’un T0 sans premier rideau, sans lire le fil (422)', async () => {
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.questionnaireReponse.findMany.mockResolvedValue([]);

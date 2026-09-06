@@ -33,7 +33,7 @@ import {
   type AncrePersistee,
 } from '@/lib/protocol/ancresPersistees';
 import { ancreRecevable, estAncreDeCycle } from '@/lib/protocol/cycles';
-import { resolveCycleId, toEpisodeCreateInput } from '@/lib/protocol/versioning';
+import { resolveCycleId, toEpisodeCreateInput, toEpisodeUpdateInput } from '@/lib/protocol/versioning';
 import type {
   ClinicalReview,
   ClinicalSnapshot,
@@ -56,6 +56,7 @@ type CockpitUnavailableReason =
   | 'invalid_payload'
   | 'patient_not_found'
   | 'proposal_stale'
+  | 'episode_ecrit_ailleurs'
   | 'preconditions_non_remplies'
   | 'motif_contournement_manquant'
   | 'exception';
@@ -560,6 +561,31 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
 
     const now = new Date().toISOString();
 
+    // LA LIGNE D'ABORD : un acte a une date, et cette date a UN écrivain.
+    //
+    // Ce POST était le seul point où un praticien pose l'acte, mais la
+    // persistance était un `upsert(..., update: {})` : re-confirmer un épisode
+    // déjà enregistré avec un contenu DIVERGENT n'écrivait RIEN, sous une
+    // réponse de succès. Le praticien lisait « confirmé » à l'écran pendant que
+    // la base gardait la mesure précédente — une confirmation clinique perdue
+    // en silence (`D-129`).
+    //
+    // On lit donc la ligne AVANT de construire quoi que ce soit. Elle sert
+    // trois fois : elle donne la date de l'acte, elle donne la justification de
+    // contournement déjà rendue, et son empreinte sert de jeton au
+    // compare-and-swap de l'écriture.
+    const ligneEnregistree = await prisma.assessmentEpisode.findUnique({
+      where: { id: current.proposal.assessmentEpisodeId },
+      select: { confirmedAt: true, payloadHash: true, payload: true },
+    });
+    // L'INSTANT DE L'ACTE, PAS CELUI DU CLIC. `confirmedAt` est à sens unique :
+    // `runtimeFromPrisma` en fait la date de référence de tout jalon de mesure
+    // du cycle, et le portail patient y adosse la fermeture de ses jalons. Le
+    // réécrire à chaque re-confirmation déplacerait le parcours du patient.
+    const instantActe = ligneEnregistree
+      ? ligneEnregistree.confirmedAt.toISOString()
+      : now;
+
     // PRÉCONDITIONS T0 ([[D-052]]), recalculées DEPUIS LA BASE et jamais lues
     // dans le corps de requête. Depuis `D-118` ce POST est un point de
     // persistance : le refus posé ici n'est plus un pré-refus d'ergonomie, il
@@ -593,7 +619,69 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           .filter(o => typeof o?.conditionId === 'string' && typeof o?.motif === 'string')
           .map(o => [o.conditionId as string, (o.motif as string).trim()]),
       );
+      // LA JUSTIFICATION DÉJÀ RENDUE SE REPREND, ELLE NE SE RECOMPARE PAS.
+      // Sur un acte déjà enregistré, l'arbitrage de contournement a été rendu à
+      // sa date : le reprendre VERBATIM est le même traitement que la date de
+      // l'acte elle-même. Le motif reçu du navigateur est alors ignoré, sans
+      // être comparé — le comparer bloquerait un praticien sur une virgule,
+      // d'autant que le panneau vide ses motifs à chaque remontage et ne lui
+      // remontre jamais celui d'origine.
+      // LA LIGNE PEUT PORTER N'IMPORTE QUEL JSON : on ne la croit pas sur parole.
+      const brut = ligneEnregistree?.payload;
+      const rendusEnBase: PreconditionOverride[] =
+        brut !== null && typeof brut === 'object' && !Array.isArray(brut)
+          ? (() => {
+              const champ = (brut as { preconditionOverrides?: unknown }).preconditionOverrides;
+              if (!Array.isArray(champ)) return [];
+              // LES ÉLÉMENTS AUSSI, ET SUR LES QUATRE CHAMPS. `null` est une
+              // valeur JSON légale, et cette ligne peut avoir été écrite par une
+              // version antérieure du contrat. Une trace mal formée reportée
+              // telle quelle atteint `confirmAssessmentEpisode`, qui exige les
+              // quatre champs non vides et une date ISO canonique : son
+              // `TypeError` remontait au catch externe et rendait un message V8
+              // ANGLAIS en 400 `invalid_payload` — un défaut de la BASE présenté
+              // au praticien comme une faute de son navigateur.
+              //
+              // Le prédicat est calé sur celui d'AVAL, pas sur celui de
+              // `motifsRecus` : là-bas le serveur repose ensuite `decidePar` et
+              // `decideLe` lui-même, ici la trace est reportée verbatim.
+              const chaineUtile = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+              return champ.filter((o): o is PreconditionOverride => {
+                const c = o as PreconditionOverride | null;
+                if (!c || typeof c !== 'object') return false;
+                if (!chaineUtile(c.conditionId) || !chaineUtile(c.motif) || !chaineUtile(c.decidePar)) return false;
+                return typeof c.decideLe === 'string'
+                  && !Number.isNaN(Date.parse(c.decideLe))
+                  && new Date(c.decideLe).toISOString() === c.decideLe;
+              });
+            })()
+          : [];
+      const dejaRendus = new Map(rendusEnBase.map(o => [o.conditionId, o]));
+
+      // LA TRACE D'UN ARBITRAGE SURVIT À LA RÉSOLUTION DE SA CONDITION
+      // (`D-129`, arbitrage du 2026-09-06). Une condition souple SE RÉSOUT — la
+      // contradiction est levée, la passation est repassée. Ne reconstruire que
+      // les conditions ENCORE requises effaçait alors, en silence et au premier
+      // geste anodin, qui avait passé outre, quand et pourquoi. C'est la seule
+      // ligne qui en fasse foi : elle est reportée telle quelle.
+      const requisMaintenant = new Set(preconditions.contournementsRequis);
+      for (const rendu of rendusEnBase) {
+        if (!requisMaintenant.has(rendu.conditionId)) preconditionOverrides.push(rendu);
+      }
+
       for (const conditionId of preconditions.contournementsRequis) {
+        const rendu = dejaRendus.get(conditionId);
+        if (rendu) {
+          preconditionOverrides.push(rendu);
+          continue;
+        }
+        // UN CONTOURNEMENT NOUVEAU SE DATE DU JOUR, SUR UN ACTE QUI GARDE LE
+        // SIEN. Un avertissement peut APPARAÎTRE après la confirmation — une
+        // contradiction s'ouvre, une passation devient ambiguë. Le refuser
+        // bloquait précisément la re-confirmation divergente que `D-129` existe
+        // pour ne plus perdre. `refusPreconditionsPersistance` borne désormais
+        // `confirmedAt <= decideLe <= maintenant` au lieu d'exiger l'égalité :
+        // rien n'est antidaté, rien n'est projeté, et l'écriture a lieu.
         const motif = motifsRecus.get(conditionId);
         if (!motif) {
           return unavailable(
@@ -609,15 +697,24 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           conditionId,
           motif: motif.slice(0, 2000),
           decidePar: emailPraticien(session) ?? '',
+          // `now`, et non `instantActe` : cet arbitrage-ci est rendu AUJOURD'HUI.
           decideLe: now,
         });
       }
     }
 
+    // TRIÉS : `canonicalSha256` est sensible à l'ordre d'un tableau. Les traces
+    // sont poussées avant les requis, donc l'ordre change quand une condition
+    // se résout — et deux états identiques rendraient deux empreintes. Sans ce
+    // tri, chaque transition coûtait une écriture gratuite et périmait
+    // l'épisode que le navigateur tient encore, d'où un 422 à l'enregistrement
+    // suivant. Un ordre stable rend l'idempotence vraie.
+    preconditionOverrides.sort((a, b) => a.conditionId.localeCompare(b.conditionId));
+
     const episode = confirmAssessmentEpisode(
       current.proposal,
       includedResponseIds,
-      now,
+      instantActe,
       preconditionOverrides,
     );
     const idSuffix = `${payload.milestone}-${proposalHash.slice(0, 16)}`;
@@ -625,8 +722,8 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     // de persistance ([[D-054]], arbitrage 6) : deux constructions divergentes
     // rendraient 409 sur une carte que ce POST vient d'émettre.
     //
-    // UN SEUL HORODATAGE (`now`) pour l'épisode, le snapshot, la revue et la
-    // carte : `createdAt` et `asOf` entrent dans les empreintes, et le
+    // UN SEUL HORODATAGE (`instantActe`) pour l'épisode, le snapshot, la revue
+    // et la carte — celui de l'ACTE, jamais celui du clic (`D-129`) : `createdAt` et `asOf` entrent dans les empreintes, et le
     // vérificateur les réutilise tels qu'ils ont été soumis.
     // Une confirmation d'épisode ne sélectionne RIEN — la sélection reste un
     // geste praticien DISTINCT. Ce qui a changé avec [[D-127]], c'est qu'une
@@ -641,7 +738,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       reviewId: `runtime-review-${idSuffix}`,
       decisionCardId: `runtime-decision-${idSuffix}`,
       patientId: idPatient,
-      horodatage: now,
+      horodatage: instantActe,
       episode,
       patientContext: inputs.patientContext,
       responses: inputs.responses,
@@ -692,19 +789,64 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     //  - `refusChaineC1` : structurellement satisfait — cette route EST
     //    l'émetteur de la chaîne qu'il recalculerait.
     //
-    // `update: {}` : même idempotence que les deux autres points — une ligne
-    // déjà posée ne se réécrit pas, une re-confirmation ne duplique rien.
+    // L'ÉCRITURE DIT CE QU'ELLE FAIT (`D-129`). C'était un
+    // `upsert(..., update: {})` présenté comme de l'idempotence — « une ligne
+    // déjà posée ne se réécrit pas ». Il n'était pas idempotent, il était
+    // MUET : une re-confirmation au contenu divergent n'écrivait rien et
+    // repartait en succès. Trois branches explicites, une par cas réel.
     const refusAncre = refusAncreNonRecevable(episode, ancres);
     if (refusAncre) {
       return unavailable('preconditions_non_remplies', refusAncre, 422);
     }
-    await prisma.assessmentEpisode.upsert({
-      where: { id: episode.assessmentEpisodeId },
-      create: toEpisodeCreateInput(episode, {
-        cycleId: resolveCycleId({ episode, ancresCandidates: [...ancres] }),
-      }),
-      update: {},
-    });
+    const empreinte = canonicalSha256(episode);
+    if (!ligneEnregistree) {
+      // `create` et non `upsert` : l'`upsert` ne SAIT PAS dire « la ligne est
+      // née entre-temps ». Il écrirait par-dessus une ligne posée par une autre
+      // requête, avec un payload épinglé à notre horloge.
+      try {
+        await prisma.assessmentEpisode.create({
+          data: toEpisodeCreateInput(episode, {
+            cycleId: resolveCycleId({ episode, ancresCandidates: [...ancres] }),
+          }),
+        });
+      } catch (erreur) {
+        // SEULE LA COLLISION D'UNICITÉ EST UN 409. Un `catch` nu déguisait toute
+        // panne — base indisponible, timeout, CHECK violé, validation Prisma —
+        // en « confirmé ailleurs » : message faux, aucun log, et côté client un
+        // 409 `proposal_stale` recharge la proposition SANS rien afficher. Le
+        // praticien recliquait dans le vide, en silence : le défaut même que
+        // `D-129` ferme, déplacé sur la première confirmation.
+        if ((erreur as { code?: string })?.code !== 'P2002') throw erreur;
+        // RAISON DISTINCTE DE `proposal_stale` : le client intercepte celle-ci
+        // pour recharger la proposition en posant « Les réponses ont changé »,
+        // ce qui est faux ici — rien n'a changé côté réponses, la ligne est née
+        // sous une autre requête. Un message vrai vaut mieux qu'un rechargement
+        // muet sur un message emprunté.
+        return unavailable(
+          'episode_ecrit_ailleurs',
+          'Cet épisode vient d’être confirmé ailleurs. Rechargez la proposition.',
+          409,
+        );
+      }
+    } else if (ligneEnregistree.payloadHash !== empreinte) {
+      // COMPARE-AND-SWAP sur l'empreinte lue plus haut : si une autre requête a
+      // réécrit la ligne entre notre lecture et ici, le prédicat ne matche plus
+      // et l'on refuse au lieu d'écraser. Même mécanique que la consommation du
+      // lien magique (`D-128`) : on compare à la valeur LUE.
+      const { count } = await prisma.assessmentEpisode.updateMany({
+        where: { id: episode.assessmentEpisodeId, payloadHash: ligneEnregistree.payloadHash },
+        data: toEpisodeUpdateInput(episode),
+      });
+      if (count !== 1) {
+        return unavailable(
+          'episode_ecrit_ailleurs',
+          'Cet épisode vient d’être modifié ailleurs. Rechargez la proposition.',
+          409,
+        );
+      }
+    }
+    // Troisième branche, implicite : empreintes égales, AUCUNE écriture. C'est
+    // ici, et ici seulement, que l'idempotence annoncée est vraie.
 
     // `selectionEcartee` remonte ICI AUSSI, et pas seulement au rejeu : une
     // re-confirmation du même épisode passe par ce POST, et servir « prêt » sans

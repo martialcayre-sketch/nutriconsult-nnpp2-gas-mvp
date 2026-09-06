@@ -4,6 +4,166 @@
 
 ## Décisions actives
 
+### D-129 — Un acte a une date et un contenu : un écrivain chacun
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « reprendre la ligne, jamais comparer »)
+- Domaine : persistance de l'épisode d'évaluation, cockpit praticien.
+  **Aucun seuil de scoring modifié, aucune migration.**
+- Porte sur : `D-118` (le cockpit comme troisième point de persistance),
+  `D-052` (préconditions T0), `D-054`, `D-113`, `D-128` pour le
+  compare-and-swap
+
+**Le défaut (P0).** Les trois points de persistance écrivaient l'épisode par
+`upsert(..., update: {})`, présenté comme de l'idempotence : « une ligne déjà
+posée ne se réécrit pas ». Ce n'était pas de l'idempotence, c'était du SILENCE.
+Quand la ligne existait avec un contenu DIVERGENT — socle de mesures différent,
+réponses incluses différentes — rien n'était écrit et la route répondait succès.
+Le praticien lisait « confirmé » à l'écran pendant que la base gardait la mesure
+précédente. **Une confirmation clinique perdue, sans trace.**
+
+**Ce que la décision tranche.**
+
+**1. Une re-confirmation remplace ce que l'épisode RETIENT, et rien d'autre.**
+Trois colonnes : `payload`, `payloadHash`, `contractVersion`. HUIT restent hors
+de portée (`createdAt` compris, posé par la base), chacune pour son motif — `id`/`idPatient`/`milestone` sont l'identité
+de la ligne ; `targetAt` la géométrie de la fenêtre ; `cycleId` la seule dont
+l'écriture peut violer l'index unique partiel des jalons de mesure ;
+`versionScore` est figé à la mesure, sinon la garde A8-3 devient indéclenchable.
+
+**2. `confirmedAt` a un écrivain unique : la création.** C'est la DATE DE
+L'ACTE. `runtimeFromPrisma` en fait la date de référence de tout jalon de mesure
+du cycle, et le portail patient y adosse la fermeture de ses jalons : la
+réécrire déplacerait le parcours du patient sous ses pieds. Une re-confirmation
+porte donc l'instant de l'acte, jamais celui du clic — pour l'épisode comme pour
+toute la chaîne C1 qu'il engendre.
+
+**3. La justification de contournement se REPREND, elle ne se recompare pas.**
+Premier arbitrage rendu. Sur un acte déjà enregistré, l'override est repris
+VERBATIM de la ligne et le motif reçu du navigateur est ignoré — sans être
+comparé. Le comparer aurait bloqué un praticien sur une virgule : le panneau
+vide ses motifs à chaque remontage du composant et ne lui remontre jamais celui
+d'origine ; la ligne portant « Vue en entretien. », il aurait retapé « Vue en
+entretien » et se serait heurté à un refus définitif sur un dossier qu'il ne
+peut plus enregistrer. Même traitement que la date de l'acte, et pour la même
+raison : ce qui a été rendu à sa date se reprend, il ne se rejuge pas.
+
+**3 bis. La trace d'un arbitrage SURVIT à la résolution de sa condition.**
+Second arbitrage rendu. Une condition souple se résout — la contradiction est
+levée, la passation est repassée. Ne reconstruire que les conditions ENCORE
+requises effaçait alors, en silence et au premier geste anodin du praticien, qui
+avait passé outre, quand et pourquoi : c'est la seule ligne qui en fasse foi, et
+c'était la même classe de perte que le P0 que cette décision ferme. Les
+overrides déjà rendus sont donc reportés.
+
+**UNE TRACE SE RECONNAÎT À SA PRÉSENCE EN BASE, JAMAIS À SA DATE.** Une première
+rédaction de ce contrôle distinguait la trace de la fabrication par
+l'ANTÉRIORITÉ de `decideLe` à `confirmedAt`. La revue adversariale l'a exécutée :
+elle était inversée dans les deux sens. Le cockpit tamponne
+`decideLe = confirmedAt` sur le tout premier contournement — l'égalité ne
+satisfait pas la stricte antériorité, donc AUCUNE trace réelle n'était reconnue,
+et la route vivante refusait le dossier en 422 définitivement. Symétriquement,
+une date se forge : un override au motif vide, portant l'e-mail d'un autre
+praticien et daté de 1999, passait — exactement ce que la règle protégeait.
+
+La ligne persistée, elle, ne se forge pas depuis le navigateur.
+`refusPreconditionsPersistance` reçoit donc les contournements DÉJÀ écrits (les
+deux routes protocole lisent le `payload` de la ligne, qu'elles lisaient déjà
+pour le contrôle de divergence) et n'admet un override non requis que s'il y
+figure à l'identique.
+
+**4. Un contournement NOUVEAU se date du JOUR, sur un acte qui garde le sien.**
+Troisième arbitrage rendu, et il corrige une première conception de cette même
+décision. Elle refusait ce cas, au motif qu'il n'existait « pas de troisième
+écriture honnête » : `decideLe` devait ÉGALER `confirmedAt`, donc dater le
+contournement de l'acte l'aurait antidaté, et le dater du jour rendait le
+dossier non enregistrable.
+
+C'était un excès. `decideLe === confirmedAt` est une règle du dépôt, pas une
+loi ; elle existait pour empêcher un horodatage « daté à volonté ». La borne
+`confirmedAt <= decideLe <= maintenant` l'empêche tout autant — on ne peut ni
+remonter avant l'acte, ni projeter dans le futur — et elle autorise ce qui est
+vrai : un arbitrage rendu aujourd'hui porte la date d'aujourd'hui.
+
+Le refus, lui, se déclenchait sur un parcours NOMINAL. `contradictions_ouvertes`
+est une condition vivante (`WN_ENABLE_CONTRADICTIONS_NNPP2=1`,
+`docs/FEATURE_FLAGS.md` et `D-104`, postérieur à la bascule Scalingo du
+2026-08-22 — `D-064` posait le drapeau sur la Production VERCEL, décommissionnée
+depuis, et ne porte donc pas l'état actuel). L'état n'a PAS été relu par
+conteneur : c'est de la documentation, avec la réserve que cela implique. Le
+commentaire « MUETTE AUJOURD'HUI » de `evaluerContradictions` est périmé ; celui
+d'`evaluerAmbigues` ne l'est PAS, `WN_ENABLE_VALIDITE_PASSATIONS` restant
+éteint — les deux ne se confondent pas.
+Un T0 confirmé, une contradiction qui s'ouvre ensuite, et la re-confirmation
+divergente — celle que cette décision existe pour ne plus perdre — était
+refusée. Le P0 aurait été corrigé partout SAUF là où le contenu diverge le plus
+souvent. Relevé par la revue adversariale, qui l'a reproduit.
+
+**5. L'écriture dit ce qu'elle fait — trois branches, une par cas réel.** Pas de
+ligne : `create`, et non `upsert` — l'`upsert` ne SAIT PAS dire « la ligne est
+née entre-temps », il écrirait par-dessus avec un payload épinglé à notre
+horloge ; la collision se traite en 409. Ligne présente au contenu divergent :
+`updateMany` en COMPARE-AND-SWAP sur l'empreinte lue, même mécanique que la
+consommation du lien magique (`D-128`) — si une autre requête a réécrit entre
+notre lecture et notre écriture, on refuse au lieu d'écraser. Empreintes
+égales : aucune écriture. C'est là, et là seulement, que l'idempotence annoncée
+est vraie.
+
+**6. Les deux routes protocole refusent la divergence au lieu de l'avaler.**
+Elles ne sont pas l'écrivain de l'acte : elles reçoivent l'épisode du
+navigateur. Un épisode périmé citait la ligne d'un autre contenu sous une
+réponse `ok: true`. Elles rendent désormais 422 et invitent à recharger.
+
+**Ce que la conception d'abord arbitrée proposait, et pourquoi elle est
+écartée.** Elle comparait la justification reçue à celle de la ligne et refusait
+en cas de divergence. La revue adversariale l'a mise en `NO GO` par deux chemins
+indépendants : le refus se déclenchait sur un parcours NOMINAL — les conditions
+souples étant recalculées à chaque appel, une nouvelle passation rend une
+condition satisfaite, l'ensemble des contournements requis rétrécit, et le
+praticien était bloqué parce que son patient avait fait ce qu'on lui demandait ;
+et la comparaison de texte était inatteignable pour l'humain, faute que l'écran
+lui remontre jamais le motif d'origine.
+
+**Les écarts résiduels.**
+
+1. **Un protocole qui cite un épisode remplacé garde une empreinte calculée sur
+   le payload précédent.** Aucun consommateur vivant ne la recoupe aujourd'hui ;
+   c'est vrai maintenant, pas par construction.
+2. **La branche « contournement nouveau » n'a pas de banc de bout en bout** :
+   elle est gardée côté route, pas depuis l'écran.
+3. **`assessment_episodes` n'est plus vide en production** (4 lignes au
+   2026-09-06). Des commentaires du dépôt affirmaient encore le contraire, sur
+   la foi d'un constat du 2026-08-26 ; ils sont corrigés là où ce lot passe.
+4. **Le motif saisi à l'écran est ignoré sans que l'écran le dise.** Sur un acte
+   déjà enregistré, le panneau exige encore une saisie qu'il jette : le
+   praticien tape une justification nouvelle, lit « confirmé », et la base garde
+   celle d'origine. Le comportement est le bon (§3) ; son silence ne l'est pas.
+   Corriger l'écran — « justification déjà enregistrée le … » — est un lot
+   propre, hors de celui-ci.
+5. **`targetAt` peut diverger entre la colonne et le payload** lors de la
+   re-confirmation d'une ancre dont la fenêtre a bougé. Aucun des lecteurs de
+   `assessment_episodes` ne lit cette colonne aujourd'hui : dette nommée, pas
+   défaut.
+6 bis. **La reprise verbatim rejoue `decidePar`, que les routes protocole
+   recoupent contre la session.** Un SECOND praticien qui re-confirmerait
+   obtiendrait 200 au cockpit puis un refus définitif à l'enregistrement de
+   version. Inatteignable aujourd'hui — le dépôt est mono-praticien — mais ce
+   module existe pour rester sûr le jour où un second compte apparaîtra. Relevé
+   par la troisième revue adversariale, laissé ouvert et nommé ici plutôt que
+   corrigé à l'aveugle : l'exemption du recoupement pour une trace déjà en base
+   est un arbitrage, pas une évidence.
+7. **L'affichage du refus `episode_ecrit_ailleurs` n'est gardé que côté
+   serveur.** La raison est assertée sur les deux 409, mais aucun banc ne prouve
+   que le client l'affiche : `ClinicalRuntimeSection.test.tsx` ne couvre aucun
+   chemin de refus, et en poser un demanderait de monter le composant entier.
+   Retirer la raison de la liste du client laisserait donc la suite au vert.
+   Nommé plutôt que masqué.
+8. **Les suites de ce périmètre dépendent de l'ordre des tests.** Mesuré par la
+   revue : `--sequence.shuffle` rougit déjà sur la base de cette PR. Ce lot
+   ferme les fuites d'implémentation qu'il a introduites, il ne guérit pas la
+   maladie de fond.
+
 ### D-128 — Révoquer ferme aussi par l'horizon : `consommeLe` ne dit plus qu'une chose
 
 - Date : 2026-09-06

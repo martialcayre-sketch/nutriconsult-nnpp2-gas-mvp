@@ -171,8 +171,11 @@ export type AncreCycleCourant = {
  * l'ancre de son cycle. Sans aucune ancre confirmée, la forme historique est
  * conservée : il n'y a alors aucun cycle dont se distinguer.
  *
- * `assessment_episodes` est VIDE en production (constat par conteneur du
- * 2026-08-26) : aucun identifiant existant n'est renommé par ce changement.
+ * AFFIRMATION PÉRIMÉE, CORRIGÉE : ce commentaire disait `assessment_episodes`
+ * VIDE en production (constat par conteneur du 2026-08-26). Elle ne l'est plus
+ * — 4 lignes au 2026-09-06. Le renommage décrit ici reste sans effet sur
+ * l'existant, mais on ne peut plus s'appuyer sur la vacuité de la table :
+ * toute écriture y rencontre désormais des lignes réelles (`D-129`).
  */
 function identifiantEpisode(
   idPatient: string,
