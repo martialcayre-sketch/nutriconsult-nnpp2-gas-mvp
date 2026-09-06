@@ -41,13 +41,22 @@ function rendre(
   onRetenir = vi.fn(),
   etat: 'idle' | 'saving' | 'error' = 'idle',
   erreur: string | null = null,
+  selectionEcartee = false,
 ) {
   const decisionCard = over === null ? null : card(over);
   const { container } = render(
-    <SelectionPrioritePanel decisionCard={decisionCard} etat={etat} erreur={erreur} onRetenir={onRetenir} />,
+    <SelectionPrioritePanel
+      decisionCard={decisionCard}
+      selectionEcartee={selectionEcartee}
+      etat={etat}
+      erreur={erreur}
+      onRetenir={onRetenir}
+    />,
   );
   return { container, ecran: within(container), onRetenir };
 }
+
+const PHRASE_PEREMPTION = /Une priorité avait été retenue sur ce dossier/;
 
 describe('SelectionPrioritePanel', () => {
   // LES TROIS SILENCES. Chacun a son propriétaire ailleurs à l'écran : un
@@ -127,6 +136,51 @@ describe('SelectionPrioritePanel', () => {
     const { ecran } = rendre({}, vi.fn(), 'error', 'Une autre sélection vient d’être posée sur cette décision.');
     const alerte = ecran.getByRole('alert');
     expect(alerte.textContent).toBe('Une autre sélection vient d’être posée sur cette décision.');
+  });
+
+  // LA PÉREMPTION D'UNE SÉLECTION ([[D-127]] §11). La carte servie est celle
+  // construite SANS la sélection : elle est indiscernable, ici, de celle d'un
+  // dossier où personne n'a jamais choisi. Seul le serveur sait qu'un acte
+  // existait, et sans cette phrase il cessait d'être servi en silence.
+  describe('quand une sélection consignée a été écartée', () => {
+    it('le dit, et dit que rien n’a été effacé', () => {
+      const { ecran } = rendre({}, vi.fn(), 'idle', null, true);
+      const constat = ecran.getByRole('status');
+      expect(constat.textContent).toMatch(PHRASE_PEREMPTION);
+      expect(constat.textContent).toMatch(/rien n’a été effacé/);
+      // Le geste reste offert : le dossier porte encore des candidats.
+      expect(ecran.getByRole('button', { name: 'Retenir cette priorité' })).toBeTruthy();
+    });
+
+    // LES SILENCES PORTENT SUR LE GESTE, PAS SUR LE CONSTAT. Une décision
+    // bloquée est le cas où la péremption est la PLUS probable (`DC-12` retire
+    // les candidats) : s'y taire serait se taire là où il faut parler.
+    it('parle même quand la décision est bloquée, sans proposer de choix', () => {
+      const { ecran } = rendre({ safetyFindingIds: ['SEC-1'] }, vi.fn(), 'idle', null, true);
+      expect(ecran.getByRole('status').textContent).toMatch(PHRASE_PEREMPTION);
+      expect(ecran.queryByRole('button')).toBeNull();
+      expect(ecran.queryByLabelText(/Pourquoi cette priorité/)).toBeNull();
+    });
+
+    it('parle même quand plus aucun candidat n’est classé', () => {
+      const { ecran } = rendre(
+        { priorityCandidates: [], proposedMainPriorityId: null }, vi.fn(), 'idle', null, true,
+      );
+      expect(ecran.getByRole('status').textContent).toMatch(PHRASE_PEREMPTION);
+      expect(ecran.queryByRole('button')).toBeNull();
+    });
+
+    // Sans carte, il n'y a pas de réponse `ready`, donc pas de drapeau — et le
+    // silence tient de toute façon : il n'y a rien à quoi rattacher le constat.
+    it('se tait quand même sans carte de décision', () => {
+      const { container } = rendre(null, vi.fn(), 'idle', null, true);
+      expect(container.innerHTML).toBe('');
+    });
+
+    it('ne dit rien de tel quand aucune sélection n’a été écartée', () => {
+      const { ecran } = rendre();
+      expect(ecran.queryByText(PHRASE_PEREMPTION)).toBeNull();
+    });
   });
 
   describe('quand une priorité est déjà retenue', () => {

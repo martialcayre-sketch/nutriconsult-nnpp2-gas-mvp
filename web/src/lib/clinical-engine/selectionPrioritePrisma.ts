@@ -90,10 +90,12 @@ export function teteDuFil(lignes: LigneSelection[]): LigneSelection | null {
  * repli fait d'un côté et pas de l'autre rendrait 409 sur une carte honnête
  * ([[D-101]]).
  *
- * `selectionEcartee` dit qu'un acte praticien n'est plus servi. Il est
- * journalisé par l'appelant ; le DIRE à l'écran reste dû ([[D-127]], dettes) —
- * la carte montre déjà qu'aucune priorité n'est retenue, elle n'explique pas
- * encore pourquoi.
+ * `selectionEcartee` dit qu'un acte praticien n'est plus servi, et ce drapeau
+ * est LA SEULE TRACE de cet écart : la chaîne rendue est en tout point celle
+ * d'un dossier où personne n'a jamais choisi. Le cockpit le journalise ET le
+ * remonte à l'écran ([[D-127]] §11) ; le vérificateur, lui, l'ignore
+ * délibérément — il recalcule pour comparer, et une carte honnête émise après
+ * péremption est justement celle construite sans la sélection.
  */
 export function construireChaineC1Tolerante(
   entree: Omit<EntreeChaineC1, 'selectionPraticien'>,

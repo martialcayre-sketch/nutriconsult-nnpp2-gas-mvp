@@ -894,6 +894,61 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     expect('rejoue' in (await post.json())).toBe(false);
   });
 
+  // ── LA PÉREMPTION D'UNE SÉLECTION, JUSQU'À L'ÉCRAN ([[D-127]] §11) ─────────
+  //
+  // La carte servie après un écart est celle construite SANS la sélection :
+  // elle est en tout point indiscernable de celle d'un dossier où personne n'a
+  // jamais choisi. Sans ce drapeau, un acte praticien cesse d'être servi en
+  // silence — le défaut que `D-127` avait nommé sans le traiter.
+  const selectionPerimee = [{
+    id: 'SEL_1',
+    candidateId: 'priority:REGLE_QUI_NE_SE_DECLENCHE_PLUS',
+    rationale: 'Motif consigné à l’époque du choix.',
+    selectedAt: new Date('2026-01-03T00:00:00.000Z'),
+    supersedesSelectionId: null,
+  }];
+
+  it('le GET rejoue en SIGNALANT la sélection écartée, sans lâcher l’épisode confirmé', async () => {
+    await confirmerT0();
+    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payload: create.payload, payloadHash: create.payloadHash,
+    });
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue(selectionPerimee);
+
+    const payload = await (await GET(getRequest('idPatient=PAT_TEST&milestone=T0'))).json();
+    // L'épisode CONFIRMÉ reste servi : une sélection périmée ne le renvoie pas
+    // au formulaire, ce qui serait exactement la régression fermée par `D-118`.
+    expect(payload.status).toBe('ready');
+    expect(payload.rejoue).toBe(true);
+    expect(payload.selectionEcartee).toBe(true);
+    // Et la carte, elle, ne porte rien : c'est bien la SÉLECTION qui est
+    // écartée, pas la chaîne.
+    expect(payload.decisionCard.selectedMainPriority).toBeNull();
+  });
+
+  // Le POST le signale AUSSI : une re-confirmation du même épisode passe par
+  // lui, et servir « prêt » sans le constat ferait disparaître la phrase au
+  // premier re-clic.
+  it('le POST signale lui aussi la sélection écartée', async () => {
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue(selectionPerimee);
+    const payload = await (await confirmerT0()).json();
+    expect(payload.status).toBe('ready');
+    expect(payload.selectionEcartee).toBe(true);
+  });
+
+  it('aucune réponse ordinaire ne porte le drapeau de péremption', async () => {
+    const post = await confirmerT0();
+    expect('selectionEcartee' in (await post.json())).toBe(false);
+    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payload: create.payload, payloadHash: create.payloadHash,
+    });
+    const get = await (await GET(getRequest('idPatient=PAT_TEST&milestone=T0'))).json();
+    expect(get.rejoue).toBe(true);
+    expect('selectionEcartee' in get).toBe(false);
+  });
+
   it('ne rejoue pas un dossier dont le socle a bougé : la proposition reprend la main', async () => {
     await confirmerT0();
     const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
