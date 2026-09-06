@@ -24,7 +24,7 @@ dit « ce qui est lu sur ce chemin », pas « ce qui suffit à le fermer ».
 | Boussole alimentaire (C5) — distribution signée des aliments | `web/src/app/api/praticien/boussole/route.ts` (route-api)<br>+ 10 indirecte(s) | Lecture PRAL/densité d’un aliment servie au patient et au praticien. | WN_C5_ENABLED | — | oui | — |
 | Bibliothèque de biologie fonctionnelle (987 actes NABM V105) | 1 surface(s) indirecte(s) seulement | Régime de remboursement d’un acte de biologie proposé. | WN_CB_ENABLED, WN_CB_PROPOSITION, WN_CB_RESULTS_ENABLED | — | non | — |
 | Catalogue des compléments alimentaires (C4) | `web/src/app/api/praticien/complements/route.ts` (route-api) | Fiche complément : composition, cumuls, compatibilités. | WN_C4_ENABLED | — | non | — |
-| Tableau de compatibilité et de cumul entre compléments | 18 surface(s) indirecte(s) seulement | Cumul signalé ou absence de cumul, affichés sur la fiche. | WN_C4_ENABLED | — | non | — |
+| Tableau de compatibilité et de cumul entre compléments | 19 surface(s) indirecte(s) seulement | Cumul signalé ou absence de cumul, affichés sur la fiche. | WN_C4_ENABLED | — | non | — |
 | Table de contradictions NNPP2 (règles signées) | `web/src/app/api/praticien/synthese/route.ts` (route-api)<br>+ 2 indirecte(s) | Constat de contradiction entre instruments, affiché au cockpit praticien (table non signée : rien ne sort). | WN_ENABLE_CONTRADICTIONS_NNPP2, WN_SYNTHESE_STREAM | tableSignee, validationExterne | non | — |
 | Corpus clinique de synthèse V1 | `web/src/app/api/praticien/synthese/route.ts` (route-api)<br>+ 19 indirecte(s) | Cadrage clinique injecté dans la synthèse rédigée par le modèle. | WN_ENABLE_CORPUS_CLINIQUE_V1, WN_SYNTHESE_STREAM | validationExterne | oui | — |
 | Table d’indications biologiques (15 règles signées) | 5 surface(s) indirecte(s) seulement | Proposition de bilan hiérarchisée et sourcée, servie au cockpit praticien. | WN_CB_ENABLED, WN_CB_PROPOSITION, WN_CB_RESULTS_ENABLED | validationExterne | non | — |
@@ -41,7 +41,7 @@ dit « ce qui est lu sur ce chemin », pas « ce qui suffit à le fermer ».
 | Rayon de corpus « sommeil » → notebook 02 — Sommeil et chronobiologie | **aucune — dormante** | Claims validés servis pour ce rayon. | — | — | non | dormante (2026-08-05) |
 | Rayon de corpus « stress » → notebook 03 — Stress et burnout | **aucune — dormante** | Claims validés servis pour ce rayon. | — | — | non | dormante (2026-08-05) |
 | Registre sanitaire des sources — vue par notebook | `web/src/app/api/praticien/corpus/claims/route.ts` (route-api)<br>`web/src/app/api/praticien/corpus/claims/sources/route.ts` (route-api)<br>+ 2 indirecte(s) | Quelles sources bibliographiques adossent un rayon de corpus. | — | — | non | — |
-| Résolution des intentions et compositions (lecture des compléments) | `web/src/app/api/praticien/regles/previsualisation/route.ts` (route-api)<br>+ 17 indirecte(s) | Quels ingrédients une fiche contient réellement, et à quelle dose. | WN_C4_ENABLED | — | non | — |
+| Résolution des intentions et compositions (lecture des compléments) | `web/src/app/api/praticien/regles/previsualisation/route.ts` (route-api)<br>+ 18 indirecte(s) | Quels ingrédients une fiche contient réellement, et à quelle dose. | WN_C4_ENABLED | — | non | — |
 
 21 source(s) recensée(s), dont **5 dormante(s)**.
 

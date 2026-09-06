@@ -4,6 +4,93 @@
 
 ## Décisions actives
 
+### D-131 — Le catalogue C4 n'était pas seulement vide : il n'était pas remplissable
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « peupler le catalogue C4 d'abord »)
+- Domaine : atelier de règles cliniques (C4), référentiel du moteur d'intention.
+  **Aucun seuil clinique posé, aucune règle écrite, aucune migration.**
+- Porte sur : `D-056` arbitrage 1 (la dette du catalogue), la décision n°11 du
+  moteur d'intention, `LOT-00-AUDIT-SOURCES`, `D-130` (dont ce défaut est le
+  frère), `D-125` pour l'étiquetage
+
+**Faits relus avant d'écrire.**
+
+1. **Production, lue par conteneur le 2026-09-06** — et c'est la PREMIÈRE
+   lecture de ces tables depuis le cutover ; les chiffres de `D-056` dataient du
+   2026-08-13, donc de Supabase, qui n'existe plus :
+   `clinical_rules` 0, `clinical_intent_tags` 0, `clinical_criteria` 0,
+   `supplement_source_references` 0, `supplement_safety_alerts` 0,
+   `functional_categories` 0, `ingredient_functional_thresholds` 0 —
+   pour `supplement_ingredients` **3 444**. La couche matière est peuplée, la
+   couche décision est vide, un mois plus tard et sur une autre base.
+2. **Quatre des six tables de décision n'ont AUCUN écrivain** — ni route, ni
+   seed, ni script : sources, alertes de sécurité, catégories fonctionnelles,
+   seuils fonctionnels. Seuls `clinical_intent_tags` et `clinical_criteria`
+   (route de vocabulaire) et `clinical_rules` en ont un.
+3. `clinical_rules.source_reference_id` est **NOT NULL**, et
+   `POST /api/praticien/regles` refuse toute règle dont la source n'existe pas
+   ou n'est pas active.
+4. La décision n°11 du moteur d'intention interdit la synchronisation live et
+   toute écriture en base active depuis une source externe ; `LOT-00-AUDIT-
+   SOURCES` en tire la conséquence pour cette table précise — « par **curation
+   manuelle praticien** », l'ANSES ne publiant aucun format machine.
+5. L'atelier corpus existe, mais ses « sources » sont les notebooks du registre
+   sanitaire, pour les *claims* : il n'alimente pas ce référentiel.
+
+**Le défaut.** De (2) + (3) : **l'atelier de règles, qui fonctionne par
+ailleurs, était structurellement incapable de créer sa première règle.** Le
+catalogue n'était pas vide par politique — il n'était pas remplissable.
+`D-056` arbitrage 1 attribuait le blocage à « un travail de contenu clinique
+sourcé » : c'est vrai, et incomplet — même le contenu en main, il n'y avait
+nulle part où le mettre. Constat **démontré dans le code et lu en production**
+(`D-125`).
+
+C'est le quatrième exemplaire du même motif en deux jours, après `D-127` (un
+champ que personne n'écrivait) et `D-130` (un contrat que personne ne
+demandait) : **une garde dont l'entrée n'a pas de producteur**.
+
+**Arbitrage 1 — le chemin est une SAISIE praticien, pas un import.** La décision
+n°11 interdit l'écriture depuis un flux externe ; elle n'interdit pas la
+curation, elle la prescrit (fait 4). `POST /api/praticien/regles/sources` ne lit
+rien d'externe : il enregistre ce qu'un praticien authentifié écrit, sous le
+drapeau `WN_C4_ENABLED` comme le reste de l'atelier.
+
+**Arbitrage 2 — cette décision n'ouvre QUE les sources.** Alertes de sécurité,
+catégories fonctionnelles et seuils fonctionnels restent sans écrivain. Ils
+portent des **niveaux d'alerte et des bornes de dose**, c'est-à-dire du contenu
+clinique chiffré (`DC-19`, `DC-20`) : leur chemin d'écriture se pose avec le
+cadre qui vérifie ce qu'on y met, pas au passage d'une PR qui débloque une
+citation. Les nommer sans les ouvrir est le point.
+
+**Arbitrage 3 — le doublon est refusé À L'APPLICATION, et la garde en base est
+une dette.** La table ne porte aucune contrainte d'unicité sur la citation, et
+l'ajouter serait une migration — hors périmètre ici. Deux lignes pour une même
+source ne corrompent rien mais **scindent la lignée** : deux règles citant « la
+même » référence par deux identifiants ne se relient plus. Refus 409 sur
+comparaison insensible à la casse, texte détouré. La garde en base reste due.
+
+**Arbitrage 4 — le lien est facultatif, mais s'il est là il doit être
+ouvrable.** Une source dont le lien ne s'ouvre pas est pire qu'une source sans
+lien : elle promet une vérification qu'elle ne permet pas. `http`/`https`
+seulement — un `javascript:` ou un `data:` posé dans un champ que l'écran rend
+en lien est une injection, pas une référence.
+
+**L'écran vient avec la route, et ce n'est pas un supplément.** Une route sans
+geste d'écran serait un cinquième exemplaire du motif que cette décision
+constate. Le formulaire vit dans l'atelier, sous le vocabulaire gouverné, et
+**recharge** le vocabulaire après ajout : sans ce rechargement, la source
+existerait en base et resterait absente de la liste où la règle vient la
+choisir.
+
+**Ce que ça n'ouvre PAS, et il faut le dire.** Une règle peut désormais être
+créée et validée. Elle ne produira toujours **aucune intention** :
+`deciderIntentionAvantBiologie` exige en plus un catalogue d'alertes **publié**
+et des seuils actifs sur l'ingrédient (`D-056` arbitrage 2), tables restées sans
+écrivain. La chaîne C4 reste donc muette en production — d'un cran moins loin
+qu'hier, et pas davantage.
+
 ### D-130 — Le contrat de payload du protocole devient demandable : sans quoi la chaîne biologie de LOT-03 n'a aucun producteur
 
 - Date : 2026-09-06
