@@ -61,7 +61,9 @@ entier de la mesure avant d'accepter une correction, au lieu de chercher le
 seul successeur direct : sur une fourche, la branche perdante n'est supplantée
 par personne au sens du chaînage, et la corriger aurait fait basculer
 l'autorité en silence vers celle qui avait perdu — la route aurait permis
-exactement ce que son refus dit interdire.
+exactement ce que son refus dit interdire. **Son message de refus nomme donc,
+lui aussi, un état** : « cette mesure ne fait plus foi », et non « elle a déjà
+été corrigée » — personne n'a corrigé une branche que sa sœur a devancée.
 
 **L'écran annonce l'unité qui sera consignée**, pas celle d'origine. Le serveur
 relit l'unité sur l'analyte au catalogue : si elle a changé depuis la mesure,

@@ -237,7 +237,7 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
   function monterAvec(
     resultats: unknown[],
     reponsePost?: { ok: boolean; status: number; error?: string },
-    catalogue: 'ok' | 'panne' = 'ok',
+    catalogue: 'ok' | 'panne' | 'vide' = 'ok',
   ) {
     const corps: unknown[] = [];
     const fetchMock = vi.fn(async (entree: RequestInfo | URL, init?: RequestInit) => {
@@ -249,7 +249,10 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
           status: 200,
           json: async () => ({
             ok: true,
-            analytes: [{ code: 'BIO_FERRITINE', libelle: 'Ferritine', unite: 'µg/L' }],
+            analytes:
+              catalogue === 'vide'
+                ? []
+                : [{ code: 'BIO_FERRITINE', libelle: 'Ferritine', unite: 'µg/L' }],
           }),
         } as Response;
       }
@@ -362,6 +365,18 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     expect(screen.queryByText(/n’est plus servi par le catalogue/)).toBeNull();
     expect(screen.getByText(/Unité non vérifiable pour l’instant/)).toBeTruthy();
+  });
+
+  it('catalogue LU ET VIDE : là, « n’est plus servi » dit vrai — ce n’est pas le cas de panne', async () => {
+    // Le catalogue ne sert que les analytes ACTIFS : lu et vide veut dire
+    // « aucun analyte actif », et l'affirmation est donc juste. Ce banc
+    // verrouille les trois états l'un contre l'autre — sans lui, ramener
+    // « panne » et « vide » à un seul cas repasserait vert.
+    monterAvec([ORIGINE], undefined, 'vide');
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByText(/n’est plus servi par le catalogue/)).toBeTruthy();
+    expect(screen.queryByText(/Unité non vérifiable pour l’instant/)).toBeNull();
   });
 
   it('une mesure DÉJÀ corrigée n’offre pas « Corriger » — on corrige la version qui fait foi', async () => {

@@ -185,6 +185,18 @@ la forme ni le périmètre ; toutes complètent ce que la décision disait trop 
    que l'affichage. **La portée reste celle de `D-123`** : le séquentiel est
    fermé, la course de deux corrections vraiment simultanées ne l'est pas —
    c'est l'élection, et elle seule, qui la rend inoffensive.
+9. **Le motif récurrent, nommé pour cesser de le redécouvrir.** Trois fois dans
+   ce seul fichier, une PHRASE est devenue fausse sous son propre code — le
+   commentaire `GD-1` (« ce POST ne lit rien » → il lit une ligne → il lit le
+   fil), le message de refus `correction_deja_corrigee` (« a déjà été
+   corrigée », faux dès que la garde refuse aussi une **sœur**), et la phrase
+   du barré (§7). Aucune n'était fausse à l'écriture ; toutes le sont devenues
+   quand ce qu'elles décrivent s'est élargi. **Règle qui en découle : élargir
+   une lecture, un contrat ou une garde oblige à relire tout ce qui les
+   RACONTE** — commentaires, messages d'erreur, fragments de changelog, fiches
+   de lot. C'est le seul des trois défauts qui atteignait le praticien qui a
+   coûté un NO-GO ; les deux autres ne mentaient qu'au relecteur suivant, ce
+   qui est une dette d'une autre nature mais pas moins réelle.
 
 En revanche, ce que le §4 exigeait est tenu **plus fort que demandé** : les
 quatre validations dues ne sont pas quatre contrôles, mais deux impossibilités

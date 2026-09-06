@@ -443,8 +443,36 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
       postRequest({ ...CORRECTION, supersedesResultatId: 'resA' }),
     );
     expect(response.status).toBe(409);
-    expect((await response.json()).reason).toBe('correction_deja_corrigee');
+    const payload = await response.json();
+    expect(payload.reason).toBe('correction_deja_corrigee');
+    // Le message NOMME UN ÉTAT : personne n'a corrigé `resA` — `resB` est sa
+    // SŒUR. Dire « a déjà été corrigée » serait faux ici (m15).
+    expect(payload.error).not.toMatch(/a déjà été corrigée/);
+    expect(payload.error).toMatch(/ne fait plus foi/);
     expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
+  });
+
+  it('… mais la branche GAGNANTE de cette même fourche, elle, se corrige', async () => {
+    // Le pendant du banc précédent : la garde élargie doit refuser la perdante
+    // SANS enfermer la mesure — sinon une fourche la rendrait incorrigible.
+    const perdante = {
+      ...LIGNE_CORRECTION,
+      id: 'resA',
+      saisiLe: new Date('2026-09-02T09:00:00.000Z'),
+    };
+    const gagnante = {
+      ...LIGNE_CORRECTION,
+      id: 'resB',
+      saisiLe: new Date('2026-09-02T10:00:00.000Z'),
+    };
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce({ ...CIBLE, id: 'resB' });
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, perdante, gagnante]);
+    prisma.resultatBiologique.create.mockResolvedValue(LIGNE_CORRECTION);
+    const response = await POST(postRequest({ ...CORRECTION, supersedesResultatId: 'resB' }));
+    expect(response.status).toBe(201);
+    expect(prisma.resultatBiologique.create.mock.calls[0][0].data.supersedesResultatId).toBe(
+      'resB',
+    );
   });
 
   it('un analyte RETIRÉ du catalogue n’enferme pas une valeur fausse : la correction passe', async () => {

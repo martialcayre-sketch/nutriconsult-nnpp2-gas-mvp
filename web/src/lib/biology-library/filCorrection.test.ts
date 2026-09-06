@@ -143,6 +143,27 @@ describe('correctionsParLigne — le fil de correction d’une mesure (D-124)', 
     expect(lignes.filter(l => !corrections.has(l.id))).toHaveLength(1);
   });
 
+  it('une QUEUE qui mène à un cycle rejoint le même fil, quel que soit l’ordre d’entrée', () => {
+    // L'invariant de la mémoïsation : `t` mène au cycle `c0 ⇄ c1` sans en faire
+    // partie. Sa racine EST le cycle qu'elle atteint, donc les trois lignes ne
+    // forment qu'un fil — et cela ne doit pas dépendre de la ligne d'où l'on
+    // part, sans quoi le fil se scinderait selon l'ordre d'arrivée.
+    const lignes = [
+      maillon('c0', 'c1', '2026-09-01T08:00:00.000Z'),
+      maillon('c1', 'c0', '2026-09-02T08:00:00.000Z'),
+      maillon('t', 'c0', '2026-09-03T08:00:00.000Z'),
+    ];
+    const depuisLaQueue = correctionsParLigne(lignes);
+    const depuisLeCycle = correctionsParLigne([...lignes].reverse());
+    // Un seul fil, donc UNE seule ligne courante — dans les deux ordres.
+    expect(lignes.filter(l => !depuisLaQueue.has(l.id))).toHaveLength(1);
+    expect(lignes.filter(l => !depuisLeCycle.has(l.id))).toHaveLength(1);
+    // Et c'est LA MÊME, sans quoi deux surfaces raconteraient deux histoires.
+    const courante = (m: Map<string, { id: string }>) =>
+      lignes.find(l => !m.has(l.id))?.id;
+    expect(courante(depuisLaQueue)).toBe(courante(depuisLeCycle));
+  });
+
   it('une chaîne TRÈS LONGUE reste UN seul fil : aucun plafond ne la scinde', () => {
     // Un garde-fou de profondeur rendrait, au-delà, une racine dépendante du
     // point d'entrée : le fil se scinderait et DEUX lignes feraient foi pour la

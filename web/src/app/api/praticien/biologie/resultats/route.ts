@@ -101,8 +101,12 @@ const MESSAGES_REFUS_SAISIE: Record<string, string> = {
   correction_cible_inconnue:
     'La mesure à corriger est introuvable dans ce dossier. Relisez la série : elle a pu '
     + 'être corrigée ailleurs entre-temps.',
+  // NOMME UN ÉTAT, PAS UN GESTE — même raison que la phrase de l'écran. Depuis
+  // que la garde relit le fil entier, elle refuse AUSSI la branche perdante
+  // d'une fourche, que personne n'a corrigée : sa sœur ne l'a pas remplacée,
+  // elle l'a devancée (contre-revue du 2026-09-06, m15).
   correction_deja_corrigee:
-    'Cette mesure a déjà été corrigée : c’est la correction la plus récente qui se corrige, '
+    'Cette mesure ne fait plus foi : c’est la version courante qui se corrige, '
     + 'jamais une version dépassée. Relisez la série.',
 };
 
@@ -250,7 +254,9 @@ export async function POST(req: Request) {
     // non-journal du POST change de justification, pas de comportement ».
     // Les POST courrier/document patient, eux, journalisent : ils DÉRIVENT la
     // proposition entière, soit une lecture substantielle qui s'ajoute à
-    // l'écriture. Recopier l'analyte et la date d'une ligne n'en est pas une.
+    // l'écriture. Ce POST-ci lit le fil d'UNE mesure pour se garder lui-même —
+    // il n'en dérive rien et n'en rend rien. Le fondement, lui, est CATÉGORIEL
+    // et ne dépend pas de l'ampleur lue : c'est la dispense d'écriture.
     const garde = await garderResultats(idPatient);
     if (!garde.ok) return depuisVerdictPost(garde);
 
