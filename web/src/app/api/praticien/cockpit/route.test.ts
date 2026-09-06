@@ -17,7 +17,10 @@ const { getServerSession, prisma, writes } = vi.hoisted(() => {
       // cycle courant pour les jalons post-T0 (revue LOT-07, B2).
       // `findUnique` : rejeu d'un épisode persisté par le GET (`D-118`) ;
       // `upsert` : persistance de l'épisode à la confirmation (`D-118`).
-      assessmentEpisode: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
+      assessmentEpisode: {
+        findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(),
+        upsert: vi.fn(), create: vi.fn(), updateMany: vi.fn(),
+      },
       // Sélection praticien d'une priorité (`D-127`) : relue aux DEUX sites de
       // construction de carte. Vide par défaut ⇒ `selectionPraticien: null`,
       // c'est-à-dire l'état d'un dossier où personne n'a encore choisi.
@@ -102,7 +105,7 @@ describe('/api/praticien/cockpit', () => {
     // Aucun épisode persisté par défaut (`D-118`) : le GET sert la proposition,
     // le POST écrit sa première ligne.
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
-    prisma.assessmentEpisode.upsert.mockResolvedValue({});
+    prisma.assessmentEpisode.create.mockResolvedValue({});
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({
@@ -361,7 +364,7 @@ describe('/api/praticien/cockpit', () => {
     await POST(postRequest({
       idPatient: 'PAT_TEST', milestone: 'T0', includedResponseIds: ['REP_T0'], proposalHash: proposed.proposalHash,
     }));
-    expect(prisma.assessmentEpisode.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.assessmentEpisode.create).toHaveBeenCalledTimes(1);
     expect(writes.patientUpdate).not.toHaveBeenCalled();
     expect(writes.responseCreate).not.toHaveBeenCalled();
     expect(writes.consultationUpdate).not.toHaveBeenCalled();
@@ -819,7 +822,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
-    prisma.assessmentEpisode.upsert.mockResolvedValue({});
+    prisma.assessmentEpisode.create.mockResolvedValue({});
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({
@@ -836,18 +839,126 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     }));
   }
 
+  // ── `D-129` : LA RE-CONFIRMATION DIVERGENTE N'EST PLUS PERDUE ─────────────
+  //
+  // Le défaut : la persistance était un `upsert(..., update: {})`. Une ligne
+  // existante au contenu DIFFÉRENT n'était pas réécrite, et la route répondait
+  // succès. Le praticien lisait « confirmé » pendant que la base gardait la
+  // mesure précédente. Ces bancs gardent les trois branches, et surtout ce que
+  // le correctif s'INTERDIT.
+
+  /** La ligne déjà en base, telle que le POST la relira. */
+  function ligneExistante(surcharge = {}) {
+    return {
+      confirmedAt: new Date('2026-08-12T09:00:00.000Z'),
+      payloadHash: 'empreinte-de-la-mesure-precedente',
+      payload: {},
+      ...surcharge,
+    };
+  }
+
+  it('une re-confirmation au contenu divergent ÉCRIT — c’est le P0 de `D-129`', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(200);
+    // L'écriture a bien lieu, et elle est un compare-and-swap sur l'empreinte
+    // LUE : si une autre requête a réécrit la ligne entre-temps, on refuse au
+    // lieu d'écraser.
+    expect(prisma.assessmentEpisode.updateMany).toHaveBeenCalledTimes(1);
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    expect(appel.where.payloadHash).toBe('empreinte-de-la-mesure-precedente');
+    expect(appel.data.payloadHash).not.toBe('empreinte-de-la-mesure-precedente');
+  });
+
+  // ★ LE BANC DÉCISIF. Il garde ce que la re-confirmation s'INTERDIT : toucher
+  // la DATE DE L'ACTE. `confirmedAt` a un écrivain unique, la création —
+  // `runtimeFromPrisma` en fait la date de référence de tout jalon de mesure du
+  // cycle, et le portail patient y adosse la fermeture de ses jalons. Un
+  // correctif qui réécrirait la ligne entière rougit ici, et sur lui seul.
+  it('une re-confirmation ne réécrit NI `confirmedAt`, NI `targetAt`, NI `cycleId`', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    await confirmerT0();
+    expect(prisma.assessmentEpisode.updateMany).toHaveBeenCalledTimes(1);
+    for (const [appel] of prisma.assessmentEpisode.updateMany.mock.calls) {
+      expect(appel.data).not.toHaveProperty('confirmedAt');
+      expect(appel.data).not.toHaveProperty('targetAt');
+      expect(appel.data).not.toHaveProperty('cycleId');
+      expect(appel.data).not.toHaveProperty('versionScore');
+    }
+    // Et aucune création ne double la ligne.
+    expect(prisma.assessmentEpisode.create).not.toHaveBeenCalled();
+  });
+
+  it('l’épisode réécrit porte la date de l’ACTE, jamais celle du clic', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    await confirmerT0();
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    const paylo = appel.data.payload as { confirmedAt: string };
+    expect(paylo.confirmedAt).toBe('2026-08-12T09:00:00.000Z');
+  });
+
+  it('empreintes égales : AUCUNE écriture — c’est là, et là seulement, que l’idempotence est vraie', async () => {
+    // Premier passage : on capture la ligne RÉELLEMENT écrite. Il faut reprendre
+    // sa date en même temps que son empreinte — l'épisode porte `confirmedAt`,
+    // donc une date différente donnerait une empreinte différente, et le banc
+    // éprouverait alors la divergence au lieu de l'égalité.
+    await confirmerT0();
+    const ecrite = prisma.assessmentEpisode.create.mock.calls[0][0].data;
+
+    vi.clearAllMocks();
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.patient.findFirst.mockResolvedValue(patient);
+    prisma.assessmentEpisode.findMany.mockResolvedValue([]);
+    brancherPassations(responses);
+    prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
+    prisma.consultation.findFirst.mockResolvedValue({
+      anamnese: { motif_principal: 'Fatigue', objectif_prioritaire: 'Énergie', attentes: ['Comprendre'] },
+    });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(
+      ligneExistante({ payloadHash: ecrite.payloadHash, confirmedAt: ecrite.confirmedAt }),
+    );
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(200);
+    expect(prisma.assessmentEpisode.updateMany).not.toHaveBeenCalled();
+    expect(prisma.assessmentEpisode.create).not.toHaveBeenCalled();
+  });
+
+  it('perdre le compare-and-swap vaut 409, pas un écrasement', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 0 });
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(409);
+  });
+
+  it('une ligne née entre la lecture et l’écriture vaut 409, pas un écrasement', async () => {
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
+    prisma.assessmentEpisode.create.mockRejectedValue(new Error('P2002'));
+
+    const res = await confirmerT0();
+    expect(res.status).toBe(409);
+  });
+
   it('le POST persiste l’épisode confirmé — l’ancre ouvre son propre cycle (gate G2)', async () => {
     const res = await confirmerT0();
     expect(res.status).toBe(200);
-    expect(prisma.assessmentEpisode.upsert).toHaveBeenCalledTimes(1);
-    const args = prisma.assessmentEpisode.upsert.mock.calls[0][0];
-    expect(args.where).toEqual({ id: 'runtime-episode-PAT_TEST-T0' });
-    // Idempotence des points de persistance : une ligne posée ne se réécrit pas.
-    expect(args.update).toEqual({});
-    expect(args.create.milestone).toBe('T0');
-    expect(args.create.cycleId).toBe('runtime-episode-PAT_TEST-T0');
+    expect(prisma.assessmentEpisode.create).toHaveBeenCalledTimes(1);
+    const args = prisma.assessmentEpisode.create.mock.calls[0][0];
+    // `create` et NON `upsert` (`D-129`) : l'`upsert` ne sait pas dire « la
+    // ligne est née entre-temps », il écrirait par-dessus. La collision se
+    // traite en 409, pas en écrasement silencieux.
+    expect(args.data.id).toBe('runtime-episode-PAT_TEST-T0');
+    expect(args.data.milestone).toBe('T0');
+    expect(args.data.cycleId).toBe('runtime-episode-PAT_TEST-T0');
     // Le blob se recoupe : c'est ce qui rend le rejeu vérifiable.
-    expect(args.create.payloadHash).toBe(canonicalSha256(args.create.payload));
+    expect(args.data.payloadHash).toBe(canonicalSha256(args.data.payload));
   });
 
   it('refuse d’écrire une ancre déjà posée sous un autre épisode (N1.1, 3e point)', async () => {
@@ -864,13 +975,13 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     const payload = await res.json();
     expect(payload.reason).toBe('preconditions_non_remplies');
     expect(payload.error).toContain('sous un autre épisode');
-    expect(prisma.assessmentEpisode.upsert).not.toHaveBeenCalled();
+    expect(prisma.assessmentEpisode.create).not.toHaveBeenCalled();
   });
 
   it('le GET rejoue l’épisode persisté : même carte, mêmes identifiants, marqueur `rejoue`', async () => {
     const post = await confirmerT0();
     const postPayload = await post.json();
-    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    const create = prisma.assessmentEpisode.create.mock.calls[0][0].data;
     prisma.assessmentEpisode.findUnique.mockResolvedValue({
       payload: create.payload, payloadHash: create.payloadHash,
     });
@@ -886,7 +997,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     // est la carte d'origine, pas une réédition.
     expect(payload.decisionCard.inputHash).toBe(postPayload.decisionCard.inputHash);
     // Un GET ne réécrit rien.
-    expect(prisma.assessmentEpisode.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.assessmentEpisode.create).toHaveBeenCalledTimes(1);
   });
 
   it('un POST qui rend `ready` ne pose jamais le marqueur `rejoue`', async () => {
@@ -896,7 +1007,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
   it('ne rejoue pas un dossier dont le socle a bougé : la proposition reprend la main', async () => {
     await confirmerT0();
-    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    const create = prisma.assessmentEpisode.create.mock.calls[0][0].data;
     // La fenêtre persistée ne correspond plus à la proposition recalculée —
     // l'empreinte du blob, elle, reste valide : c'est bien le SOCLE qui rejette.
     const altere = {
@@ -912,7 +1023,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
   it('ne rejoue pas un payload qui ne se recoupe pas avec son empreinte (intégrité)', async () => {
     await confirmerT0();
-    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    const create = prisma.assessmentEpisode.create.mock.calls[0][0].data;
     prisma.assessmentEpisode.findUnique.mockResolvedValue({
       payload: { ...(create.payload as Record<string, unknown>), confirmedAt: '2027-01-01T00:00:00.000Z' },
       payloadHash: create.payloadHash,

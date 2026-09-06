@@ -10,7 +10,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn() },
+    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     arbitrageBiologique: { findMany: vi.fn() },
     // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
@@ -169,6 +169,10 @@ describe('POST /api/praticien/protocoles/versions', () => {
     // Contenu de la version active (GET) : nul par défaut, l'historique reste servi.
     prisma.protocolDraft.findUnique.mockResolvedValue(null);
     signerTablePriorites();
+    // Défaut honnête : aucune ligne d'épisode en base. `vi.clearAllMocks()` vide
+    // les appels mais GARDE les implémentations — sans ce reset, un banc qui
+    // pose une ligne divergente la laisse fuir sur tous les suivants.
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
   });
 
   afterEach(() => {

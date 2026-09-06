@@ -142,6 +142,29 @@ export function toEpisodeCreateInput(
   };
 }
 
+/**
+ * Mapping contrat → colonnes d'une RE-CONFIRMATION (`D-129`).
+ *
+ * Une re-confirmation remplace ce que l'épisode RETIENT, et rien d'autre. Les
+ * sept colonnes hors de portée, et le motif de chacune :
+ *  - `id`, `idPatient`, `milestone` : l'identité de la ligne ;
+ *  - `confirmedAt` : la DATE DE L'ACTE, dont la création est l'écrivain unique
+ *    — `runtimeFromPrisma` en fait la date de référence de tout jalon de mesure
+ *    du cycle, et le portail patient y adosse la fermeture de ses jalons ;
+ *  - `targetAt` : la géométrie de la fenêtre, posée avec l'acte ;
+ *  - `cycleId` : la seule dont l'écriture peut violer l'index unique partiel
+ *    `assessment_episodes_mesure_cycle_unique_idx` ;
+ *  - `versionScore` : figé à la mesure, sinon la garde A8-3 (« pas de
+ *    comparaison hors version identique ») devient indéclenchable.
+ */
+export function toEpisodeUpdateInput(episode: ConfirmedAssessmentEpisode) {
+  return {
+    payload: episode as unknown as object,
+    payloadHash: canonicalSha256(episode),
+    contractVersion: VERSION_OBJETS_CLINIQUES,
+  };
+}
+
 // Mapping contrat → colonnes `protocol_drafts`. L'`id` de ligne et le
 // `supersedesDraftId` sont fournis par l'appelant : la route LOT-02 passe
 // `id = protocolDraftId` sans supersedes (idempotence historique), la route de

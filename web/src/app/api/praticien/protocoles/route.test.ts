@@ -9,7 +9,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn() },
+    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn() },
     // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
     // serveur, qui ne réinjecte plus la valeur soumise.
@@ -131,10 +131,30 @@ describe('POST /api/praticien/protocoles', () => {
     prisma.consultation.findFirst.mockResolvedValue(ANAMNESE_C1_FIXTURE);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     signerTablePriorites();
+    // Défaut honnête : aucune ligne d'épisode en base. `vi.clearAllMocks()` vide
+    // les appels mais GARDE les implémentations — sans ce reset, un banc qui
+    // pose une ligne divergente la laisse fuir sur tous les suivants.
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
   });
 
   afterEach(() => {
     retablirTablePriorites();
+  });
+
+  // `D-129` — CETTE ROUTE N'EST PAS L'ÉCRIVAIN DE L'ACTE : elle reçoit
+  // l'épisode du navigateur. Son `upsert(..., update: {})` avalait donc une
+  // divergence en SILENCE, sous une réponse `ok: true` — un épisode périmé
+  // citait la ligne d'un autre contenu, et le praticien n'en savait rien.
+  //
+  // Ce banc rougit sur l'ancienne forme, qui rendait 200 sans rien écrire.
+  it('refuse un épisode divergent de la ligne enregistrée, au lieu de l’avaler (422)', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: 'empreinte-dune-autre-mesure',
+    });
+    const res = await POST(postRequest({ episode, decisionCard, draft }));
+    expect(res.status).toBe(422);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('refuse un praticien non authentifié (401)', async () => {

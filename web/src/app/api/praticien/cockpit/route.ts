@@ -33,7 +33,7 @@ import {
   type AncrePersistee,
 } from '@/lib/protocol/ancresPersistees';
 import { ancreRecevable, estAncreDeCycle } from '@/lib/protocol/cycles';
-import { resolveCycleId, toEpisodeCreateInput } from '@/lib/protocol/versioning';
+import { resolveCycleId, toEpisodeCreateInput, toEpisodeUpdateInput } from '@/lib/protocol/versioning';
 import type {
   ClinicalReview,
   ClinicalSnapshot,
@@ -58,6 +58,7 @@ type CockpitUnavailableReason =
   | 'proposal_stale'
   | 'preconditions_non_remplies'
   | 'motif_contournement_manquant'
+  | 'contournement_nouveau_sur_acte_ancien'
   | 'exception';
 
 export type CockpitRuntimeApiResponse =
@@ -536,6 +537,31 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
 
     const now = new Date().toISOString();
 
+    // LA LIGNE D'ABORD : un acte a une date, et cette date a UN écrivain.
+    //
+    // Ce POST était le seul point où un praticien pose l'acte, mais la
+    // persistance était un `upsert(..., update: {})` : re-confirmer un épisode
+    // déjà enregistré avec un contenu DIVERGENT n'écrivait RIEN, sous une
+    // réponse de succès. Le praticien lisait « confirmé » à l'écran pendant que
+    // la base gardait la mesure précédente — une confirmation clinique perdue
+    // en silence (`D-129`).
+    //
+    // On lit donc la ligne AVANT de construire quoi que ce soit. Elle sert
+    // trois fois : elle donne la date de l'acte, elle donne la justification de
+    // contournement déjà rendue, et son empreinte sert de jeton au
+    // compare-and-swap de l'écriture.
+    const ligneEnregistree = await prisma.assessmentEpisode.findUnique({
+      where: { id: current.proposal.assessmentEpisodeId },
+      select: { confirmedAt: true, payloadHash: true, payload: true },
+    });
+    // L'INSTANT DE L'ACTE, PAS CELUI DU CLIC. `confirmedAt` est à sens unique :
+    // `runtimeFromPrisma` en fait la date de référence de tout jalon de mesure
+    // du cycle, et le portail patient y adosse la fermeture de ses jalons. Le
+    // réécrire à chaque re-confirmation déplacerait le parcours du patient.
+    const instantActe = ligneEnregistree
+      ? ligneEnregistree.confirmedAt.toISOString()
+      : now;
+
     // PRÉCONDITIONS T0 ([[D-052]]), recalculées DEPUIS LA BASE et jamais lues
     // dans le corps de requête. Depuis `D-118` ce POST est un point de
     // persistance : le refus posé ici n'est plus un pré-refus d'ergonomie, il
@@ -569,7 +595,39 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           .filter(o => typeof o?.conditionId === 'string' && typeof o?.motif === 'string')
           .map(o => [o.conditionId as string, (o.motif as string).trim()]),
       );
+      // LA JUSTIFICATION DÉJÀ RENDUE SE REPREND, ELLE NE SE RECOMPARE PAS.
+      // Sur un acte déjà enregistré, l'arbitrage de contournement a été rendu à
+      // sa date : le reprendre VERBATIM est le même traitement que la date de
+      // l'acte elle-même. Le motif reçu du navigateur est alors ignoré, sans
+      // être comparé — le comparer bloquerait un praticien sur une virgule,
+      // d'autant que le panneau vide ses motifs à chaque remontage et ne lui
+      // remontre jamais celui d'origine.
+      const dejaRendus = new Map(
+        (ligneEnregistree
+          ? ((ligneEnregistree.payload as { preconditionOverrides?: PreconditionOverride[] })
+              .preconditionOverrides ?? [])
+          : []
+        ).map(o => [o.conditionId, o]),
+      );
       for (const conditionId of preconditions.contournementsRequis) {
+        const rendu = dejaRendus.get(conditionId);
+        if (rendu) {
+          preconditionOverrides.push(rendu);
+          continue;
+        }
+        // UN CONTOURNEMENT NOUVEAU SUR UN ACTE ANCIEN NE PEUT PAS ÊTRE DATÉ.
+        // `refusPreconditionsPersistance` exige `decideLe === confirmedAt` sur
+        // les deux routes protocole : le dater de l'acte antidaterait un
+        // arbitrage rendu aujourd'hui, le dater d'aujourd'hui rendrait le
+        // dossier non enregistrable. Il n'y a pas de troisième écriture
+        // honnête, donc on refuse — et on dit par où sortir.
+        if (ligneEnregistree) {
+          return unavailable(
+            'contournement_nouveau_sur_acte_ancien',
+            `L’épisode enregistré porte déjà ses justifications, à leur date. L’avertissement « ${conditionId} » est apparu depuis : il ne peut pas être justifié rétroactivement sur cet acte. Ouvrez un nouveau cycle pour le prendre en compte.`,
+            422,
+          );
+        }
         const motif = motifsRecus.get(conditionId);
         if (!motif) {
           return unavailable(
@@ -585,7 +643,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           conditionId,
           motif: motif.slice(0, 2000),
           decidePar: emailPraticien(session) ?? '',
-          decideLe: now,
+          decideLe: instantActe,
         });
       }
     }
@@ -593,7 +651,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     const episode = confirmAssessmentEpisode(
       current.proposal,
       includedResponseIds,
-      now,
+      instantActe,
       preconditionOverrides,
     );
     const idSuffix = `${payload.milestone}-${proposalHash.slice(0, 16)}`;
@@ -614,7 +672,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       reviewId: `runtime-review-${idSuffix}`,
       decisionCardId: `runtime-decision-${idSuffix}`,
       patientId: idPatient,
-      horodatage: now,
+      horodatage: instantActe,
       episode,
       patientContext: inputs.patientContext,
       responses: inputs.responses,
@@ -665,19 +723,52 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     //  - `refusChaineC1` : structurellement satisfait — cette route EST
     //    l'émetteur de la chaîne qu'il recalculerait.
     //
-    // `update: {}` : même idempotence que les deux autres points — une ligne
-    // déjà posée ne se réécrit pas, une re-confirmation ne duplique rien.
+    // L'ÉCRITURE DIT CE QU'ELLE FAIT (`D-129`). C'était un
+    // `upsert(..., update: {})` présenté comme de l'idempotence — « une ligne
+    // déjà posée ne se réécrit pas ». Il n'était pas idempotent, il était
+    // MUET : une re-confirmation au contenu divergent n'écrivait rien et
+    // repartait en succès. Trois branches explicites, une par cas réel.
     const refusAncre = refusAncreNonRecevable(episode, ancres);
     if (refusAncre) {
       return unavailable('preconditions_non_remplies', refusAncre, 422);
     }
-    await prisma.assessmentEpisode.upsert({
-      where: { id: episode.assessmentEpisodeId },
-      create: toEpisodeCreateInput(episode, {
-        cycleId: resolveCycleId({ episode, ancresCandidates: [...ancres] }),
-      }),
-      update: {},
-    });
+    const empreinte = canonicalSha256(episode);
+    if (!ligneEnregistree) {
+      // `create` et non `upsert` : l'`upsert` ne SAIT PAS dire « la ligne est
+      // née entre-temps ». Il écrirait par-dessus une ligne posée par une autre
+      // requête, avec un payload épinglé à notre horloge.
+      try {
+        await prisma.assessmentEpisode.create({
+          data: toEpisodeCreateInput(episode, {
+            cycleId: resolveCycleId({ episode, ancresCandidates: [...ancres] }),
+          }),
+        });
+      } catch {
+        return unavailable(
+          'proposal_stale',
+          'Cet épisode vient d’être confirmé ailleurs. Rechargez la proposition.',
+          409,
+        );
+      }
+    } else if (ligneEnregistree.payloadHash !== empreinte) {
+      // COMPARE-AND-SWAP sur l'empreinte lue plus haut : si une autre requête a
+      // réécrit la ligne entre notre lecture et ici, le prédicat ne matche plus
+      // et l'on refuse au lieu d'écraser. Même mécanique que la consommation du
+      // lien magique (`D-128`) : on compare à la valeur LUE.
+      const { count } = await prisma.assessmentEpisode.updateMany({
+        where: { id: episode.assessmentEpisodeId, payloadHash: ligneEnregistree.payloadHash },
+        data: toEpisodeUpdateInput(episode),
+      });
+      if (count !== 1) {
+        return unavailable(
+          'proposal_stale',
+          'Cet épisode vient d’être modifié ailleurs. Rechargez la proposition.',
+          409,
+        );
+      }
+    }
+    // Troisième branche, implicite : empreintes égales, AUCUNE écriture. C'est
+    // ici, et ici seulement, que l'idempotence annoncée est vraie.
 
     return await reponsePrete(idPatient, { snapshot, review, decisionCard, plainteDominante });
   } catch (error) {
