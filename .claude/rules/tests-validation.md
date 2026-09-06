@@ -11,6 +11,12 @@ paths:
 
 - Une suite Vitest verte ne prouve rien sur les parcours : Playwright est dans
   `test:worktree` seulement.
+- **Tout diagnostic de parcours étiquette ses constats** (`D-125`) : *observé sur
+  un parcours réel*, *démontré dans le code sans occurrence observée*, ou
+  *inconnu faute de preuve*. Un défaut démontré se corrige sans occurrence ; sa
+  fréquence ne s'invente pas. Et un état incomplet n'est un défaut que si un
+  geste était attendu à ce stade — sur une fixture, cette attente est
+  artificielle.
 - **T2 et T3 jouent tous deux les E2E contre le build de production** depuis le
   2026-08-11 : `--fast` ne saute plus le build. Sur `next dev`, les E2E étaient
   cinq fois plus lents et emportaient le test en cours à chaque recyclage

@@ -4,6 +4,112 @@
 
 ## Décisions actives
 
+### D-125 — Une fixture prouve un mécanisme, elle ne décrit pas un parcours
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06,
+  après l'audit du parcours du 2026-09-05, sa contre-revue adverse Codex, et la
+  convergence des deux contre-lectures sur ce point précis)
+- Domaine : méthode d'audit et de diagnostic des parcours ; rôle des données de
+  test. **Aucune règle clinique, aucun seuil** — la décision porte sur ce qu'on
+  a le droit de CONCLURE d'une source, jamais sur ce qui se calcule.
+- Porte sur : `D-075` (les dossiers de test sont réels et se lisent par
+  identifiant), `D-006` (données réelles dès la phase de test), `DC-01` et
+  `DC-24` (provenance ; une absence n'est ni un zéro ni un normal),
+  `CLAUDE.md` §Données patients, `.claude/rules/tests-validation.md`, l'audit du
+  parcours patient ↔ praticien du 2026-09-05
+
+**Ce que la décision tranche** — trois choses : le partage des rôles, le refus
+d'une suppression, l'étiquetage des constats.
+
+**1. Le partage des rôles.** Une **fixture** est un *contrôle* : déterministe,
+rejouable en CI, elle atteste qu'un mécanisme se comporte comme spécifié. Un
+**dossier réel** est une *observation* : lui seul dit quel mécanisme se
+déclenche effectivement, dans quel ordre, avec quels délais, et où quelqu'un
+décroche. Les deux sont nécessaires et **ne se remplacent pas**. L'audit du
+2026-09-05 a demandé au contrôle de faire le travail de l'observation : il a
+produit la carte des parcours **possibles** et l'a présentée comme un classement
+de priorités. C'est cette confusion que la décision ferme.
+
+**2. Les trois identités de fixture ne sont pas supprimées.** La suppression a
+été posée en question par le responsable, examinée, et **écartée comme
+destructrice** — quatre raisons, dont aucune n'est de forme :
+
+- `web/prisma/seed.ts` écrit des **réponses de questionnaire**
+  (`seedReponses.ts`) : le viser sur un dossier réel fabriquerait une donnée que
+  personne n'a produite, qui alimenterait ensuite scoring, orientation et
+  indications — `DC-01`, `DC-24`, et c'est déjà l'interdit de `CLAUDE.md` ;
+- **le CI n'a pas de base de production et ne doit pas en avoir** :
+  `test:worktree` provisionne un PostgreSQL éphémère, migre, seede, puis joue
+  Playwright contre le build. Sans fixtures, T2 et T3 n'ont plus rien à jouer ;
+- **un dossier réel bouge sous le banc** : une suite ancrée dessus devient
+  instable, et surtout elle couple son verdict au soin réel de quelqu'un ;
+- **certains défauts ne s'observent pas en attendant** — la perte d'écriture
+  trouvée par la contre-revue (`K1`, deux confirmations divergentes du même
+  épisode) exige une concurrence fabriquée ; on ne guette pas qu'elle arrive à
+  un patient.
+
+S'y ajoute la raison HDS : « développer à partir des patients réels » mettrait
+leurs données dans les environnements de dev, les logs et les captures. `D-075`
+les lit **sur place**, par identifiant, depuis un conteneur — il les lit, il ne
+les sort pas. Supprimer les fixtures pousserait le réel vers la boucle de dev,
+exactement à l'envers.
+
+**3. Tout diagnostic de parcours étiquette chacun de ses constats** — *observé
+sur un parcours réel*, *démontré dans le code sans occurrence observée*, ou
+*inconnu faute de preuve*. Deux corollaires, qui sont la moitié utile de la
+règle :
+
+- une perte d'écriture **démontrée** se corrige **sans** incident observé ; sa
+  fréquence, elle, ne s'invente pas ;
+- **un état incomplet n'est un défaut que si un geste était attendu à ce
+  stade.** Table vide, étape non franchie, objet sans client : sur un dossier
+  réel il reste à séparer le blocage, la pause voulue, et l'étape que le
+  praticien n'a pas encore engagée. Sur une fixture, cette attente est
+  entièrement artificielle.
+
+**Ce que la livraison devra porter** :
+
+- `CLAUDE.md` §Données patients porte la règle du partage des rôles ;
+  `.claude/rules/tests-validation.md` porte celle de l'étiquetage ;
+- la reprise de l'audit prend **chaque dossier réel comme unité d'analyse**,
+  avec une chronologie commune aux deux voix : ce que le praticien a proposé,
+  envoyé, validé ou modifié ; ce que le patient a reçu lorsque c'est vérifiable,
+  consulté, renseigné ou demandé ; ce qui est revenu au praticien et comment il
+  a pu y répondre ; puis l'écart avec l'attendu de ce dossier ;
+- **sortie toujours dé-identifiée** — formes, comptes, transitions, délais
+  relatifs ; jamais un nom, une adresse, ni un dossier reconstitué, y compris
+  dans un artefact ou une mémoire de session ;
+- la carte des parcours possibles est **conservée comme témoin** : l'écart entre
+  ce que le code permet et ce que les dossiers montrent est lui-même une
+  observation. Un chemin qui existe et que personne n'emprunte est un résultat ;
+- **sous-produit attendu et opposable** : la liste des trajectoires qui manquent
+  au seed. Les fixtures ne manquent pas en NOMBRE — trois identités suffisent —
+  elles manquent en VARIÉTÉ : chacune vit aujourd'hui un parcours linéaire et
+  idéal. Les enrichir est la réponse, pas les supprimer.
+
+**L'écart résiduel, nommé maintenant plutôt que découvert plus tard.** Trois
+points, et ils tiennent tant que rien ne les traite :
+
+1. le seed ne porte **aucune trajectoire** — pas le lien ouvert onze jours
+   après, pas le questionnaire à moitié rempli, pas le point d'étape hors
+   tolérance. Tant qu'il en est ainsi, une T2 verte prouve le mécanisme sur un
+   chemin parfait, et rien de plus ;
+2. la lecture de production est un **geste manuel** (one-off détaché, `D-087`
+   pour l'écriture, lecture seule ici) : l'observation n'est pas continue, c'est
+   un instantané daté, et il vieillit ;
+3. rien ici ne dit **combien** de dossiers réels portent la phase de test ni
+   quelle variété ils couvrent. Si le compte est faible, l'observation sera
+   pauvre — ce sera un résultat à énoncer, pas un échec de méthode à masquer.
+
+**Pourquoi maintenant.** L'audit du 2026-09-05 a produit 106 constats classés
+P0-P3, et ce classement était sur le point de commander des lots. La contre-revue
+adverse en a réfuté les deux inférences causales ; le responsable a nommé la
+cause plus profonde, que ni l'audit ni sa contre-revue n'avaient marquée — aucune
+de ces gravités n'est pesée par ce qui se passe réellement. Trancher avant la
+reprise ne coûte rien ; trancher après aurait voulu dire un second artefact à
+corriger.
+
 ### D-124 — Corriger une saisie de résultat : nouvelle ligne chaînée, unicité rendue partielle, valeur et unité seulement
 
 - Date : 2026-09-05

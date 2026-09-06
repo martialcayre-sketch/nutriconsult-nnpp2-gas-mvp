@@ -62,6 +62,13 @@ comportement sur un vrai dossier. Deux interdits demeurent, et ils ne sont pas d
 Ne jamais générer, dériver ou « compléter » des données patient réelles, même
 si elles apparaissent dans un fichier ouvert ou un log collé par erreur.
 
+**Une fixture prouve un mécanisme, elle ne décrit pas un parcours** (`D-125`).
+Les trois identités servent au CONTRÔLE — déterministe, rejouable en CI, seule
+forme admise en seed et en E2E. Ce qui se passe réellement — ordre, délais,
+décrochages, gestes non engagés — ne se lit que sur les dossiers réels, par
+identifiant, depuis un conteneur. Ne jamais conclure d'un parcours de fixture
+qu'un patient a été bloqué, oublié ou servi.
+
 ## Constitution clinique
 
 Invariant permanent : **aucune règle clinique sans provenance certifiée, aucun
