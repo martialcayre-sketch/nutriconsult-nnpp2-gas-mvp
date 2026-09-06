@@ -319,9 +319,16 @@ jobs:
             exit 0
           fi
           # `integration-link-manual-deploy` déploie une BRANCHE, pas un SHA.
-          # Ne le lancer que si la tête de `main` EST le commit approuvé —
-          # sinon il déploierait du code que personne n'a approuvé, ce qui est
-          # pire que ne rien faire.
+          # On ne peut donc déclencher que sur la TÊTE de `main`. Si elle a
+          # bougé depuis l'approbation, tout dépend de CE qui est arrivé :
+          # des migrations nouvelles, que personne n'a approuvées — refus
+          # entier ; ou aucune (push documentaire ou applicatif), auquel cas
+          # l'ensemble à écrire est IDENTIQUE à celui approuvé et la fenêtre
+          # D-102 (code de la tête servi contre une base en retard) ne fait
+          # que s'allonger à refuser. Constaté le 2026-09-06 (run
+          # 33966114073) : un push documentaire (b40e699) a fait échouer la
+          # release de 7d8e997 après 20 h d'attente d'approbation, sans
+          # qu'aucune migration non approuvée n'existe sur main.
           if ! git fetch --quiet origin main; then
             echo '❌ "git fetch origin main" a échoué : impossible de constater que la' >&2
             echo "   tête est bien le commit approuvé. Aucun déploiement déclenché." >&2
@@ -329,18 +336,34 @@ jobs:
           fi
           TETE=$(git rev-parse origin/main)
           if [ "$TETE" != "$GITHUB_SHA" ]; then
-            echo "❌ La tête de main ($TETE) n'est plus le commit approuvé" >&2
-            echo "   ($GITHUB_SHA) : déployer la branche déploierait du code non" >&2
-            echo "   approuvé. Relancer release-db en workflow_dispatch sur main," >&2
-            echo "   dont la tête sera alors le commit jugé. Aucune écriture." >&2
-            exit 1
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" "$TETE"; then
+              echo "❌ La tête de main ($TETE) a quitté la ligne du commit approuvé" >&2
+              echo "   ($GITHUB_SHA) — force-push ou historique réécrit : l'approbation" >&2
+              echo "   ne dit plus rien de ce que déploierait la branche. Aucune écriture." >&2
+              exit 1
+            fi
+            if ! git diff --quiet "$GITHUB_SHA" "$TETE" -- web/prisma/migrations/; then
+              echo "❌ La tête de main ($TETE) n'est plus le commit approuvé" >&2
+              echo "   ($GITHUB_SHA) ET apporte des migrations nouvelles : déployer la" >&2
+              echo "   branche déploierait du SQL que personne n'a approuvé." >&2
+              echo "   Rejeter ce run, puis relancer release-db en workflow_dispatch" >&2
+              echo "   sur main, dont la tête sera alors le commit jugé. Aucune écriture." >&2
+              exit 1
+            fi
+            echo "… la tête de main ($TETE) a dépassé le commit approuvé sans"
+            echo "  toucher aux migrations : l'ensemble à écrire est celui approuvé."
           fi
-          echo "→ Déclenchement du déploiement de main ($GITHUB_SHA)…"
+          echo "→ Déploiement de la tête de main ($TETE ; approuvé : $GITHUB_SHA)…"
           if ! scalingo --app "$SCALINGO_APP" --region "$SCALINGO_REGION" \
             integration-link-manual-deploy main; then
             echo "❌ Le déclenchement du déploiement a échoué — lien d'intégration" >&2
             echo "   absent, jeton insuffisant, ou API indisponible. Aucune écriture." >&2
             exit 1
+          fi
+          if [ "$TETE" != "$GITHUB_SHA" ]; then
+            echo "→ La release attend désormais la tête déployée ($TETE), pas le"
+            echo "  commit approuvé : le one-off tourne dans l'image du DERNIER build."
+            GITHUB_SHA="$TETE"
           fi
 
       # L'approbation autorise le COMMIT APPROUVÉ ; le one-off tourne dans
@@ -360,6 +383,12 @@ jobs:
       # part) ; (c) il n'est simplement pas encore déployé, et le build n'a pas
       # abouti en 20 minutes. Le cas (b) a coûté vingt minutes d'attente le
       # 2026-08-23 avant un refus qui était certain dès la première seconde.
+      #
+      # Depuis le 2026-09-06, cette boucle peut juger la TÊTE de main plutôt
+      # que le commit approuvé : quand la tête n'a fait que dépasser un commit
+      # approuvé sans toucher aux migrations, l'étape de déclenchement déploie
+      # la tête et repointe GITHUB_SHA sur elle — un refus (b) peut alors
+      # suivre une écriture, qu'il faut vérifier à la main comme un run muet.
       - name: "Garde — le commit approuvé est le dernier déployé"
         run: |
           for i in $(seq 1 40); do

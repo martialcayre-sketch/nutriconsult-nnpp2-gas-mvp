@@ -237,3 +237,37 @@ danger, mais autant le savoir avant de chercher. Le modèle « deux clés qui
 bougent ensemble » : le jeton (épinglé + secret) et l'hôte (input). Une
 divergence échoue fermé (le garde `--version`/`--sha256` de `importNabm.ts`
 rejette), jamais un import silencieux d'un mauvais contenu.
+
+### release-db.yml — la garde d'approbation juge les migrations, pas l'identité de la tête (2026-09-06)
+
+Depuis D-102, l'étape de déclenchement refusait de déployer dès que la tête
+de `main` n'était **plus** le commit approuvé : `integration-link-manual-deploy`
+déploie une branche, et déployer une tête différente pouvait embarquer du code
+non approuvé. Le 2026-09-06, le run push 33966114073 (migration 7d8e997, D-124)
+a attendu son approbation près de 20 h — pendant lesquelles un push
+**documentaire** (b40e699) est arrivé sur `main`. À l'approbation, la garde a
+refusé : « la tête n'est plus le commit approuvé ». Or `main` ne contenait
+**aucune migration non approuvée** ; l'échec a coûté un dispatch manuel de
+réparation (34021695865, vert) et laissé le run d'origine en échec — alors que
+tout ce qu'il fallait écrire était exactement ce qui avait été approuvé.
+
+La garde juge désormais le **contenu** et non l'identité. Quand la tête diffère
+du commit approuvé, deux refus demeurent, entiers : la tête a quitté la ligne du
+commit approuvé (`merge-base --is-ancestor` faux — force-push ou historique
+réécrit : l'approbation ne dit plus rien de ce que déploierait la branche), ou
+le diff `web/prisma/migrations/` entre les deux n'est pas vide (des migrations
+nouvelles, que personne n'a approuvées). Sinon — la tête contient le commit
+approuvé et n'apporte aucune migration — l'ensemble à écrire est identique à
+l'approuvé, l'empreinte du one-off est inchangée, et refuser ne ferait
+qu'allonger la fenêtre D-102 (code de la tête servi contre une base en retard).
+
+Le prix, assumé : une tête acceptée repointe `GITHUB_SHA` sur elle, pour que la
+garde « dernier déployé » attende le build qui partira réellement — sans ce
+repointage, elle aurait attendu 20 minutes un déploiement du commit approuvé
+condamné par coalescence. Et le cas (b) de cette garde peut désormais suivre
+une écriture (la tête déployée contient le code du push intermédiaire, jamais
+approuvé — même régime que les coalescences ordinaires de D-102, mais à dire) :
+le commentaire de l'étape le nomme, et le message d'échec demande une
+vérification à la main. Ce qui ne bouge pas : le déclenchement reste **dans**
+le job protégé (D-087), et aucun push porteur d'une migration ne passe sans sa
+propre approbation.
