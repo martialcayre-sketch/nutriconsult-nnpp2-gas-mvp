@@ -27,11 +27,19 @@ export type EtatSelectionPriorite = 'idle' | 'saving' | 'error';
 
 export function SelectionPrioritePanel({
   decisionCard,
+  selectionEcartee = false,
   etat,
   erreur,
   onRetenir,
 }: {
   decisionCard: DecisionCard | null;
+  /**
+   * Une sélection consignée a été écartée du calcul parce qu'elle ne tient plus
+   * ([[D-127]] §11). NON DÉDUCTIBLE ICI : la carte servie est celle construite
+   * sans elle, identique en tout point à celle d'un dossier où personne n'a
+   * jamais choisi. Le serveur est le seul à savoir qu'un acte existait.
+   */
+  selectionEcartee?: boolean;
   etat: EtatSelectionPriorite;
   erreur: string | null;
   onRetenir: (candidateId: string, motif: string) => void;
@@ -47,14 +55,25 @@ export function SelectionPrioritePanel({
   // proposerait un choix que `buildDecisionCard` refuserait. Aucun candidat : la
   // table des règles n'est pas signée, il n'y a rien à retenir et la carte le
   // dit déjà (« Aucune priorité proposée »).
+  //
+  // ILS PORTENT SUR LE GESTE, JAMAIS SUR LE CONSTAT ([[D-127]] §11). « Il n'y a
+  // rien à retenir » et « ce que vous aviez retenu n'est plus servi » sont deux
+  // énoncés différents, et le second n'a de propriétaire NULLE PART ailleurs à
+  // l'écran : la carte servie est celle construite sans la sélection, donc
+  // indiscernable de celle d'un dossier où personne n'a jamais choisi. Une
+  // décision bloquée est d'ailleurs le cas où la péremption est la PLUS
+  // probable — `DC-12` retire les candidats — et la taire là serait taire
+  // l'essentiel.
   if (!decisionCard) return null;
-  if (isDecisionBloquee(decisionCard)) return null;
-  if (decisionCard.priorityCandidates.length === 0) return null;
+
+  const gesteDisponible =
+    !isDecisionBloquee(decisionCard) && decisionCard.priorityCandidates.length > 0;
+  if (!gesteDisponible && !selectionEcartee) return null;
 
   const candidatRetenu = dejaRetenu
     ? decisionCard.priorityCandidates.find(c => c.candidateId === dejaRetenu.candidateId) ?? null
     : null;
-  const formulaireVisible = ouvert || dejaRetenu === null;
+  const formulaireVisible = gesteDisponible && (ouvert || dejaRetenu === null);
   const motifRenseigne = motif.trim() !== '';
   const enregistrement = etat === 'saving';
 
@@ -67,7 +86,30 @@ export function SelectionPrioritePanel({
         Priorité retenue
       </h3>
       <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
-        {dejaRetenu !== null ? (
+        {/* LA PHRASE DE PÉREMPTION — la dette que `D-127` avait nommée sans la
+            traiter. Sans elle, le praticien retrouvait « aucune priorité
+            retenue » sur un dossier où il en avait retenu une, et rien à
+            l'écran ne distinguait ce cas de l'oubli.
+
+            ELLE NE NOMME PAS LE CANDIDAT ÉCARTÉ : il n'est plus classé — c'est
+            la raison même de l'écart — et son libellé n'existe donc plus dans
+            la carte. Le fabriquer serait citer une règle qui ne se déclenche
+            pas.
+
+            ELLE DIT QUE RIEN N'EST EFFACÉ, parce que c'est vrai et parce que
+            c'est la question suivante : le fil est append-only, la ligne reste
+            en base, et la relecture d'un dossier en rendra compte. */}
+        {selectionEcartee && (
+          <p
+            role="status"
+            className="mb-3 rounded-lg border border-status-warning/40 bg-status-warning/10 p-3 text-sm text-status-warning"
+          >
+            Une priorité avait été retenue sur ce dossier : elle n’est plus applicable et a été
+            écartée du calcul. Elle reste consignée — rien n’a été effacé — mais le dossier a
+            changé depuis ce choix.
+          </p>
+        )}
+        {gesteDisponible && (dejaRetenu !== null ? (
           <div>
             <p className="text-base font-semibold text-foreground">
               {candidatRetenu?.label ?? 'Priorité retenue'}
@@ -94,7 +136,7 @@ export function SelectionPrioritePanel({
           <p className="text-base text-foreground">
             Aucune priorité n’est retenue pour l’instant : le protocole 21 jours attend ce choix.
           </p>
-        )}
+        ))}
 
         {formulaireVisible && (
           <form

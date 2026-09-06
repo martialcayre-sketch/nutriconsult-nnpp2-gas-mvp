@@ -156,6 +156,27 @@ export type CockpitRuntimeApiResponse =
        * l'écran sur un `T0` rejoué masquerait un `J21` devenu dû.
        */
       rejoue?: true;
+      /**
+       * `true` quand une sélection praticien CONSIGNÉE a été écartée du calcul
+       * parce qu'elle ne tient plus sur ce dossier ([[D-127]] §8, §11).
+       *
+       * IL EXISTE PARCE QUE L'ÉCRAN NE PEUT PAS LE DÉDUIRE. La carte servie est
+       * celle construite SANS la sélection : elle est en tout point identique à
+       * celle d'un dossier où personne n'a jamais choisi. Sans ce champ, un acte
+       * praticien cesse d'être servi en silence — le défaut que `D-127` avait
+       * nommé sans le traiter.
+       *
+       * IL NE DIT PAS LEQUEL, ET C'EST DÉLIBÉRÉ : le candidat écarté n'est plus
+       * classé (c'est la raison même de l'écart), son libellé n'existe donc plus
+       * dans la carte. Le nommer demanderait de servir une étiquette que le
+       * moteur ne produit plus — inventer un fragment d'affichage sur une règle
+       * qui ne se déclenche pas.
+       *
+       * IL VOYAGE À CÔTÉ DE LA CARTE, PAS DEDANS : même motif que `rejoue` et
+       * `perimetreSigne` — la carte est hachée et persistée, y ajouter un champ
+       * déplacerait toutes les empreintes déjà émises.
+       */
+      selectionEcartee?: true;
     }
   | {
       status: 'unavailable';
@@ -333,7 +354,7 @@ async function reponsePrete(
     decisionCard: DecisionCard;
     plainteDominante: PlainteDominante | null;
   },
-  options?: { rejoue: true },
+  options?: { rejoue?: true; selectionEcartee?: boolean },
 ): Promise<NextResponse<CockpitRuntimeApiResponse>> {
   let claimsCites: Awaited<ReturnType<typeof claimsCitesParLaPropositionBilan>> = [];
   if (conflitsSourcesActifs()) {
@@ -357,6 +378,7 @@ async function reponsePrete(
     perimetreSigne: tablePrioritesSignee() ? PRIORITY_RULES_METADATA.shaPerimetre : null,
     canalPlainte: CANAL_PLAINTE,
     ...(options?.rejoue ? { rejoue: true as const } : {}),
+    ...(options?.selectionEcartee ? { selectionEcartee: true as const } : {}),
   });
 }
 
@@ -441,12 +463,14 @@ export async function GET(req: Request): Promise<NextResponse<CockpitRuntimeApiR
             effetsIndesirables: await lireEffetsIndesirables(idPatient),
           }, await lireSelectionPriorite(idPatient, decisionCardIdRejeu));
           if (selectionEcartee) {
-            // Un acte praticien n'est plus servi : le dire au journal en
-            // attendant de le dire à l'écran ([[D-127]], dettes). Jamais le
-            // motif ni le candidat — la ligne nomme un dossier, pas un choix.
+            // Un acte praticien n'est plus servi. Il se dit DÉSORMAIS À L'ÉCRAN
+            // ([[D-127]] §11, par le champ `selectionEcartee` de la réponse) ; la
+            // ligne de journal reste, parce qu'elle date l'événement côté serveur
+            // là où l'écran ne montre qu'un état courant. Jamais le motif ni le
+            // candidat — la ligne nomme un dossier, pas un choix.
             console.warn('[cockpit GET] sélection de priorité écartée : elle ne tient plus sur ce dossier');
           }
-          return await reponsePrete(idPatient, chaine, { rejoue: true });
+          return await reponsePrete(idPatient, chaine, { rejoue: true, selectionEcartee });
         } catch (erreurRejeu) {
           // Le dossier ne porte plus ce que l'épisode cite (passation retirée,
           // contexte incohérent) : le rejeu ne force rien, la proposition
@@ -676,7 +700,10 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     // sélection déjà posée sur cette carte se relit ici : confirmer à nouveau le
     // même épisode ne l'efface donc pas. Lecture ET repli sont ceux du
     // vérificateur ([[D-101]]) — sinon 409 sur une carte que ce POST émet.
-    const { chaine: { snapshot, review, decisionCard, plainteDominante } } = construireChaineC1Tolerante({
+    const {
+      chaine: { snapshot, review, decisionCard, plainteDominante },
+      selectionEcartee,
+    } = construireChaineC1Tolerante({
       snapshotId: `runtime-snapshot-${idSuffix}`,
       reviewId: `runtime-review-${idSuffix}`,
       decisionCardId: `runtime-decision-${idSuffix}`,
@@ -786,7 +813,15 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     // Troisième branche, implicite : empreintes égales, AUCUNE écriture. C'est
     // ici, et ici seulement, que l'idempotence annoncée est vraie.
 
-    return await reponsePrete(idPatient, { snapshot, review, decisionCard, plainteDominante });
+    // `selectionEcartee` remonte ICI AUSSI, et pas seulement au rejeu : une
+    // re-confirmation du même épisode passe par ce POST, et servir « prêt » sans
+    // le constat ferait disparaître la phrase de péremption au premier
+    // re-clic — l'écran redeviendrait muet sur un acte qui n'est plus servi.
+    return await reponsePrete(
+      idPatient,
+      { snapshot, review, decisionCard, plainteDominante },
+      { selectionEcartee },
+    );
   } catch (error) {
     if (error instanceof TypeError) {
       return unavailable('invalid_payload', error.message, 400);
