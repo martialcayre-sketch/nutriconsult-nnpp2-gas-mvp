@@ -107,7 +107,7 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
     expect(liens.data.expireLe.getTime()).toBe(patch.data.sessionsInvalidesAvant.getTime());
   });
 
-  // LE BANC DÉCISIF DE `D-127`, et il garde ce que la révocation s'INTERDIT.
+  // LE BANC DÉCISIF DE `D-128`, et il garde ce que la révocation s'INTERDIT.
   // Elle datait `consommeLe` sur un lien que personne n'avait ouvert : l'encart
   // des dossiers neufs devait ensuite écarter ces tampons par une égalité
   // stricte, ruse qui ne tenait qu'UNE révocation. Un correctif qui refermerait
