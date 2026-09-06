@@ -4,6 +4,184 @@
 
 ## Décisions actives
 
+### D-127 — La sélection d'une priorité est un acte praticien : elle se pose au serveur, s'écrit une fois pour toutes, et ne se rattrape pas
+
+- Date : 2026-09-06
+- Statut : accepté (arbitrage du responsable du 2026-09-06 — « réparer la chaîne
+  d'abord », puis « crée la table » —, rendu après que le LOT-03 de la campagne
+  « Biologie exploitée » a buté sur ce blocage en essayant de jouer son
+  troisième parcours). Les trois questions posées en session sont tranchées
+  ci-dessous **sur pièces**, code et production relus avant rédaction.
+- Domaine : clinique (chaîne C1, carte de décision), persistance, cockpit
+  praticien. **Aucun seuil, aucune règle clinique nouvelle** : la décision porte
+  sur QUI pose la sélection, ce qu'elle consigne, et ce qu'elle n'a pas le droit
+  de rattraper.
+- Porte sur : `D-054` (arbitrage 5 — recalcul serveur ; « le seul champ que le
+  serveur ne peut pas dériver »), `D-058` (amendement du 2026-08-14 : la
+  sélection praticien « n'a aucun producteur » — dette nommée, jamais tranchée),
+  `D-087` (le déploiement du code précède la migration), `D-101` (une seule
+  lecture partagée cockpit/vérificateur), `D-118` (un acte posé ne redevient pas
+  invisible), `D-124` (patron de chaîne et unicité partielle), `D-125`
+  (étiquetage des constats), `DC-01`, `DC-24`.
+
+**Ce qui a été relu avant d'écrire** — sept faits, aucun supposé.
+
+1. `DecisionPrioritySelection` porte **quatre champs** : `candidateId`,
+   `selectedAt`, `selectedBy: 'practitioner'`, `rationale`
+   (`clinical-engine/types.ts:319`). Les quatre entrent dans
+   `decisionCard.inputHash` — seul `decisionCardId` en est exclu.
+2. `candidateId` vaut `priority:${regle.id}` (`chaineC1.ts:490`) : il est dérivé
+   de la **règle clinique**, pas de l'instance de carte. Il survit donc à un
+   recalcul de carte tant que la règle se déclenche encore.
+3. **La table des priorités EST signée** — `validationExterne: true`,
+   `dateValidation: '2026-08-28T00:00:00.000Z'`, `shaPerimetre` concordant, et le
+   banc l'assertionne (`priorityRulesV1.test.ts:76`). Des candidats sont donc
+   réellement produits en production : la chaîne n'est pas coupée en amont de la
+   sélection, elle est coupée **à** la sélection.
+4. `canonical.ts` importe `node:crypto`. **L'empreinte d'une carte n'est pas
+   calculable par le navigateur.**
+5. Le vérificateur réinjecte `decisionCard.selectedMainPriority` tel quel puis le
+   **re-valide** par `buildDecisionCard` (`verifierChaineC1.ts:157`) : « une
+   sélection forgée sur un candidat que le serveur ne produit pas jette ici
+   même ». Le fail-closed existe déjà.
+6. Le rejeu du cockpit **avale** cette exception : `construireChaineC1` jette,
+   le `catch` journalise et sert la proposition (`cockpit/route.ts:429` et son
+   commentaire). Une sélection devenue inapplicable ferait donc **disparaître un
+   épisode confirmé de l'écran** — exactement ce que `D-118` a fermé.
+7. **Lecture de production du 2026-09-06** (one-off détaché, `D-087`) :
+   `protocol_drafts` = **1 ligne**, `assessment_episodes` = **4** (toutes `T0`,
+   `objets-cliniques-v2`, sur quatre dossiers distincts, la dernière confirmée
+   le 2026-09-04), `protocol_checkins` = 0, `protocol_diffusion_approvals` = 0,
+   `arbitrages_biologiques` = 0. L'unique ligne de `protocol_drafts` **n'est pas
+   une version de protocole** : `contract_version = 'ja-food-observation-v1'`,
+   `assessment_episode_id` nul, `reviewed_at` nul — c'est le journal alimentaire,
+   que tous les lecteurs C1 écartent déjà par
+   `contractVersion: { not: 'ja-food-observation-v1' }`.
+
+**Constat, étiqueté selon `D-125`** : *observé sur un parcours réel* — **aucune
+version de protocole C1 n'a jamais été enregistrée en production**, et quatre
+dossiers réels se tiennent aujourd'hui exactement au bord de la coupure.
+
+**Sept arbitrages.**
+
+**1. Le geste est SERVEUR, et il ne pouvait pas être ailleurs.** La sélection
+entre dans l'empreinte de la carte (fait 1) et le navigateur ne sait pas calculer
+cette empreinte (fait 4) : un écran qui poserait la sélection dans la carte qu'il
+détient produirait une carte que `refusChaineC1` rejetterait en 409. Ce que
+`D-054` arbitrage 5 décrit — la carte vient du client, la sélection est
+réinjectée — n'est donc **pas une porte ouverte** : le client ne peut qu'y
+renvoyer une sélection que le serveur avait déjà mise dans la carte. Le geste
+praticien s'écrit au serveur, qui reconstruit ensuite la carte ; l'écran
+transmet un choix, il ne signe rien.
+
+**1 bis. Conséquence : la sélection cesse d'être le champ que le serveur ne
+dérive pas.** Une fois consignée, elle se relit en base — par une fonction
+PARTAGÉE entre le cockpit et `verifierChaineC1`, patron
+`lireEffetsIndesirables` (`D-101`) : deux lectures divergentes rendraient 409 sur
+une carte honnête. Le vérificateur cesse alors de réinjecter la valeur SOUMISE,
+et la comparaison canonique de contenu qu'il fait déjà transforme toute sélection
+forgée en refus. `D-054` arbitrage 5 n'est pas contredit — il est **complété** :
+le dernier champ que le client fournissait rejoint ceux que le serveur établit.
+
+**2. Ce qui est consigné : les quatre champs du contrat, ancrés sur
+`decisionCardId`, PLUS l'empreinte `decisionCardInputHash` du moment.**
+L'empreinte **ne barre rien** — le recalcul barre déjà (fait 5), et gater dessus
+refuserait des sélections encore parfaitement valides, le dossier ayant bougé sur
+un axe sans rapport. Elle est consignée pour que le **désaccord se dise** :
+faute d'elle, une sélection devenue inapplicable fait jeter le rejeu, que le
+`catch` traduit en « proposition servie » — le praticien verrait son épisode
+confirmé redevenir un formulaire à confirmer (fait 6). Avec elle, la sélection
+périmée est écartée **en le nommant**, et l'épisode reste ce qu'il est. C'est
+`DC-24` appliqué à un acte, et non à une mesure.
+
+**3. Le régime est append-only chaîné (`supersedes_selection_id`) — et ce n'est
+pas une préférence de style.** `selectedAt` entre dans l'empreinte de la carte,
+et chaque version enregistrée ancre sa provenance sur
+`protocol_drafts.decision_card_input_hash`. Une sélection **mise à jour en
+place** ferait donc pointer l'ancre d'une version déjà enregistrée vers une carte
+que la base ne sait plus reconstruire : `refusChaineC1` refuserait une version
+que le praticien avait légitimement écrite. L'append-only est ce qui garde
+**chaque version passée re-vérifiable**. S'y ajoute que `rationale` est un motif
+écrit par le praticien : l'écraser effacerait la raison pour laquelle un
+protocole a été construit. Le patron est celui de la maison — **treize** chaînes
+`supersedes_*` au schéma avant celle-ci, aucun contre-exemple sur un acte
+clinique.
+
+**3 bis. Le fil d'une carte est STRICTEMENT LINÉAIRE, et c'est un resserrement
+assumé.** Deux gardes : unicité **partielle** de la racine — une seule sélection
+non chaînée par `(patient, carte)`, patron `D-124` — et unicité du **successeur**,
+qui interdit qu'une même ligne soit supplantée deux fois. Les autres chaînes du
+dépôt tolèrent la fourche et la tranchent à la lecture (`filCorrection`,
+`resolveActiveVersion`). Ici la lecture n'a aucune règle de départage à appliquer,
+et il vaut mieux qu'elle n'en ait jamais besoin : deux sélections concurrentes de
+la même carte, ce sont deux praticiens qui croient chacun avoir décidé — la base
+refuse plutôt que d'élire. L'écart au patron est nommé ici, pas subi.
+
+**4. Aucune rétro-sélection.** Il n'y a rien à reprendre (fait 7) : zéro version
+C1, donc zéro reprise, zéro backfill. Et surtout, poser aujourd'hui une priorité
+sur les quatre dossiers qui ont confirmé leur `T0` serait **fabriquer un acte que
+personne n'a posé** — `DC-01`, et le même interdit que celui qui protège les
+dossiers réels d'un seed. Le geste s'ouvre pour l'avenir ; ces quatre dossiers le
+trouveront à la prochaine ouverture de leur cockpit, et c'est tout ce qui leur
+est dû.
+
+**5. Ce que la réparation N'OUVRE PAS, nommé ici pour ne pas être lu de
+travers.** Elle rend l'aval **atteignable**, pas **servi** : version relue,
+approbation de diffusion, vue patient du protocole, points d'étape J7/J14/J21,
+jalon J21 du Fil. Chacun garde sa propre porte, et aucune ne s'ouvre parce que
+celle-ci s'ouvre. De même — et la contre-revue Codex du 2026-09-05 l'avait déjà
+établi — cela ne touche **en rien** les tables de la campagne ALLIANCE : les deux
+chaînes sont indépendantes.
+
+**6. Le voisin de table est nommé une fois pour toutes.** `protocol_drafts`
+héberge deux locataires : les versions C1 et le journal alimentaire
+(`ja-food-observation-v1`). Tout dénombrement de cette table qui omet le filtre
+que les routes appliquent déjà **dira faux** sur l'état du protocole — la lecture
+du 2026-09-06 aurait conclu « une version existe » sans le fait 7.
+
+**7. Le schéma part avant le code qui l'exploite — à UNE exception, et elle est
+imposée par une garde du dépôt.** `D-087` fait déployer le code AVANT d'appliquer
+la migration : du code qui interrogerait une table encore absente ferait échouer
+la construction de la carte, c'est-à-dire le cockpit entier — motif déjà écrit en
+tête d'`effetsIndesirablesPrisma.ts`. La lecture partagée, la route d'écriture et
+le geste d'écran suivent donc dans une seconde PR, après application constatée.
+
+L'exception est **l'effacement IDP2**. La rédaction initiale de cette décision le
+renvoyait à la seconde PR ; c'était faux, et le dépôt l'a dit. Le banc de
+complétude d'`effacement.test.ts` **dérive du schéma** : toute table portant
+`@map("id_patient")` doit être effacée, sinon il rougit. Repousser le branchement
+exigerait donc d'exempter la table — c'est-à-dire de désarmer précisément la
+garde qui existe pour qu'une campagne future n'oublie pas de la vider. Le
+branchement part **dans cette PR**, comme `resultats_biologiques` l'a fait pour
+la même raison. Fenêtre assumée et bornée : entre le déploiement et l'approbation
+`release-db`, une demande d'effacement échouerait sur une table absente — c'est
+le compromis que le précédent a déjà tranché, et il se referme à l'application.
+
+**Ce qui est refusé, et pourquoi le nommer importe.**
+
+- **Le repli du constructeur sur `proposedMainPriorityId`.** Une note de travail
+  antérieure le présentait comme « le correctif minimal », par symétrie avec le
+  repli qui existe déjà pour la re-passation ciblée
+  (`ClinicalRuntimeSection.tsx:944-951`). Il est **refusé** : ce repli ferait
+  passer la **proposition du moteur** pour la **sélection du praticien**.
+  `selectedBy: 'practitioner'` deviendrait faux, et `buildDecisionCard` refuse
+  précisément toute autre valeur pour que ce champ ne puisse pas être forgé.
+  Les deux replis ne sont pas symétriques : l'un vise QUOI re-passer, l'autre
+  signerait QUI a décidé. La différence est toute la décision clinique.
+- **Forcer `VITEST` dans le runner E2E** pour déverrouiller `chaineC1Fixture`.
+  Ce garde existe pour qu'une table clinique ne se signe pas par appel de
+  fonction ; on ne le crochète pas pour arranger un banc.
+
+**Dettes ouvertes à la rédaction de cette décision.**
+
+- La **seconde PR** : lecture partagée, route d'écriture, réinjection dans les
+  deux sites de construction du cockpit et dans le vérificateur, branchement
+  IDP2 — après application de la migration.
+- Le **placement du geste dans le cockpit** — où le praticien lit les candidats
+  et motive son choix — reste à poser, et il portera sa propre revue d'écran.
+- Le **parcours 3 du LOT-03** (arbitrage → révision) reprend après cette
+  réparation : son spec est écrit, complet, et n'attend que la chaîne.
+
 ### D-126 — Désactiver un dossier ferme les liens en vol, par l'horizon et non par l'événement
 
 - Date : 2026-09-06

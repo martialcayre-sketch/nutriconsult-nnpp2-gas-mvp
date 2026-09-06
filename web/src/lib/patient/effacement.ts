@@ -84,6 +84,13 @@ export async function effacerDossier(idPatient: string): Promise<ResultatEffacem
     ).count;
     supprimees.protocolDrafts = (await tx.protocolDraft.deleteMany({ where: par })).count;
     supprimees.assessmentEpisodes = (await tx.assessmentEpisode.deleteMany({ where: par })).count;
+    // Sélections praticien de priorité ([[D-127]]) : la seule clé étrangère va
+    // vers `patients`, l'ordre est donc libre — la ligne est ici pour que la
+    // chaîne C1 se lise d'un bloc. « Ce praticien a retenu cette priorité pour
+    // ce patient, et voici pourquoi » part avec le dossier.
+    supprimees.decisionPrioritySelections = (
+      await tx.decisionPrioritySelection.deleteMany({ where: par })
+    ).count;
 
     // 3. Enfants directs.
     supprimees.synthesesIA = (await tx.syntheseIA.deleteMany({ where: par })).count;

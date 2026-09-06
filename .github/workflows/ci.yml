@@ -697,6 +697,23 @@ jobs:
         working-directory: web
         run: npx prisma db execute --file prisma/checks/cb_resultats_biologiques_v1_negatif.sql
 
+      # Sélection praticien d'une priorité (D-127) : une sélection valide est
+      # ACCEPTÉE et une correction CHAÎNÉE aussi ; deux RACINES sur la même
+      # carte sont refusées, et deux SUCCESSEURS de la même ligne également —
+      # le fil d'une carte est strictement linéaire, la fourche n'est pas
+      # représentable (deux sélections concurrentes, ce seraient deux
+      # praticiens croyant chacun avoir décidé). Les CHECK doivent MORDRE
+      # (motif vide/blanc/trop long, candidat vide, auteur vide ou trop long,
+      # empreinte de carte hors SHA-256 canonique, ligne qui se supplante
+      # elle-même) ; dix colonnes exactes en liste blanche ; six colonnes
+      # porteuses NOT NULL ; FK patients en ON DELETE RESTRICT ; RLS deny-all
+      # active et sans policy ; et la FORME des deux index, qu'un `@@unique`
+      # redéclaré au schéma rendrait totaux sans faire rougir la dérive.
+      - name: C1 selection priorite negative tests
+        if: steps.scope.outputs.docs_only != 'true'
+        working-directory: web
+        run: npx prisma db execute --file prisma/checks/c1_selection_priorite_v1_negatif.sql
+
       # Dossier à deux voix (Alliance 6.0-A LOT-01) : une écriture valide par
       # table doit être ACCEPTÉE ; les CHECK doivent MORDRE (praticien
       # vide/espaces/trop long, textes porteurs vides, `sens` hors taxonomie) ;
