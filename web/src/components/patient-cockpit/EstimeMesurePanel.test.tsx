@@ -381,6 +381,37 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     expect(screen.getByLabelText(/à confirmer au catalogue/)).toBeTruthy();
   });
 
+  it('`uniteCatalogue` à NULL est une unité connue et VIDE, pas une ignorance', async () => {
+    // Le banc qui protège la distinction `null` / `undefined`. Un `??` à la
+    // place des `!== undefined` se lirait exactement pareil et ferait retomber
+    // l'unité vide sur la liste du catalogue : la divergence serait tue, alors
+    // que passer de « µg/L » à AUCUNE unité est une divergence bien réelle.
+    monterAvec([{ ...ORIGINE, unite: 'µg/L', uniteCatalogue: null }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
+    expect(screen.getByText(/aucune unité/)).toBeTruthy();
+    expect(screen.queryByText(/Unité non vérifiable pour l’instant/)).toBeNull();
+  });
+
+  it('… et face à une mesure SANS unité, ce même `null` ne signale aucune divergence', async () => {
+    monterAvec([{ ...ORIGINE, unite: null, uniteCatalogue: null }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.queryByText(/a changé au catalogue/)).toBeNull();
+  });
+
+  it('la cascade a un ORDRE : c’est la ligne qui fait foi, pas la liste du catalogue', async () => {
+    // La liste sert « µg/L » ; la ligne dit que l'analyte porte « mg/L »
+    // aujourd'hui. C'est la ligne qui gagne — elle est lue sans filtre `actif`,
+    // la liste ne l'est pas.
+    monterAvec([{ ...ORIGINE, unite: 'µg/L', uniteCatalogue: 'mg/L' }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByLabelText(/Valeur corrigée \(mg\/L\)/)).toBeTruthy();
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
+  });
+
   it('analyte RETIRÉ dont l’unité a bougé : l’alerte se déclenche — c’est le cas que M2 visait', async () => {
     // Le catalogue ne sert que les ACTIFS : passer par sa liste rendait cette
     // alerte structurellement inatteignable pour un analyte retiré, donc pour

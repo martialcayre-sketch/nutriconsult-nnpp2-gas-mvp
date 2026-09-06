@@ -192,11 +192,34 @@ la forme ni le périmètre ; toutes complètent ce que la décision disait trop 
    corrigée », faux dès que la garde refuse aussi une **sœur**), et la phrase
    du barré (§7). Aucune n'était fausse à l'écriture ; toutes le sont devenues
    quand ce qu'elles décrivent s'est élargi. **Règle qui en découle : élargir
-   une lecture, un contrat ou une garde oblige à relire tout ce qui les
-   RACONTE** — commentaires, messages d'erreur, fragments de changelog, fiches
-   de lot. C'est le seul des trois défauts qui atteignait le praticien qui a
-   coûté un NO-GO ; les deux autres ne mentaient qu'au relecteur suivant, ce
-   qui est une dette d'une autre nature mais pas moins réelle.
+   OU DÉPLACER une lecture, un contrat, une garde ou une source de vérité
+   oblige à relire tout ce qui les RACONTE** — commentaires, messages d'erreur,
+   fragments de changelog, fiches de lot. C'est le seul des trois défauts qui
+   atteignait le praticien qui a coûté un NO-GO ; les deux autres ne mentaient
+   qu'au relecteur suivant, ce qui est une dette d'une autre nature mais pas
+   moins réelle. **Le §10 en est la quatrième occurrence**, et elle confirme la
+   règle par un cas de plus : déplacer la source de l'unité a rendu *superflue*
+   — pas fausse — une phrase d'esquive écrite quand cette unité était
+   inconnaissable.
+10. **`m17` : l'unité d'un analyte retiré, fermée dans le lot plutôt que
+    reportée.** La bannière de divergence passait par la LISTE du catalogue,
+    qui ne sert que `actif: true` : l'alerte était donc structurellement
+    inatteignable pour les analytes retirés — or `M2` (§ contre-revue du geste)
+    nommait précisément cette population comme celle où le catalogue a bougé,
+    et c'est celle que ce lot ouvre à la correction. **Fermer `M2` pour les
+    seuls analytes actifs, c'était le fermer partout sauf là où il avait été
+    trouvé** : ce motif porte à lui seul. Le serveur, lui, relisait déjà
+    l'analyte sans ce filtre et consignait son unité courante — il écrivait une
+    unité que l'écran ne pouvait pas montrer. Forme : `unite` ajoutée au
+    `select` de la relation `analyte`, qui n'est pas filtrée par `actif` ; le
+    GET porte un champ de plus, `uniteCatalogue`, distinct de l'unité
+    consignée. Trois sources par ordre — la ligne, la liste en secours, puis le
+    **silence** : si aucune ne renseigne, l'écran n'affirme aucune unité plutôt
+    que de supposer qu'elle n'a pas bougé (`DC-24`). **Motif écarté comme
+    porteur** : « le fragment de changelog promettait déjà cette unité » est
+    vrai, mais un fragment non assemblé se restreint en une ligne — en faire la
+    raison créerait le précédent « une phrase de fragment force un champ de
+    contrat », à refuser.
 
 En revanche, ce que le §4 exigeait est tenu **plus fort que demandé** : les
 quatre validations dues ne sont pas quatre contrôles, mais deux impossibilités
