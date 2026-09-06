@@ -1161,7 +1161,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
   it('le GET rejoue en SIGNALANT la sélection écartée, sans lâcher l’épisode confirmé', async () => {
     await confirmerT0();
-    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    const create = prisma.assessmentEpisode.create.mock.calls[0][0].data;
     prisma.assessmentEpisode.findUnique.mockResolvedValue({
       payload: create.payload, payloadHash: create.payloadHash,
     });
@@ -1191,7 +1191,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
   it('aucune réponse ordinaire ne porte le drapeau de péremption', async () => {
     const post = await confirmerT0();
     expect('selectionEcartee' in (await post.json())).toBe(false);
-    const create = prisma.assessmentEpisode.upsert.mock.calls[0][0].create;
+    const create = prisma.assessmentEpisode.create.mock.calls[0][0].data;
     prisma.assessmentEpisode.findUnique.mockResolvedValue({
       payload: create.payload, payloadHash: create.payloadHash,
     });
