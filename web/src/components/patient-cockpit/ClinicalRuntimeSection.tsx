@@ -1371,6 +1371,10 @@ export function ClinicalRuntimeSection({
       {affiche('decision') && !fixture && (
         <SelectionPrioritePanel
           decisionCard={decisionCard}
+          // Le constat vient du SERVEUR ([[D-127]] §11) : la carte servie est
+          // celle construite sans la sélection écartée, indiscernable ici de
+          // celle d'un dossier où personne n'a jamais choisi.
+          selectionEcartee={runtime?.status === 'ready' && runtime.selectionEcartee === true}
           etat={selectionState}
           erreur={selectionError}
           onRetenir={(candidateId, motif) => { void retenirPriorite(candidateId, motif); }}

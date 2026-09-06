@@ -237,6 +237,47 @@ littéraux recopiés auraient divergé d'un caractère et rendu le 409
 indéchiffrable). Un cas a été rendu explicite plutôt que laissé vert : celui du
 dossier portant un signal passait par le repli au lieu de la voie qu'il annonce.
 
+**Suivi — 2026-09-06, troisième PR : la dette de §8 est payée.**
+
+**§11. La péremption se dit à l'écran, et elle traverse les silences de §10.**
+Le §8 laissait un « reste dû » nommé : l'écran montrait qu'aucune priorité n'est
+retenue sans expliquer pourquoi celle qui avait été posée ne l'était plus. Ce
+n'était pas un manque d'ergonomie mais un manque de VÉRACITÉ — la carte servie
+après un écart est celle construite sans la sélection, donc **en tout point
+indiscernable de celle d'un dossier où personne n'a jamais choisi**. Le serveur
+était seul à savoir qu'un acte existait, et il ne le disait qu'à son journal.
+
+`selectionEcartee` remonte désormais dans la réponse `ready`, **à côté de la
+carte et non dedans** — même motif que `rejoue` et `perimetreSigne` : la carte
+est hachée et persistée, y ajouter un champ déplacerait toutes les empreintes
+déjà émises. Il remonte du GET (rejeu) **et du POST** : une re-confirmation du
+même épisode passe par le POST, et le taire là ferait disparaître la phrase au
+premier re-clic.
+
+**Ce qu'il ne dit pas, et pourquoi.** Ni le candidat, ni le motif consigné. Le
+candidat écarté n'est plus classé — c'est la raison même de l'écart — et son
+libellé n'existe donc plus dans la carte : le servir demanderait de fabriquer un
+fragment d'affichage sur une règle qui ne se déclenche pas (`DC-01`). La phrase
+dit en revanche que **rien n'a été effacé**, parce que c'est vrai (le fil est
+append-only, la ligne demeure) et parce que c'est la question suivante.
+
+**Les trois silences de §10 sont RESTREINTS, pas levés.** Ils portaient, et
+portent toujours, sur le GESTE : décision bloquée et aucun candidat classé
+signifient qu'il n'y a rien à retenir, et proposer un choix que
+`buildDecisionCard` refuserait serait pire que se taire. Ils ne valent pas sur
+le CONSTAT : « il n'y a rien à retenir » et « ce que vous aviez retenu n'est
+plus servi » sont deux énoncés différents, et le second n'a de propriétaire
+**nulle part ailleurs** à l'écran. Une décision bloquée est d'ailleurs le cas où
+la péremption est la PLUS probable — `DC-12` retire les candidats — et s'y taire
+serait se taire là où il faut parler. Le panneau rend donc le constat seul,
+sans formulaire, dans les deux cas. Le troisième silence — aucune carte — reste
+entier : sans carte il n'y a pas de réponse `ready`, donc pas de drapeau.
+
+**Le vérificateur, lui, ignore ce drapeau, et c'est délibéré.** Il recalcule
+pour comparer : une carte honnête émise après péremption est justement celle
+construite sans la sélection. Y faire entrer le constat le ferait diverger de ce
+que le cockpit émet — la divergence exacte que `D-101` interdit.
+
 ### D-126 — Désactiver un dossier ferme les liens en vol, par l'horizon et non par l'événement
 
 - Date : 2026-09-06
