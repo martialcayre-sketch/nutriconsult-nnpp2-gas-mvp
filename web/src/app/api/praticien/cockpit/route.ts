@@ -633,16 +633,27 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           ? (() => {
               const champ = (brut as { preconditionOverrides?: unknown }).preconditionOverrides;
               if (!Array.isArray(champ)) return [];
-              // LES ÉLÉMENTS AUSSI. `null` est une valeur JSON légale : sans ce
-              // filtre, `o.conditionId` levait un `TypeError` sur une donnée
-              // serveur corrompue, que le catch externe rendait en 400
-              // `invalid_payload` — un défaut de la base présenté comme une
-              // faute du navigateur. Même filtre que `motifsRecus` plus bas.
-              return champ.filter(
-                (o): o is PreconditionOverride =>
-                  typeof (o as PreconditionOverride)?.conditionId === 'string'
-                  && typeof (o as PreconditionOverride)?.motif === 'string',
-              );
+              // LES ÉLÉMENTS AUSSI, ET SUR LES QUATRE CHAMPS. `null` est une
+              // valeur JSON légale, et cette ligne peut avoir été écrite par une
+              // version antérieure du contrat. Une trace mal formée reportée
+              // telle quelle atteint `confirmAssessmentEpisode`, qui exige les
+              // quatre champs non vides et une date ISO canonique : son
+              // `TypeError` remontait au catch externe et rendait un message V8
+              // ANGLAIS en 400 `invalid_payload` — un défaut de la BASE présenté
+              // au praticien comme une faute de son navigateur.
+              //
+              // Le prédicat est calé sur celui d'AVAL, pas sur celui de
+              // `motifsRecus` : là-bas le serveur repose ensuite `decidePar` et
+              // `decideLe` lui-même, ici la trace est reportée verbatim.
+              const chaineUtile = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+              return champ.filter((o): o is PreconditionOverride => {
+                const c = o as PreconditionOverride | null;
+                if (!c || typeof c !== 'object') return false;
+                if (!chaineUtile(c.conditionId) || !chaineUtile(c.motif) || !chaineUtile(c.decidePar)) return false;
+                return typeof c.decideLe === 'string'
+                  && !Number.isNaN(Date.parse(c.decideLe))
+                  && new Date(c.decideLe).toISOString() === c.decideLe;
+              });
             })()
           : [];
       const dejaRendus = new Map(rendusEnBase.map(o => [o.conditionId, o]));

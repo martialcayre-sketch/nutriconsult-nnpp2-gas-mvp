@@ -55,10 +55,23 @@ levée, la passation est repassée. Ne reconstruire que les conditions ENCORE
 requises effaçait alors, en silence et au premier geste anodin du praticien, qui
 avait passé outre, quand et pourquoi : c'est la seule ligne qui en fasse foi, et
 c'était la même classe de perte que le P0 que cette décision ferme. Les
-overrides déjà rendus sont donc reportés. Le contrôle « contournement sans
-objet » de `refusPreconditionsPersistance` distingue en conséquence une TRACE
-(décision antérieure à la confirmation, conservée) d'une fabrication (décision
-concomitante sur une condition qui n'est pas en défaut, toujours refusée).
+overrides déjà rendus sont donc reportés.
+
+**UNE TRACE SE RECONNAÎT À SA PRÉSENCE EN BASE, JAMAIS À SA DATE.** Une première
+rédaction de ce contrôle distinguait la trace de la fabrication par
+l'ANTÉRIORITÉ de `decideLe` à `confirmedAt`. La revue adversariale l'a exécutée :
+elle était inversée dans les deux sens. Le cockpit tamponne
+`decideLe = confirmedAt` sur le tout premier contournement — l'égalité ne
+satisfait pas la stricte antériorité, donc AUCUNE trace réelle n'était reconnue,
+et la route vivante refusait le dossier en 422 définitivement. Symétriquement,
+une date se forge : un override au motif vide, portant l'e-mail d'un autre
+praticien et daté de 1999, passait — exactement ce que la règle protégeait.
+
+La ligne persistée, elle, ne se forge pas depuis le navigateur.
+`refusPreconditionsPersistance` reçoit donc les contournements DÉJÀ écrits (les
+deux routes protocole lisent le `payload` de la ligne, qu'elles lisaient déjà
+pour le contrôle de divergence) et n'admet un override non requis que s'il y
+figure à l'identique.
 
 **4. Un contournement NOUVEAU se date du JOUR, sur un acte qui garde le sien.**
 Troisième arbitrage rendu, et il corrige une première conception de cette même
@@ -74,8 +87,14 @@ remonter avant l'acte, ni projeter dans le futur — et elle autorise ce qui est
 vrai : un arbitrage rendu aujourd'hui porte la date d'aujourd'hui.
 
 Le refus, lui, se déclenchait sur un parcours NOMINAL. `contradictions_ouvertes`
-est une condition vivante en production (drapeau posé le 2026-08-16, `D-064` ;
-les commentaires « MUETTE AUJOURD'HUI » de `preconditionsT0.ts` sont périmés).
+est une condition vivante (`WN_ENABLE_CONTRADICTIONS_NNPP2=1`,
+`docs/FEATURE_FLAGS.md` et `D-104`, postérieur à la bascule Scalingo du
+2026-08-22 — `D-064` posait le drapeau sur la Production VERCEL, décommissionnée
+depuis, et ne porte donc pas l'état actuel). L'état n'a PAS été relu par
+conteneur : c'est de la documentation, avec la réserve que cela implique. Le
+commentaire « MUETTE AUJOURD'HUI » de `evaluerContradictions` est périmé ; celui
+d'`evaluerAmbigues` ne l'est PAS, `WN_ENABLE_VALIDITE_PASSATIONS` restant
+éteint — les deux ne se confondent pas.
 Un T0 confirmé, une contradiction qui s'ouvre ensuite, et la re-confirmation
 divergente — celle que cette décision existe pour ne plus perdre — était
 refusée. Le P0 aurait été corrigé partout SAUF là où le contenu diverge le plus
@@ -126,7 +145,21 @@ lui remontre jamais le motif d'origine.
    re-confirmation d'une ancre dont la fenêtre a bougé. Aucun des lecteurs de
    `assessment_episodes` ne lit cette colonne aujourd'hui : dette nommée, pas
    défaut.
-6. **Les suites de ce périmètre dépendent de l'ordre des tests.** Mesuré par la
+6 bis. **La reprise verbatim rejoue `decidePar`, que les routes protocole
+   recoupent contre la session.** Un SECOND praticien qui re-confirmerait
+   obtiendrait 200 au cockpit puis un refus définitif à l'enregistrement de
+   version. Inatteignable aujourd'hui — le dépôt est mono-praticien — mais ce
+   module existe pour rester sûr le jour où un second compte apparaîtra. Relevé
+   par la troisième revue adversariale, laissé ouvert et nommé ici plutôt que
+   corrigé à l'aveugle : l'exemption du recoupement pour une trace déjà en base
+   est un arbitrage, pas une évidence.
+7. **L'affichage du refus `episode_ecrit_ailleurs` n'est gardé que côté
+   serveur.** La raison est assertée sur les deux 409, mais aucun banc ne prouve
+   que le client l'affiche : `ClinicalRuntimeSection.test.tsx` ne couvre aucun
+   chemin de refus, et en poser un demanderait de monter le composant entier.
+   Retirer la raison de la liste du client laisserait donc la suite au vert.
+   Nommé plutôt que masqué.
+8. **Les suites de ce périmètre dépendent de l'ordre des tests.** Mesuré par la
    revue : `--sequence.shuffle` rougit déjà sur la base de cette PR. Ce lot
    ferme les fuites d'implémentation qu'il a introduites, il ne guérit pas la
    maladie de fond.

@@ -985,6 +985,16 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
     const res = await confirmerT0();
     expect(res.status).toBe(200);
+    // LE `select` LIT `payload`. Les doubles ignorent l'argument `select` : sans
+    // cette assertion, le retirer laissait TOUTE la suite au vert alors que la
+    // reprise de justification et la survie de la trace mouraient en silence.
+    // La proposition lit déjà la ligne : c'est la lecture du POST qu'on vise,
+    // celle qui prend `confirmedAt` — la date de l'acte.
+    const lectures = prisma.assessmentEpisode.findUnique.mock.calls
+      .map(([arg]) => arg.select)
+      .filter((sel: Record<string, boolean>) => sel?.confirmedAt);
+    expect(lectures).toHaveLength(1);
+    expect(lectures[0]).toMatchObject({ payload: true, payloadHash: true, confirmedAt: true });
     // L'écriture a bien lieu, et elle est un compare-and-swap sur l'empreinte
     // LUE : si une autre requête a réécrit la ligne entre-temps, on refuse au
     // lieu d'écraser.
@@ -1075,12 +1085,41 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     expect(res.status).toBe(200);
   });
 
+  // L'ORDRE DES OVERRIDES ENTRE DANS L'EMPREINTE. `canonicalSha256` est sensible
+  // à l'ordre d'un tableau, et les traces sont poussées AVANT les requis : sans
+  // tri, l'ordre change dès qu'une condition se résout, deux états identiques
+  // rendent deux empreintes, et chaque transition coûte une écriture gratuite
+  // qui périme l'épisode que le navigateur tient encore.
+  it('trie les contournements : deux états identiques rendent la même empreinte', async () => {
+    const tardif = { ...RENDU_EN_AOUT, conditionId: 'passation_ambigue' };
+    // Posés à l'envers en base : le tri doit les remettre en ordre.
+    prisma.assessmentEpisode.findUnique.mockResolvedValue(
+      ligneAvecOverride([tardif, RENDU_EN_AOUT]),
+    );
+    prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
+
+    await confirmerT0();
+    const [appel] = prisma.assessmentEpisode.updateMany.mock.calls[0];
+    const ecrit = appel.data.payload as { preconditionOverrides: { conditionId: string }[] };
+    expect(ecrit.preconditionOverrides.map(o => o.conditionId))
+      .toEqual(['contradictions_ouvertes', 'passation_ambigue']);
+    // Et l'empreinte se recoupe sur ce payload-là.
+    expect(appel.data.payloadHash).toBe(canonicalSha256(appel.data.payload));
+    // `contractVersion` accompagne toute réécriture : sans elle, une ligne
+    // réécrite garderait la version de contrat de la mesure précédente.
+    expect(appel.data.contractVersion).toBeTruthy();
+  });
+
   it('perdre le compare-and-swap vaut 409, pas un écrasement', async () => {
     prisma.assessmentEpisode.findUnique.mockResolvedValue(ligneExistante());
     prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 0 });
 
     const res = await confirmerT0();
     expect(res.status).toBe(409);
+    // LA RAISON, PAS SEULEMENT LE STATUT. Le client intercepte `proposal_stale`
+    // pour recharger en posant « Les réponses ont changé » — emprunté, donc
+    // faux ici : rien n'a changé côté réponses, la ligne a été réécrite ailleurs.
+    expect((await res.json()).reason).toBe('episode_ecrit_ailleurs');
   });
 
   it('une ligne née entre la lecture et l’écriture vaut 409, pas un écrasement', async () => {
@@ -1094,6 +1133,7 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
 
     const res = await confirmerT0();
     expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe('episode_ecrit_ailleurs');
   });
 
   // ★ SON PENDANT, et c'est lui qui garde le vrai défaut : une panne de base ne

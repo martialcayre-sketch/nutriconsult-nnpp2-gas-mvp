@@ -205,6 +205,51 @@ describe('POST /api/praticien/protocoles/versions', () => {
   // par « refuser TOUTE ligne existante » passait au vert — alors que le cockpit
   // écrit toujours la ligne d'abord, donc ce correctif-là aurait refusé chaque
   // enregistrement réel.
+  // `D-129` §3 bis SUR LA ROUTE VIVANTE. Le mutation testing de la 3e revue a
+  // montré que ne PAS passer les traces en base depuis ici laissait la suite au
+  // vert : le lot avait mis ses bancs de la règle sur `POST /protocoles`, que
+  // rien n'appelle. C'est l'asymétrie qu'il condamne lui-même, reproduite.
+  //
+  // Le parcours : un contournement a été rendu, sa condition s'est RÉSOLUE
+  // depuis. Sans la trace en base, le garde le refuse comme « sans objet » et le
+  // dossier devient inenregistrable.
+  it('accepte un contournement dont la condition s’est résolue, s’il est DÉJÀ en base', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    const trace = {
+      conditionId: 'contradictions_ouvertes',
+      motif: 'Vue en entretien.',
+      decidePar: 'praticien@wellneuro.fr',
+      decideLe: episode.confirmedAt as string,
+    };
+    const chaine = chaineC1DeReference({
+      selection: CANDIDAT_RANG_1,
+      episode: { ...episode, preconditionOverrides: [trace] },
+    });
+    prisma.assessmentEpisode.findUnique.mockResolvedValue({
+      payloadHash: canonicalSha256(chaine.episode),
+      payload: { preconditionOverrides: [trace] },
+    });
+    const res = await POST(postRequest({
+      episode: chaine.episode,
+      decisionCard: chaine.decisionCard,
+      submission,
+    }));
+    expect(res.status).toBe(200);
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  // Et la lecture qui le rend possible : `payload` DOIT être dans le `select`.
+  // Les doubles ignorent cet argument — sans cette assertion, le retirer
+  // laissait tout au vert alors que la règle entière mourait.
+  it('lit le `payload` de la ligne, pas seulement son empreinte', async () => {
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.protocolDraft.findMany.mockResolvedValue([]);
+    await POST(postRequest({ episode, decisionCard, submission }));
+    const [lecture] = prisma.assessmentEpisode.findUnique.mock.calls[0];
+    expect(lecture.select).toMatchObject({ payload: true, payloadHash: true });
+  });
+
   it('laisse passer l’épisode dont l’empreinte correspond à la ligne (200)', async () => {
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.protocolDraft.findMany.mockResolvedValue([]);
