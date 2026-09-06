@@ -5106,9 +5106,15 @@ Ouvert — `D-049` fait rougir T2 localement, sans rapport avec le lot.
 Deux artefacts, une finalité : outiller le design des interfaces sans importer
 de skill tierce.
 
-Décidé — trois règles du §10 (`bg-white`, `text-[13px]`/`text-[14px]`, palette
-native de Tailwind) deviennent `design-system.guard.test.ts`, chacune prouvée
-rouge sur sources fabriquées ; `/wn-ui` cadre un écran avant le code.
+Décidé — deux règles du §10 (`bg-white`, `text-[13px]`/`text-[14px]`) deviennent
+`design-system.guard.test.ts`, chacune prouvée rouge sur sources fabriquées ;
+`/wn-ui` cadre un écran avant le code.
+
+Corrigé en cours de route — une troisième règle rejouait la garde E18
+(`tokens-couleur.guard.test.ts`), qui couvre déjà les échelles Tailwind brutes
+sur tout `web/src`. C'est E18 qui a attrapé le doublon, en CI, en rougissant sur
+mes propres sources fabriquées. Leçon : chercher la garde existante avant d'en
+écrire une.
 
 Écarté — Impeccable (SOUS RÉSERVE au contrôle `/wn-tiers` : binaire non attesté
 sur chaque édition) et UI/UX Pro Max (génère une identité là où le dépôt en a

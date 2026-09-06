@@ -4,19 +4,28 @@ import { describe, expect, it } from 'vitest';
 
 // GARDE DES TOKENS DU DESIGN SYSTEM.
 //
-// `docs/design-system-d1.md` §10 proscrit trois écritures : `bg-white` en dur
-// (« toujours `bg-surface` »), les tailles arbitraires `text-[13px]`/`text-[14px]`
-// (« utiliser `text-13`/`text-14`, pilotables centralement »), et — par
-// `.claude/rules/frontend-ui.md`, « respecter les tokens sémantiques » — la
-// palette native de Tailwind, qui court-circuite à la fois les rôles
-// sémantiques et la palette de marque.
+// `docs/design-system-d1.md` §10 proscrit deux écritures gardées ici :
+// `bg-white` en dur (« toujours `bg-surface` ») et les tailles arbitraires
+// `text-[13px]`/`text-[14px]` (« utiliser `text-13`/`text-14`, pilotables
+// centralement »).
 //
-// CES TROIS RÈGLES SONT TENUES AUJOURD'HUI, ET C'EST TOUT LEUR INTÉRÊT. Le
-// balayage du 2026-09-06 rend 0 sur 177 fichiers pour les trois. On n'atteint
+// LA PALETTE NATIVE DE TAILWIND N'EST PAS GARDÉE ICI : ELLE L'EST DÉJÀ. La
+// garde E18 (`src/lib/tokens-couleur.guard.test.ts`) balaie tout `web/src`,
+// dix-neuf échelles contre seize utilitaires, `.css` compris — strictement plus
+// large que ce que ce fichier pourrait couvrir. Une première version de cette
+// garde la rejouait ; le doublon a été attrapé par E18 elle-même, qui a rougi
+// sur les sources fabriquées de la copie — une échelle brute ÉCRITE dans
+// `web/src` en est une, fût-ce entre guillemets dans un cas de test, et E18 ne
+// distingue pas la prose du code. Deux gardes qui se recouvrent rendent un
+// verdict arbitraire : E18 garde le périmètre, celle-ci s'en tient à ce qu'E18
+// ne couvre pas. Ne pas y réintroduire d'échelle brute, même en exemple.
+//
+// CES DEUX RÈGLES SONT TENUES AUJOURD'HUI, ET C'EST TOUT LEUR INTÉRÊT. Le
+// balayage du 2026-09-06 rend 0 sur 177 fichiers pour les deux. On n'atteint
 // pas 0/177 par hasard : la règle est en vigueur de fait, mais rien ne la tient
-// que la relecture. Elle est donc écrite trois fois en prose — §10, la règle
-// scopée, et le rappel qu'un agent lit à chaque session — ce qui est le signal
-// qu'elle devrait être exécutable, pas répétée (cf. `/wn-conventions` §5).
+// que la relecture. Elle est écrite deux fois en prose — §10 et le rappel qu'un
+// agent lit à chaque session — ce qui est le signal qu'elle devrait être
+// exécutable, pas répétée (cf. `/wn-conventions` §5).
 //
 // LA GARDE NAÎT VERTE, DÉLIBÉRÉMENT. Ce n'est pas une garde décorative pour
 // autant : chaque règle est PROUVÉE ROUGE sur des sources fabriquées avant
@@ -81,12 +90,6 @@ const REGLES = [
     // fichier ; élargir ce motif le jour où l'échelle est déclarée fermée.
     motif: /\btext-\[1[34]px\]/g,
   },
-  {
-    nom: 'palette native de Tailwind',
-    correction: 'utiliser un token sémantique (frontend-ui.md) ou la palette de marque',
-    motif:
-      /\b(?:text|bg|border|ring|from|to|via)-(?:gray|slate|zinc|neutral|stone|red|orange|yellow|green|emerald|blue|sky|purple|pink|rose)-\d{2,3}\b/g,
-  },
 ] as const;
 
 function infractions(source: string): string[] {
@@ -125,28 +128,10 @@ describe('Design system — les tokens ne se contournent pas', () => {
     expect(infractions('<p className="text-13" />')).toEqual([]);
   });
 
-  it('ATTRAPE la palette native, et accepte le token sémantique', () => {
-    expect(infractions('<p className="text-gray-500 bg-red-50" />')).toEqual([
-      'palette native de Tailwind',
-      'palette native de Tailwind',
-    ]);
-    expect(infractions('<p className="text-muted-foreground bg-status-danger/10" />')).toEqual([]);
-  });
-
   it('ne compte pas un motif qui n’est écrit qu’en commentaire', () => {
     // Le cas réel de `PatientCard.tsx` : le commentaire cite ce qu'il remplace.
     expect(infractions('// remplace `bg-white rounded-2xl` des écrans du portail')).toEqual([]);
-    expect(infractions('/* avant : text-gray-500 */ <p className="text-muted-foreground" />')).toEqual(
-      [],
-    );
-  });
-
-  it('n’est pas trompée par un token dont le nom contient celui d’une couleur', () => {
-    // `viz-corps`, `rail-primary`, `status-success` ne sont pas la palette native ;
-    // `bg-whitespace-x` n'existe pas mais prouve que la borne de mot tient.
-    expect(infractions('<div className="bg-viz-corps text-status-success border-rail-border" />')).toEqual(
-      [],
-    );
+    expect(infractions('/* avant : bg-white */ <p className="bg-surface" />')).toEqual([]);
   });
 
   // ── Application à l'arbre réel ────────────────────────────────────────────

@@ -1,16 +1,22 @@
 ### Le design system passe de la prose au test — garde des tokens et cadrage `/wn-ui` (2026-09-06)
 
-Trois règles de `docs/design-system-d1.md` §10 n'étaient tenues que par la
-relecture, et réécrites en prose à trois endroits — le §10, `.claude/rules/
-frontend-ui.md`, et le rappel qu'un agent lit à chaque session. Une règle
-écrite trois fois dérive d'au moins un côté : c'est le signal qu'elle doit
-devenir exécutable.
+Deux règles de `docs/design-system-d1.md` §10 n'étaient tenues que par la
+relecture, et réécrites en prose à deux endroits — le §10 et le rappel qu'un
+agent lit à chaque session. Une règle écrite deux fois dérive d'un côté au
+moins : c'est le signal qu'elle doit devenir exécutable.
 
 - **`web/src/components/ui/design-system.guard.test.ts`** garde `bg-white` en
-  dur (« toujours `bg-surface` »), les tailles arbitraires `text-[13px]`/
-  `text-[14px]`, et la palette native de Tailwind, qui court-circuite à la fois
-  les rôles sémantiques et la palette de marque. Les trois rendent **0 sur 177
-  fichiers** : la garde naît verte, délibérément, et fige un état atteint.
+  dur (« toujours `bg-surface` ») et les tailles arbitraires `text-[13px]`/
+  `text-[14px]`. Les deux rendent **0 sur 177 fichiers** : la garde naît verte,
+  délibérément, et fige un état atteint.
+- **La palette native de Tailwind n'y est pas — elle était déjà gardée.** La
+  garde E18 (`src/lib/tokens-couleur.guard.test.ts`) balaie tout `web/src`,
+  dix-neuf échelles contre seize utilitaires, `.css` compris. Une première
+  version rejouait cette règle ; **c'est E18 qui a attrapé le doublon**, en
+  rougissant sur les sources fabriquées de la copie — une échelle brute écrite
+  dans `web/src` en est une, fût-ce entre guillemets dans un cas de test. Deux
+  gardes qui se recouvrent rendent un verdict arbitraire : E18 garde le
+  périmètre.
 - **Chaque règle est prouvée rouge sur des sources fabriquées** avant d'être
   appliquée à l'arbre, y compris le cas « motif cité en commentaire » — le seul
   `bg-white` du dépôt vit dans un commentaire de `PatientCard` documentant ce
