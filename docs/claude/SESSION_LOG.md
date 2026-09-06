@@ -5082,3 +5082,21 @@ gabarit se relit seul, ce qu'il promet vit ailleurs.
 
 Prochaine action — « Renvoyer l'accès » sur les cinq fiches après déploiement ;
 si rien ne bouge, regarder SPF/DKIM.
+
+## 2026-09-06 — Preuve visuelle : les baselines deviennent opposables
+
+Neuf PR (#871→#884). 4 écrans sur 9 comparés au pixel, 11 baselines commises,
+chacune regardée — ce qui a intercepté une image qu'aucune garde n'aurait vue.
+
+Décidé — `--update-snapshots=all` (le drapeau nu conservait le périmé) ; seuil
+`maxDiffPixels: 100`, absolu et **mesuré** via le CI pris comme instrument :
+l'écart génération↔comparaison vaut 33 px au pire, 0 dans 5 cas sur 8, là où le
+ratio de 2 % en tolérait 48 960. Borne de garde à 219 px.
+
+Écarté — aligner le contexte de génération : le décalage mesuré coûte moins que
+le couplage aux 21 autres specs. `dashboard-patients` reste hors comparaison.
+
+Prochaine action — aucune, lot clos. Desserrer le seuil exigera une nouvelle
+mesure ; le banc le refuse au-delà de 219.
+
+Ouvert — `D-049` fait rougir T2 localement, sans rapport avec le lot.
