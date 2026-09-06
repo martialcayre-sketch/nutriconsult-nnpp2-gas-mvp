@@ -131,6 +131,80 @@ la forme ni le périmètre ; toutes complètent ce que la décision disait trop 
    est elle-même **tête de fil**. La décision n'en nommait qu'une (« même
    clé ») ; les quatre sont portées au Done du LOT-02.
 
+**Suivi (2026-09-06) — le geste livré, et deux corrections au suivi du
+2026-09-05** (contre-revue de la PR #887, verdict NO-GO initial, levé).
+
+5. **Le §3 ci-dessus était juste sur le diagnostic, trompeur sur le remède.**
+   Il disait que le geste devrait « grouper puis adapter » — la première
+   écriture a compris qu'il fallait *supprimer* le groupement, au motif exact
+   qu'une correction hérite de l'analyte et de la date de sa cible. Le motif
+   est bon ; la conséquence tirée ne l'était pas. `resolveActiveVersion` fait
+   **deux** choses — délimiter le groupe **et** y élire une tête — et seule la
+   première devenait inutile. Sans élection, **les deux branches d'une fourche
+   sortaient courantes** : deux valeurs faisaient foi pour la même mesure, avec
+   deux gestes offerts à l'écran. Le groupement par `(analyte, date)` est donc
+   **remplacé par un groupement par RACINE DE CHAÎNE** — strictement
+   équivalent, puisque toute ligne d'une clé descend d'une seule racine et que
+   l'index partiel n'en tolère qu'une —, **pas supprimé**. L'élection, elle,
+   est reprise telle quelle. **L'équivalence a une précondition, à ne pas
+   perdre** : elle tient tant que toute racine porte `supersedes IS NULL` et
+   que la série est lue ENTIÈRE pour la clé. Sur une série lue partiellement,
+   racine et clé cessent de coïncider — un lecteur futur ne doit pas étendre
+   l'équivalence au-delà.
+6. **Une mesure d'`import_labo` ne se corrige pas par une saisie praticien**,
+   et cette garde est posée avant que le cas n'existe (aucune ligne d'import
+   n'a jamais été écrite). Sans elle, la valeur d'un laboratoire passerait
+   barrée sous une valeur frappée à la main, alors que la route déclare
+   qu'`import_labo` attend son propre chemin. **Arbitrage à confirmer** : c'est
+   le choix conservateur, il se rouvrira avec le chemin d'import.
+7. **Le §5 a changé le SENS de la table, et la phrase de l'écran ne l'a pas
+   suivi** (seconde contre-revue, motif unique du second NO-GO). Grouper puis
+   élire fait que `corrigeeParId` ne désigne plus le successeur **direct** mais
+   **la ligne qui fait foi** : sur `a→b→c`, `a` pointe vers `c`. L'écran, lui,
+   disait toujours « corrigée le [date] en [valeur] » : il attribuait à `c` un
+   geste qui n'a jamais eu lieu — c'est `b` qui a corrigé `a`, à une autre
+   date, vers une autre valeur —, et sur une fourche il faisait passer une
+   **sœur** pour une correction. Déclenché par la séquence la plus ordinaire
+   qui soit : corriger deux fois la même mesure. La phrase nomme désormais un
+   **état** (« remplacée — la valeur qui fait foi est Y, consignée le X »), et
+   la date de chaque correction se lit **sur sa propre ligne** — sans quoi
+   `saisi_le` n'apparaissait nulle part (la série affiche `preleve_le`) et le
+   fil cessait d'être lisible pas-à-pas, dans un lot dont tout le propos est
+   `DC-30`. **Leçon générale : un contrat de données qui change de sens oblige
+   à relire toutes les phrases qui le rendent**, pas seulement le code qui le
+   calcule.
+8. **La route et la lecture doivent définir « tête de fil » IDENTIQUEMENT.** La
+   garde applicative cherchait le seul successeur **direct** ; la lecture élit
+   la tête du **groupe**. Les deux divergent sur une fourche : la branche
+   perdante n'est supplantée par personne au sens du chaînage, si bien que la
+   route acceptait de la corriger alors que l'écran lui avait retiré son geste
+   — l'autorité basculait en silence vers la branche qui avait perdu, et la
+   route permettait précisément ce que son message de refus dit interdire. La
+   garde relit désormais **le fil entier** sur `(dossier, analyte,
+   prélèvement)` — l'index de série ajouté au §1 — et applique la même règle
+   que l'affichage. **La portée reste celle de `D-123`** : le séquentiel est
+   fermé, la course de deux corrections vraiment simultanées ne l'est pas —
+   c'est l'élection, et elle seule, qui la rend inoffensive.
+9. **Le motif récurrent, nommé pour cesser de le redécouvrir.** Trois fois dans
+   ce seul fichier, une PHRASE est devenue fausse sous son propre code — le
+   commentaire `GD-1` (« ce POST ne lit rien » → il lit une ligne → il lit le
+   fil), le message de refus `correction_deja_corrigee` (« a déjà été
+   corrigée », faux dès que la garde refuse aussi une **sœur**), et la phrase
+   du barré (§7). Aucune n'était fausse à l'écriture ; toutes le sont devenues
+   quand ce qu'elles décrivent s'est élargi. **Règle qui en découle : élargir
+   une lecture, un contrat ou une garde oblige à relire tout ce qui les
+   RACONTE** — commentaires, messages d'erreur, fragments de changelog, fiches
+   de lot. C'est le seul des trois défauts qui atteignait le praticien qui a
+   coûté un NO-GO ; les deux autres ne mentaient qu'au relecteur suivant, ce
+   qui est une dette d'une autre nature mais pas moins réelle.
+
+En revanche, ce que le §4 exigeait est tenu **plus fort que demandé** : les
+quatre validations dues ne sont pas quatre contrôles, mais deux impossibilités
+(analyte et date relus sur la cible, jamais pris du client) et trois lectures
+gardées. L'écart « clé déjà occupée » que cette décision nommait comme dû au
+geste est **fermé par construction** — une correction porte forcément la clé de
+ce qu'elle corrige.
+
 ### D-123 — La course de deux consignations simultanées n'est pas due : la garde applicative suffit, et le détecteur existe désormais
 
 - Date : 2026-09-04

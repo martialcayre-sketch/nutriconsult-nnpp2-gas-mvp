@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { useCbResultsEnabled } from './CbFeatureProvider';
 
@@ -30,12 +30,137 @@ type ResultatAffiche = {
   unite: string | null;
   preleveLe: string;
   source: string;
+  saisiLe: string;
+  supersedesResultatId: string | null;
+  /** Posé par le SERVEUR : `null` ⇒ cette ligne fait foi. */
+  corrigeeParId: string | null;
 };
 
 function formatDateHeure(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function formatValeur(mesure: { valeur: number; unite: string | null }): string {
+  return `${mesure.valeur}${mesure.unite ? ` ${mesure.unite}` : ''}`;
+}
+
+// Le second temps d'une correction : la valeur seule. L'analyte et la date ne
+// sont pas offerts, et ce n'est pas une simplification d'écran — le serveur
+// les relit sur la ligne visée ([[D-124]]). Les proposer ici laisserait croire
+// qu'on peut corriger l'un ou l'autre, alors que ce serait annuler la mesure.
+function CorrectionMesure({
+  mesure,
+  analyteAuCatalogue,
+  catalogueLu,
+  disabled,
+  onCorriger,
+  onAnnuler,
+}: {
+  mesure: ResultatAffiche;
+  /** L'analyte TEL QU'IL EST AUJOURD'HUI, ou `null` s'il n'est plus servi. */
+  analyteAuCatalogue: AnalyteChoix | null;
+  /** Le catalogue a-t-il été lu JUSQU'AU BOUT ? Sinon `null` ne prouve rien. */
+  catalogueLu: boolean;
+  disabled: boolean;
+  onCorriger: (valeur: number) => Promise<boolean>;
+  onAnnuler: () => void;
+}) {
+  const [valeur, setValeur] = useState(String(mesure.valeur));
+  const champ = useRef<HTMLInputElement | null>(null);
+  const valeurNum = Number(valeur.replace(',', '.'));
+  const prete = valeur.trim() !== '' && Number.isFinite(valeurNum);
+
+  // LE LABEL DOIT DIRE L'UNITÉ QUI SERA CONSIGNÉE, pas celle d'origine. Le
+  // serveur relit l'unité sur l'analyte au catalogue : si elle a changé depuis
+  // la mesure, afficher l'ancienne ferait taper un nombre sous un libellé
+  // faux — sur une donnée clinique, un facteur 1000 silencieux. Et le cas
+  // n'est pas théorique : la correction est ouverte aux analytes retirés,
+  // c'est-à-dire là où le catalogue a bougé (contre-revue du 2026-09-06, M2).
+  const uniteConsignee = analyteAuCatalogue ? analyteAuCatalogue.unite : null;
+  const uniteChange = analyteAuCatalogue !== null && uniteConsignee !== mesure.unite;
+
+  // Le focus suit le geste : sans cela, le bouton « Corriger » disparaît et le
+  // focus retombe sur le document — un utilisateur clavier perd sa place et
+  // n'apprend pas que le second temps s'est ouvert.
+  useEffect(() => {
+    champ.current?.focus();
+  }, []);
+
+  return (
+    <div className="mt-2 rounded-lg border border-border bg-muted/30 p-3">
+      <p className="text-xs font-medium text-foreground">
+        Corriger la mesure du {formatDateHeure(mesure.preleveLe)}
+      </p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        La valeur d’origine ({formatValeur(mesure)}) <strong>reste lisible</strong> : la correction
+        ajoute une ligne, elle n’efface rien. L’analyte et la date de prélèvement ne se corrigent
+        pas — les changer serait une autre mesure.
+      </p>
+      {uniteChange && (
+        <p role="alert" className="mt-1 text-xs text-status-warning">
+          L’unité de cet analyte a changé au catalogue depuis cette mesure : la correction sera
+          consignée en <strong>{uniteConsignee ?? 'aucune unité'}</strong>, alors que l’originale
+          est en <strong>{mesure.unite ?? 'aucune unité'}</strong>.
+        </p>
+      )}
+      {/* ÉCHEC DE LECTURE ≠ ABSENCE D'ANALYTE — même règle que la série
+          quelques lignes plus bas (`DC-24`). `analytes` part vide et le
+          chargement du catalogue a son propre `catch` : sans distinguer
+          l'état, « n'est plus servi » s'affirmerait aussi CATALOGUE EN VOL et
+          CATALOGUE EN PANNE, sur un analyte parfaitement actif
+          (contre-revue du 2026-09-06, m11). */}
+      {catalogueLu && analyteAuCatalogue === null && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Cet analyte n’est plus servi par le catalogue : l’unité sera celle qu’il y porte au
+          moment de consigner.
+        </p>
+      )}
+      {!catalogueLu && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Unité non vérifiable pour l’instant : elle sera reprise du catalogue au moment de
+          consigner.
+        </p>
+      )}
+      <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`correction-${mesure.id}`}>
+        Valeur corrigée
+        {analyteAuCatalogue
+          ? uniteConsignee
+            ? ` (${uniteConsignee})`
+            : ''
+          : mesure.unite
+            ? ` (${mesure.unite} — à confirmer au catalogue)`
+            : ''}
+      </label>
+      <input
+        id={`correction-${mesure.id}`}
+        ref={champ}
+        type="text"
+        inputMode="decimal"
+        value={valeur}
+        onChange={event => setValeur(event.target.value)}
+        className="min-h-11 w-32 rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground"
+      />
+      <div className="mt-2 flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={disabled || !prete}
+          onClick={() => void onCorriger(valeurNum)}
+          className="min-h-11 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground disabled:opacity-50"
+        >
+          Consigner la correction
+        </button>
+        <button
+          type="button"
+          onClick={onAnnuler}
+          className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm text-foreground"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function SaisieMesure({
@@ -105,7 +230,8 @@ function SaisieMesure({
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
         L’heure distingue deux prélèvements du même jour (profils salivaires, glycémies).
-        Vérifiez la valeur avant de consigner : le geste de correction n’existe pas encore.
+        Une valeur saisie de travers se corrige depuis la série : la correction ajoute une ligne
+        et laisse l’erreur visible.
       </p>
       <button
         type="button"
@@ -136,8 +262,12 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   // lecture ABOUTIE — jamais pendant le chargement, jamais sur une panne.
   const [lecture, setLecture] = useState<'chargement' | 'ok' | 'erreur'>('chargement');
   const [analytes, setAnalytes] = useState<AnalyteChoix[]>([]);
+  /** Même discipline que `lecture` : un catalogue non lu n'affirme rien. */
+  const [catalogue, setCatalogue] = useState<'chargement' | 'ok' | 'erreur'>('chargement');
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
+  /** Identifiant de la mesure en cours de correction — une seule à la fois. */
+  const [correctionDe, setCorrectionDe] = useState<string | null>(null);
   const actif = resultsEnabled && typeof idPatient === 'string' && idPatient !== '';
 
   const chargerResultats = useCallback(async () => {
@@ -173,13 +303,20 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
           ok: boolean;
           analytes?: Array<{ code: string; libelle: string; unite: string | null }>;
         };
-        if (!abandonne && response.ok && payload.ok) {
+        if (abandonne) return;
+        if (response.ok && payload.ok) {
           setAnalytes(
             (payload.analytes ?? []).map(a => ({ code: a.code, libelle: a.libelle, unite: a.unite })),
           );
+          setCatalogue('ok');
+        } else {
+          setCatalogue('erreur');
         }
       } catch {
         // Sans catalogue, la saisie reste fermée — la série se lit quand même.
+        // Mais l'échec se DIT : sans lui, une liste vide passerait pour un
+        // catalogue lu, et la correction affirmerait un analyte retiré.
+        if (!abandonne) setCatalogue('erreur');
       }
     })();
     return () => {
@@ -192,7 +329,11 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   // intacte plutôt que de forcer une re-frappe de mémoire d'une donnée
   // clinique.
   const consigner = useCallback(
-    async (saisie: { analyteCode: string; valeur: number; preleveLe: string }): Promise<boolean> => {
+    async (
+      saisie:
+        | { analyteCode: string; valeur: number; preleveLe: string }
+        | { supersedesResultatId: string; valeur: number },
+    ): Promise<boolean> => {
       setEnvoiEnCours(true);
       setErreur(null);
       try {
@@ -236,10 +377,15 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   }
 
   const parAnalyte = new Map<string, ResultatAffiche[]>();
+  // Pour lire la correction d'une ligne corrigée : le serveur donne son
+  // identifiant, l'écran ne fait que le suivre — la règle de départage d'une
+  // fourche n'est PAS rejouée ici (elle vit dans `filCorrection`).
+  const parId = new Map<string, ResultatAffiche>();
   for (const resultat of resultats) {
     const serie = parAnalyte.get(resultat.analyteCode) ?? [];
     serie.push(resultat);
     parAnalyte.set(resultat.analyteCode, serie);
+    parId.set(resultat.id, resultat);
   }
 
   return (
@@ -287,14 +433,95 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
             <li key={code} className="rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{serie[0].analyteLibelle}</p>
               <ul className="mt-1 space-y-1">
-                {serie.map(mesure => (
-                  <li key={mesure.id} className="text-xs text-muted-foreground">
-                    {mesure.valeur}
-                    {mesure.unite ? ` ${mesure.unite}` : ''} — prélevé le{' '}
-                    {formatDateHeure(mesure.preleveLe)} (
-                    {mesure.source === 'import_labo' ? 'import laboratoire' : 'saisie praticien'})
-                  </li>
-                ))}
+                {serie.map(mesure => {
+                  const correction = mesure.corrigeeParId
+                    ? (parId.get(mesure.corrigeeParId) ?? null)
+                    : null;
+                  // `Boolean`, pas `!== null` : un champ ABSENT (payload d'une
+                  // version antérieure, réponse tronquée) vaut `undefined` et
+                  // passerait pour « corrigée » — l'écran barrerait une mesure
+                  // que personne n'a corrigée, et cacherait son geste.
+                  const corrigee = Boolean(mesure.corrigeeParId);
+                  return (
+                    <li key={mesure.id} className="text-xs text-muted-foreground">
+                      <span className={corrigee ? 'line-through' : undefined}>
+                        {formatValeur(mesure)}
+                      </span>{' '}
+                      — prélevé le {formatDateHeure(mesure.preleveLe)} (
+                      {mesure.source === 'import_labo' ? 'import laboratoire' : 'saisie praticien'})
+                      {mesure.supersedesResultatId !== null && (
+                        // La date de CHAQUE correction se lit sur SA ligne. Sans
+                        // elle, `saisiLe` n'apparaîtrait nulle part (la série
+                        // affiche `preleveLe`) et le fil ne se lirait plus
+                        // pas-à-pas : sur a→b→c, la date à laquelle `a` a été
+                        // reprise serait perdue, dans un lot dont tout le propos
+                        // est que l'erreur reste lisible (`DC-30`).
+                        <span className="ml-1 text-foreground">
+                          · correction consignée le {formatDateHeure(mesure.saisiLe)}
+                        </span>
+                      )}
+                      {corrigee && (
+                        // L'erreur RESTE À L'ÉCRAN, barrée et datée : c'est le
+                        // sens de DC-30, et c'est pour cela qu'on ne filtre pas.
+                        //
+                        // LA PHRASE NOMME UN ÉTAT, PAS UN ÉVÉNEMENT. `corrigeeParId`
+                        // désigne la ligne qui FAIT FOI, pas le successeur direct :
+                        // sur a→b→c, `a` pointe vers `c`, et « corrigée le [date de
+                        // c] » affirmerait un geste qui n'a jamais eu lieu — c'est
+                        // `b` qui a corrigé `a`, à une autre date, vers une autre
+                        // valeur. Sur une fourche, `c` est même une SŒUR de `b`, et
+                        // le verbe « corrigée » serait faux deux fois
+                        // (contre-revue du 2026-09-06, M1-bis).
+                        <span className="ml-1">
+                          · remplacée
+                          {correction
+                            ? ` — la valeur qui fait foi est ${formatValeur(correction)},`
+                              + ` consignée le ${formatDateHeure(correction.saisiLe)}`
+                            : ''}
+                        </span>
+                      )}
+                      {!corrigee && correctionDe !== mesure.id && (
+                        <button
+                          type="button"
+                          // Désactivé tant qu'un autre second temps est ouvert :
+                          // en changer démonterait le formulaire et jetterait
+                          // la valeur en cours de frappe, alors qu'on protège
+                          // soigneusement cette même saisie contre un refus.
+                          disabled={envoiEnCours || correctionDe !== null}
+                          // Un nom accessible DATÉ : sans lui, n boutons
+                          // « Corriger » sont indiscernables au lecteur d'écran.
+                          aria-label={`Corriger la mesure du ${formatDateHeure(mesure.preleveLe)}`}
+                          onClick={() => {
+                            setErreur(null);
+                            setCorrectionDe(mesure.id);
+                          }}
+                          className="ml-2 min-h-11 rounded-lg border border-border px-2 py-1 text-xs text-foreground disabled:opacity-50"
+                        >
+                          Corriger
+                        </button>
+                      )}
+                      {correctionDe === mesure.id && (
+                        <CorrectionMesure
+                          mesure={mesure}
+                          analyteAuCatalogue={
+                            analytes.find(a => a.code === mesure.analyteCode) ?? null
+                          }
+                          catalogueLu={catalogue === 'ok'}
+                          disabled={envoiEnCours}
+                          onAnnuler={() => setCorrectionDe(null)}
+                          onCorriger={async valeur => {
+                            const ok = await consigner({
+                              supersedesResultatId: mesure.id,
+                              valeur,
+                            });
+                            if (ok) setCorrectionDe(null);
+                            return ok;
+                          }}
+                        />
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </li>
           ))}
