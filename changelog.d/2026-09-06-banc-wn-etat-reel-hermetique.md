@@ -3,7 +3,7 @@
 Le test `N1` de `scripts/wn-etat-reel.test.mjs` — celui qui vérifie que le
 rapport ne dépend pas du répertoire d'appel — lançait le script **deux fois** et
 exigeait deux rapports identiques. Or ce script appelle `gh pr list --json
-number,title,isDraft,**updatedAt**` : il comparait donc des données que GitHub
+number,title,isDraft,updatedAt` : il comparait donc des données que GitHub
 fait bouger tout seul.
 
 Deux causes le faisaient tomber, aucune ayant le moindre rapport avec ce qu'il
