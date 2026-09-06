@@ -116,7 +116,11 @@ const MESSAGES_REFUS_SAISIE: Record<string, string> = {
  */
 function signature(err: unknown): string {
   const nom = err instanceof Error ? err.name : 'inconnue';
-  const code = (err as { code?: unknown }).code;
+  // `?.` : `throw null` est légal en JavaScript, et lire `.code` dessus lèverait
+  // DANS le gestionnaire d'erreur — la réponse `server_error` ne serait jamais
+  // construite et la route rendrait un 500 hors contrat. La fonction dont le
+  // métier est de rendre les pannes inoffensives ne doit pas en être une.
+  const code = (err as { code?: unknown } | null | undefined)?.code;
   return typeof code === 'string' ? `${nom}/${code}` : nom;
 }
 
@@ -310,16 +314,35 @@ export async function POST(req: Request) {
       );
     }
     if (cible) {
-      // TÊTE DE FIL. La base ACCEPTE la fourche — le contrat SQL le prouve
-      // exprès —, la route la refuse : on corrige la version qui fait foi,
-      // pas une version déjà dépassée. Détection applicative, donc même
-      // portée que la garde du document patient (`D-123`) : elle ferme le cas
-      // séquentiel, pas la course de deux corrections simultanées, que la
-      // règle de départage du fil rend inoffensive à l'affichage.
-      const deja = await prisma.resultatBiologique.findFirst({
-        where: { idPatient, supersedesResultatId: cible.id },
-        select: { id: true },
+      // TÊTE DE FIL — DÉFINIE EXACTEMENT COMME À LA LECTURE. La base ACCEPTE
+      // la fourche (le contrat SQL le prouve exprès), la route la refuse : on
+      // corrige la version qui fait foi, pas une version déjà dépassée.
+      //
+      // La garde relit le FIL ENTIER, pas le seul successeur DIRECT. Sur une
+      // fourche préexistante, la branche perdante n'est supplantée par
+      // personne au sens du chaînage : elle passait la garde alors qu'elle ne
+      // fait pas foi, et la corriger faisait basculer l'autorité en silence
+      // vers la branche qui avait perdu — la route permettait précisément ce
+      // que son refus dit interdire (contre-revue du 2026-09-06, m13).
+      //
+      // Le fil tient ENTIER dans cette lecture : une correction hérite de
+      // l'analyte et de la date de sa cible, donc toute ligne du fil porte la
+      // clé de la cible — servie par `cb_resultat_bio_serie_idx`. Détection
+      // applicative, donc même portée que la garde du document patient
+      // (`D-123`) : elle ferme le cas séquentiel, pas la course de deux
+      // corrections simultanées, que l'élection du fil rend inoffensive à
+      // l'affichage.
+      const fil = await prisma.resultatBiologique.findMany({
+        where: { idPatient, analyteCode: cible.analyteCode, preleveLe: cible.preleveLe },
+        select: { id: true, supersedesResultatId: true, saisiLe: true },
       });
+      const deja = correctionsParLigne(
+        fil.map(l => ({
+          id: l.id,
+          supersedesResultatId: l.supersedesResultatId,
+          saisiLe: l.saisiLe.toISOString(),
+        })),
+      ).has(cible.id);
       if (deja) {
         return echecPost(
           'correction_deja_corrigee',

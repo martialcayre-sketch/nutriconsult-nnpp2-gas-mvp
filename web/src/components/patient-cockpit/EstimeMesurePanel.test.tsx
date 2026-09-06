@@ -234,11 +234,16 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
   };
 
   /** `resultats` sert le GET ; `poste` capte le corps du POST. */
-  function monterAvec(resultats: unknown[], reponsePost?: { ok: boolean; status: number; error?: string }) {
+  function monterAvec(
+    resultats: unknown[],
+    reponsePost?: { ok: boolean; status: number; error?: string },
+    catalogue: 'ok' | 'panne' = 'ok',
+  ) {
     const corps: unknown[] = [];
     const fetchMock = vi.fn(async (entree: RequestInfo | URL, init?: RequestInit) => {
       const url = String(entree);
       if (url.includes('/api/praticien/biologie/catalogue')) {
+        if (catalogue === 'panne') throw new Error('réseau');
         return {
           ok: true,
           status: 200,
@@ -288,9 +293,75 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     // L'ERREUR NE DISPARAÎT PAS (DC-30) : elle est barrée, pas filtrée.
     const origine = screen.getByText('42.5 µg/L');
     expect(origine.className).toContain('line-through');
-    expect(screen.getByText(/corrigée le .* en 45\.5 µg\/L/)).toBeTruthy();
-    // Et la correction se signale comme telle.
-    expect(screen.getByText('· correction')).toBeTruthy();
+    expect(screen.getByText(/remplacée — la valeur qui fait foi est 45\.5 µg\/L/)).toBeTruthy();
+    // Et la correction se signale comme telle, AVEC SA PROPRE DATE.
+    expect(screen.getByText(/· correction consignée le/)).toBeTruthy();
+  });
+
+  it('sur une CHAÎNE DE TROIS, aucune ligne ne s’attribue un geste qui n’a pas eu lieu', async () => {
+    // `corrigeeParId` désigne la ligne qui FAIT FOI, pas le successeur direct :
+    // sur a→b→c, `a` pointe vers `c`. Dire « corrigée le [date de c] »
+    // affirmerait un geste qui n'a jamais eu lieu — c'est `b` qui a corrigé
+    // `a` (contre-revue du 2026-09-06, M1-bis). La phrase nomme donc un ÉTAT,
+    // et la date de CHAQUE correction se lit sur SA ligne.
+    monterAvec([
+      { ...ORIGINE, corrigeeParId: 'r3' },
+      {
+        ...ORIGINE,
+        id: 'r2',
+        valeur: 45.5,
+        saisiLe: '2026-09-02T09:00:00.000Z',
+        supersedesResultatId: 'r1',
+        corrigeeParId: 'r3',
+      },
+      {
+        ...ORIGINE,
+        id: 'r3',
+        valeur: 46,
+        saisiLe: '2026-09-03T09:00:00.000Z',
+        supersedesResultatId: 'r2',
+        corrigeeParId: null,
+      },
+    ]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+
+    // Personne n'affirme « corrigée le … » : le verbe raconterait un événement.
+    expect(screen.queryByText(/· corrigée le/)).toBeNull();
+    // Les deux dépassées nomment la MÊME ligne qui fait foi : la dernière.
+    expect(
+      screen.getAllByText(/remplacée — la valeur qui fait foi est 46 µg\/L/),
+    ).toHaveLength(2);
+    // Et le fil reste lisible pas-à-pas : DEUX dates de consignation
+    // distinctes, celle de `r2` et celle de `r3`, chacune sur sa ligne.
+    const dates = screen
+      .getAllByText(/· correction consignée le/)
+      .map(n => n.textContent);
+    expect(dates).toHaveLength(2);
+    expect(new Set(dates).size).toBe(2);
+  });
+
+  it('la branche PERDANTE d’une fourche est « remplacée », jamais « corrigée » par sa sœur', async () => {
+    // `r3` n'a pas corrigé `r2` : elles sont SŒURS, toutes deux issues de `r1`.
+    // Le verbe « corrigée » serait faux ; « remplacée » dit l'état, qui l'est.
+    monterAvec([
+      { ...ORIGINE, corrigeeParId: 'r3' },
+      { ...ORIGINE, id: 'r2', valeur: 45.5, supersedesResultatId: 'r1', corrigeeParId: 'r3' },
+      { ...ORIGINE, id: 'r3', valeur: 46, supersedesResultatId: 'r1', corrigeeParId: null },
+    ]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/· corrigée/)).toBeNull();
+    expect(screen.getByText('45.5 µg/L').className).toContain('line-through');
+  });
+
+  it('catalogue EN PANNE : l’écran n’affirme pas qu’un analyte a été retiré (DC-24)', async () => {
+    // ÉCHEC DE LECTURE ≠ ABSENCE D'ANALYTE : sans état de lecture, la liste
+    // vide passerait pour un catalogue lu et l'écran dirait « n'est plus
+    // servi » d'un analyte parfaitement actif (contre-revue du 2026-09-06, m11).
+    monterAvec([ORIGINE], undefined, 'panne');
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.queryByText(/n’est plus servi par le catalogue/)).toBeNull();
+    expect(screen.getByText(/Unité non vérifiable pour l’instant/)).toBeTruthy();
   });
 
   it('une mesure DÉJÀ corrigée n’offre pas « Corriger » — on corrige la version qui fait foi', async () => {

@@ -146,13 +146,45 @@ la forme ni le périmètre ; toutes complètent ce que la décision disait trop 
    **remplacé par un groupement par RACINE DE CHAÎNE** — strictement
    équivalent, puisque toute ligne d'une clé descend d'une seule racine et que
    l'index partiel n'en tolère qu'une —, **pas supprimé**. L'élection, elle,
-   est reprise telle quelle.
+   est reprise telle quelle. **L'équivalence a une précondition, à ne pas
+   perdre** : elle tient tant que toute racine porte `supersedes IS NULL` et
+   que la série est lue ENTIÈRE pour la clé. Sur une série lue partiellement,
+   racine et clé cessent de coïncider — un lecteur futur ne doit pas étendre
+   l'équivalence au-delà.
 6. **Une mesure d'`import_labo` ne se corrige pas par une saisie praticien**,
    et cette garde est posée avant que le cas n'existe (aucune ligne d'import
    n'a jamais été écrite). Sans elle, la valeur d'un laboratoire passerait
    barrée sous une valeur frappée à la main, alors que la route déclare
    qu'`import_labo` attend son propre chemin. **Arbitrage à confirmer** : c'est
    le choix conservateur, il se rouvrira avec le chemin d'import.
+7. **Le §5 a changé le SENS de la table, et la phrase de l'écran ne l'a pas
+   suivi** (seconde contre-revue, motif unique du second NO-GO). Grouper puis
+   élire fait que `corrigeeParId` ne désigne plus le successeur **direct** mais
+   **la ligne qui fait foi** : sur `a→b→c`, `a` pointe vers `c`. L'écran, lui,
+   disait toujours « corrigée le [date] en [valeur] » : il attribuait à `c` un
+   geste qui n'a jamais eu lieu — c'est `b` qui a corrigé `a`, à une autre
+   date, vers une autre valeur —, et sur une fourche il faisait passer une
+   **sœur** pour une correction. Déclenché par la séquence la plus ordinaire
+   qui soit : corriger deux fois la même mesure. La phrase nomme désormais un
+   **état** (« remplacée — la valeur qui fait foi est Y, consignée le X »), et
+   la date de chaque correction se lit **sur sa propre ligne** — sans quoi
+   `saisi_le` n'apparaissait nulle part (la série affiche `preleve_le`) et le
+   fil cessait d'être lisible pas-à-pas, dans un lot dont tout le propos est
+   `DC-30`. **Leçon générale : un contrat de données qui change de sens oblige
+   à relire toutes les phrases qui le rendent**, pas seulement le code qui le
+   calcule.
+8. **La route et la lecture doivent définir « tête de fil » IDENTIQUEMENT.** La
+   garde applicative cherchait le seul successeur **direct** ; la lecture élit
+   la tête du **groupe**. Les deux divergent sur une fourche : la branche
+   perdante n'est supplantée par personne au sens du chaînage, si bien que la
+   route acceptait de la corriger alors que l'écran lui avait retiré son geste
+   — l'autorité basculait en silence vers la branche qui avait perdu, et la
+   route permettait précisément ce que son message de refus dit interdire. La
+   garde relit désormais **le fil entier** sur `(dossier, analyte,
+   prélèvement)` — l'index de série ajouté au §1 — et applique la même règle
+   que l'affichage. **La portée reste celle de `D-123`** : le séquentiel est
+   fermé, la course de deux corrections vraiment simultanées ne l'est pas —
+   c'est l'élection, et elle seule, qui la rend inoffensive.
 
 En revanche, ce que le §4 exigeait est tenu **plus fort que demandé** : les
 quatre validations dues ne sont pas quatre contrôles, mais deux impossibilités

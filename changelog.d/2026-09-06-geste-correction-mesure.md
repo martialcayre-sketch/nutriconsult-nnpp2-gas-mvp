@@ -8,11 +8,21 @@ l'ancienne**, jamais un `update`. C'est le patron maison des chaînes
 disparaît pas.
 
 **À l'écran, l'erreur reste visible.** La série rend toutes les lignes,
-corrigées comprises : la valeur dépassée s'affiche barrée, avec la date de sa
-correction et la valeur qui l'a remplacée ; la correction, elle, se signale
-comme telle. Rien n'est filtré — filtrer effacerait la trace, ce qui est
-exactement ce que le régime refuse. Seule la ligne qui fait foi offre le geste
-de correction : on corrige la version courante, jamais une version dépassée.
+corrigées comprises : la valeur dépassée s'affiche barrée, et l'écran nomme
+celle qui fait foi à sa place ; chaque correction, elle, se signale comme telle
+**avec sa propre date de consignation**. Rien n'est filtré — filtrer effacerait
+la trace, ce qui est exactement ce que le régime refuse. Seule la ligne qui
+fait foi offre le geste : on corrige la version courante, jamais une dépassée.
+
+**La phrase nomme un ÉTAT, pas un événement**, et ce n'est pas une nuance de
+style. La ligne qui fait foi n'est pas forcément celle qui vous a remplacé
+directement : sur une mesure corrigée deux fois, la première version est
+supplantée par la deuxième, mais c'est la **troisième** qui fait foi. Dire
+« corrigée le [date de la troisième] » attribuerait un geste qui n'a jamais eu
+lieu — et sur une fourche, ferait passer une **sœur** pour une correction.
+L'écran dit donc « remplacée — la valeur qui fait foi est Y, consignée le X »,
+et la date de chaque correction se lit sur sa propre ligne : le fil reste
+lisible pas-à-pas, ce que `DC-30` demande.
 
 **Le second temps ne propose que la valeur.** Ni analyte, ni date de
 prélèvement : le serveur les **relit sur la ligne visée** et ignore ce que le
@@ -46,11 +56,24 @@ désignée courante — la plus récente, l'identifiant départageant à horodat
 **au serveur seulement** ; l'écran suit l'identifiant qu'on lui donne, si bien
 que deux surfaces ne peuvent pas raconter deux histoires du même dossier.
 
+**Et la route applique la MÊME règle que l'affichage.** Elle relit le fil
+entier de la mesure avant d'accepter une correction, au lieu de chercher le
+seul successeur direct : sur une fourche, la branche perdante n'est supplantée
+par personne au sens du chaînage, et la corriger aurait fait basculer
+l'autorité en silence vers celle qui avait perdu — la route aurait permis
+exactement ce que son refus dit interdire.
+
 **L'écran annonce l'unité qui sera consignée**, pas celle d'origine. Le serveur
 relit l'unité sur l'analyte au catalogue : si elle a changé depuis la mesure,
 le second temps le **dit** et nomme les deux. Afficher l'ancienne ferait taper
 un nombre sous un libellé faux — sur une donnée clinique, un facteur mille
 silencieux.
+
+**Un catalogue non lu n'affirme rien** (`DC-24`, la règle que la série
+appliquait déjà deux panneaux plus haut). Tant que le catalogue est en vol — ou
+s'il est en panne —, l'écran ne dit plus « cet analyte n'est plus servi » : il
+dit que l'unité n'est pas vérifiable pour l'instant et qu'elle sera reprise du
+catalogue à la consignation, ce qui est vrai dans les trois cas.
 
 **Une mesure d'import laboratoire ne se corrige pas par une saisie praticien.**
 La garde est posée avant que le cas n'existe : sans elle, une valeur rendue par

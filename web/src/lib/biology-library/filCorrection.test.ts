@@ -143,6 +143,27 @@ describe('correctionsParLigne — le fil de correction d’une mesure (D-124)', 
     expect(lignes.filter(l => !corrections.has(l.id))).toHaveLength(1);
   });
 
+  it('une chaîne TRÈS LONGUE reste UN seul fil : aucun plafond ne la scinde', () => {
+    // Un garde-fou de profondeur rendrait, au-delà, une racine dépendante du
+    // point d'entrée : le fil se scinderait et DEUX lignes feraient foi pour la
+    // même mesure — le défaut M1, ressuscité par la protection elle-même
+    // (contre-revue du 2026-09-06, m14). La terminaison tient au chemin déjà
+    // parcouru, pas à un compteur.
+    const N = 3000;
+    const lignes = [maillon('m0000', null, '2026-09-01T08:00:00.000Z')];
+    for (let i = 1; i < N; i += 1) {
+      const id = `m${String(i).padStart(4, '0')}`;
+      const amont = `m${String(i - 1).padStart(4, '0')}`;
+      const quand = new Date(Date.UTC(2026, 8, 1, 8, 0, 0) + i * 1000).toISOString();
+      lignes.push(maillon(id, amont, quand));
+    }
+    // Ordre d'arrivée hostile : la plus profonde d'abord.
+    const corrections = correctionsParLigne([...lignes].reverse());
+    expect(lignes.filter(l => !corrections.has(l.id))).toHaveLength(1);
+    // Et c'est bien la dernière du fil qui fait foi.
+    expect(corrections.get('m0000')?.id).toBe(`m${String(N - 1).padStart(4, '0')}`);
+  });
+
   it('une chaîne vide se lit comme une absence de chaîne', () => {
     const corrections = correctionsParLigne([maillon('a', '', '2026-09-01T08:00:00.000Z')]);
     expect(corrections.size).toBe(0);

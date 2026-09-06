@@ -322,6 +322,18 @@ describe('POST — la saisie praticien, bornée par le serveur', () => {
     expect(journalise).not.toContain('42.5');
     spy.mockRestore();
   });
+
+  it('une valeur levée NON-OBJET (`throw null`) ne casse pas le gestionnaire d’erreur', async () => {
+    // `signature()` lisait `.code` sans garde : sur `null`, elle levait DANS le
+    // `catch`, la réponse `server_error` n'était jamais construite et la route
+    // rendait un 500 hors contrat (contre-revue du 2026-09-06, m12).
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    prisma.resultatBiologique.create.mockRejectedValue(null);
+    const response = await POST(postRequest(SAISIE));
+    expect(response.status).toBe(500);
+    expect((await response.json()).reason).toBe('server_error');
+    spy.mockRestore();
+  });
 });
 
 describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jamais un update', () => {
@@ -333,9 +345,11 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
   };
   const CORRECTION = { idPatient: 'PAT1', supersedesResultatId: 'res1', valeur: 45.5 };
 
-  /** Cible trouvée, puis personne ne la supplante : le chemin nominal. */
+  /** Cible trouvée, et TÊTE de son fil relu : le chemin nominal. */
   function cibleCorrigible() {
-    prisma.resultatBiologique.findFirst.mockResolvedValueOnce(CIBLE).mockResolvedValueOnce(null);
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce(CIBLE);
+    // Le fil entier : `res1` seule, donc `res1` fait foi.
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE]);
     prisma.resultatBiologique.create.mockResolvedValue(LIGNE_CORRECTION);
   }
 
@@ -387,22 +401,50 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
   });
 
   it('cible DÉJÀ corrigée : 409 — on corrige la version qui fait foi, pas une dépassée', async () => {
-    prisma.resultatBiologique.findFirst
-      .mockResolvedValueOnce(CIBLE)
-      .mockResolvedValueOnce({ id: 'res2' });
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce(CIBLE);
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, LIGNE_CORRECTION]);
     const response = await POST(postRequest(CORRECTION));
     expect(response.status).toBe(409);
     expect((await response.json()).reason).toBe('correction_deja_corrigee');
     expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
   });
 
-  it('la tête de fil se cherche sur la CHAÎNE, dans le dossier', async () => {
+  it('la tête de fil se cherche sur le FIL ENTIER, pas sur le seul successeur direct', async () => {
     cibleCorrigible();
     await POST(postRequest(CORRECTION));
-    expect(prisma.resultatBiologique.findFirst.mock.calls[1][0].where).toEqual({
+    // La clé du fil, servie par `cb_resultat_bio_serie_idx` : une correction
+    // héritant de l'analyte et de la date de sa cible, le fil y tient entier.
+    expect(prisma.resultatBiologique.findMany.mock.calls[0][0].where).toEqual({
       idPatient: 'PAT1',
-      supersedesResultatId: 'res1',
+      analyteCode: 'BIO_FERRITINE',
+      preleveLe: new Date('2026-09-01T08:00:00.000Z'),
     });
+  });
+
+  it('la BRANCHE PERDANTE d’une fourche ne se corrige pas : elle ne fait pas foi', async () => {
+    // Le défaut que la garde « successeur direct » laissait passer : sur une
+    // fourche préexistante, la perdante n'est supplantée par PERSONNE au sens
+    // du chaînage — elle passait la garde, et la corriger faisait basculer
+    // l'autorité en silence vers la branche qui avait perdu (contre-revue du
+    // 2026-09-06, m13). La route et l'écran doivent dire la même chose.
+    const perdante = {
+      ...LIGNE_CORRECTION,
+      id: 'resA',
+      saisiLe: new Date('2026-09-02T09:00:00.000Z'),
+    };
+    const gagnante = {
+      ...LIGNE_CORRECTION,
+      id: 'resB',
+      saisiLe: new Date('2026-09-02T10:00:00.000Z'),
+    };
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce({ ...CIBLE, id: 'resA' });
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, perdante, gagnante]);
+    const response = await POST(
+      postRequest({ ...CORRECTION, supersedesResultatId: 'resA' }),
+    );
+    expect(response.status).toBe(409);
+    expect((await response.json()).reason).toBe('correction_deja_corrigee');
+    expect(prisma.resultatBiologique.create).not.toHaveBeenCalled();
   });
 
   it('un analyte RETIRÉ du catalogue n’enferme pas une valeur fausse : la correction passe', async () => {
@@ -555,9 +597,9 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
   });
 
   it('corriger une CORRECTION est légitime : c’est elle la tête de fil', async () => {
-    prisma.resultatBiologique.findFirst
-      .mockResolvedValueOnce({ ...CIBLE, id: 'res2' })
-      .mockResolvedValueOnce(null);
+    prisma.resultatBiologique.findFirst.mockResolvedValueOnce({ ...CIBLE, id: 'res2' });
+    // Le fil : `res2` supplante `res1`, donc `res2` fait foi.
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, LIGNE_CORRECTION]);
     prisma.resultatBiologique.create.mockResolvedValue(LIGNE_CORRECTION);
     const response = await POST(
       postRequest({ ...CORRECTION, supersedesResultatId: 'res2' }),

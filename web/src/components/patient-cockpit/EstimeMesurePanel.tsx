@@ -53,6 +53,7 @@ function formatValeur(mesure: { valeur: number; unite: string | null }): string 
 function CorrectionMesure({
   mesure,
   analyteAuCatalogue,
+  catalogueLu,
   disabled,
   onCorriger,
   onAnnuler,
@@ -60,6 +61,8 @@ function CorrectionMesure({
   mesure: ResultatAffiche;
   /** L'analyte TEL QU'IL EST AUJOURD'HUI, ou `null` s'il n'est plus servi. */
   analyteAuCatalogue: AnalyteChoix | null;
+  /** Le catalogue a-t-il été lu JUSQU'AU BOUT ? Sinon `null` ne prouve rien. */
+  catalogueLu: boolean;
   disabled: boolean;
   onCorriger: (valeur: number) => Promise<boolean>;
   onAnnuler: () => void;
@@ -102,10 +105,22 @@ function CorrectionMesure({
           est en <strong>{mesure.unite ?? 'aucune unité'}</strong>.
         </p>
       )}
-      {analyteAuCatalogue === null && (
+      {/* ÉCHEC DE LECTURE ≠ ABSENCE D'ANALYTE — même règle que la série
+          quelques lignes plus bas (`DC-24`). `analytes` part vide et le
+          chargement du catalogue a son propre `catch` : sans distinguer
+          l'état, « n'est plus servi » s'affirmerait aussi CATALOGUE EN VOL et
+          CATALOGUE EN PANNE, sur un analyte parfaitement actif
+          (contre-revue du 2026-09-06, m11). */}
+      {catalogueLu && analyteAuCatalogue === null && (
         <p className="mt-1 text-xs text-muted-foreground">
           Cet analyte n’est plus servi par le catalogue : l’unité sera celle qu’il y porte au
           moment de consigner.
+        </p>
+      )}
+      {!catalogueLu && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          Unité non vérifiable pour l’instant : elle sera reprise du catalogue au moment de
+          consigner.
         </p>
       )}
       <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`correction-${mesure.id}`}>
@@ -247,6 +262,8 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   // lecture ABOUTIE — jamais pendant le chargement, jamais sur une panne.
   const [lecture, setLecture] = useState<'chargement' | 'ok' | 'erreur'>('chargement');
   const [analytes, setAnalytes] = useState<AnalyteChoix[]>([]);
+  /** Même discipline que `lecture` : un catalogue non lu n'affirme rien. */
+  const [catalogue, setCatalogue] = useState<'chargement' | 'ok' | 'erreur'>('chargement');
   const [erreur, setErreur] = useState<string | null>(null);
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   /** Identifiant de la mesure en cours de correction — une seule à la fois. */
@@ -286,13 +303,20 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
           ok: boolean;
           analytes?: Array<{ code: string; libelle: string; unite: string | null }>;
         };
-        if (!abandonne && response.ok && payload.ok) {
+        if (abandonne) return;
+        if (response.ok && payload.ok) {
           setAnalytes(
             (payload.analytes ?? []).map(a => ({ code: a.code, libelle: a.libelle, unite: a.unite })),
           );
+          setCatalogue('ok');
+        } else {
+          setCatalogue('erreur');
         }
       } catch {
         // Sans catalogue, la saisie reste fermée — la série se lit quand même.
+        // Mais l'échec se DIT : sans lui, une liste vide passerait pour un
+        // catalogue lu, et la correction affirmerait un analyte retiré.
+        if (!abandonne) setCatalogue('erreur');
       }
     })();
     return () => {
@@ -426,15 +450,34 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
                       — prélevé le {formatDateHeure(mesure.preleveLe)} (
                       {mesure.source === 'import_labo' ? 'import laboratoire' : 'saisie praticien'})
                       {mesure.supersedesResultatId !== null && (
-                        <span className="ml-1 text-foreground">· correction</span>
+                        // La date de CHAQUE correction se lit sur SA ligne. Sans
+                        // elle, `saisiLe` n'apparaîtrait nulle part (la série
+                        // affiche `preleveLe`) et le fil ne se lirait plus
+                        // pas-à-pas : sur a→b→c, la date à laquelle `a` a été
+                        // reprise serait perdue, dans un lot dont tout le propos
+                        // est que l'erreur reste lisible (`DC-30`).
+                        <span className="ml-1 text-foreground">
+                          · correction consignée le {formatDateHeure(mesure.saisiLe)}
+                        </span>
                       )}
                       {corrigee && (
                         // L'erreur RESTE À L'ÉCRAN, barrée et datée : c'est le
                         // sens de DC-30, et c'est pour cela qu'on ne filtre pas.
+                        //
+                        // LA PHRASE NOMME UN ÉTAT, PAS UN ÉVÉNEMENT. `corrigeeParId`
+                        // désigne la ligne qui FAIT FOI, pas le successeur direct :
+                        // sur a→b→c, `a` pointe vers `c`, et « corrigée le [date de
+                        // c] » affirmerait un geste qui n'a jamais eu lieu — c'est
+                        // `b` qui a corrigé `a`, à une autre date, vers une autre
+                        // valeur. Sur une fourche, `c` est même une SŒUR de `b`, et
+                        // le verbe « corrigée » serait faux deux fois
+                        // (contre-revue du 2026-09-06, M1-bis).
                         <span className="ml-1">
-                          · corrigée
-                          {correction ? ` le ${formatDateHeure(correction.saisiLe)}` : ''}
-                          {correction ? ` en ${formatValeur(correction)}` : ''}
+                          · remplacée
+                          {correction
+                            ? ` — la valeur qui fait foi est ${formatValeur(correction)},`
+                              + ` consignée le ${formatDateHeure(correction.saisiLe)}`
+                            : ''}
                         </span>
                       )}
                       {!corrigee && correctionDe !== mesure.id && (
@@ -463,6 +506,7 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
                           analyteAuCatalogue={
                             analytes.find(a => a.code === mesure.analyteCode) ?? null
                           }
+                          catalogueLu={catalogue === 'ok'}
                           disabled={envoiEnCours}
                           onAnnuler={() => setCorrectionDe(null)}
                           onCorriger={async valeur => {

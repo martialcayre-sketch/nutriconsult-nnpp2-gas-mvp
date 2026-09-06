@@ -34,9 +34,6 @@ export type MaillonFil = {
   saisiLe: string;
 };
 
-/** Garde-fou de remontée : au-delà, on tient la chaîne pour abîmée. */
-const PROFONDEUR_MAX = 1000;
-
 /**
  * Rend, pour chaque ligne qui NE FAIT PAS FOI, celle qui fait foi à sa place.
  *
@@ -50,9 +47,12 @@ export function correctionsParLigne<T extends MaillonFil>(lignes: T[]): Map<stri
   for (const ligne of lignes) parId.set(ligne.id, ligne);
 
   // (a) Le groupe : toutes les lignes qui partagent la même racine de chaîne.
+  // `memo` est partagé par toute la passe : les lignes d'un même chemin ont la
+  // même racine, si bien que chaque ligne n'est remontée qu'UNE fois.
+  const memo = new Map<string, string>();
   const groupes = new Map<string, T[]>();
   for (const ligne of lignes) {
-    const cle = racine(ligne, parId);
+    const cle = racine(ligne, parId, memo);
     const groupe = groupes.get(cle) ?? [];
     groupe.push(ligne);
     groupes.set(cle, groupe);
@@ -78,30 +78,70 @@ export function correctionsParLigne<T extends MaillonFil>(lignes: T[]): Map<stri
  * L'identifiant de la racine du fil. Une chaîne ORPHELINE (cible absente de
  * la série, référence souple sans FK) fait racine là où elle se casse : la
  * ligne reste visible et forme son propre fil, plutôt que de disparaître.
+ *
+ * PAS DE PLAFOND DE PROFONDEUR, et c'est délibéré. Un plafond arbitraire
+ * rendrait, au-delà, une racine DÉPENDANTE DU POINT D'ENTRÉE : le fil se
+ * scinderait, et deux lignes feraient foi pour la même mesure — exactement le
+ * défaut `M1`, ressuscité par le garde-fou censé protéger. La terminaison est
+ * acquise autrement : chaque pas ajoute un identifiant NEUF à `chemin`, sinon
+ * c'est un cycle et l'on sort. Le nombre de lignes lues borne donc la
+ * remontée.
+ *
+ * `memo` la rend linéaire : `rang` remplace un `indexOf` (qui faisait de la
+ * remontée un balayage dans un balayage) et toutes les lignes d'un chemin
+ * héritent de sa racine, si bien qu'une série entièrement chaînée coûte O(n)
+ * au lieu de O(n³) (contre-revue du 2026-09-06, m14).
  */
-function racine<T extends MaillonFil>(depart: T, parId: Map<string, T>): string {
+function racine<T extends MaillonFil>(
+  depart: T,
+  parId: Map<string, T>,
+  memo: Map<string, string>,
+): string {
+  const connue = memo.get(depart.id);
+  if (connue !== undefined) return connue;
+
   const chemin: string[] = [depart.id];
+  const rang = new Map<string, number>([[depart.id, 0]]);
   let courante = depart;
-  for (let pas = 0; pas < PROFONDEUR_MAX; pas += 1) {
+  let issue: string;
+
+  for (;;) {
     const cible = courante.supersedesResultatId;
-    if (cible === null || cible === '') return courante.id;
+    if (cible === null || cible === '') {
+      issue = courante.id;
+      break;
+    }
+    const dejaRemontee = memo.get(cible);
+    if (dejaRemontee !== undefined) {
+      issue = dejaRemontee;
+      break;
+    }
     const amont = parId.get(cible);
     // Cible hors série : le fil s'arrête ici, et la CIBLE fait racine — deux
     // orphelines visant la même ligne absente restent bien dans un seul fil.
-    if (amont === undefined) return cible;
-    const boucle = chemin.indexOf(amont.id);
-    if (boucle !== -1) {
+    if (amont === undefined) {
+      issue = cible;
+      break;
+    }
+    const boucle = rang.get(amont.id);
+    if (boucle !== undefined) {
       // CYCLE — irréalisable par la route (append-only, cible antérieure),
       // mais une base abîmée ne doit ni figer l'écran, ni scinder le cycle en
       // deux fils selon la ligne d'où l'on est parti. On rend donc le PLUS
       // PETIT identifiant DU CYCLE : un représentant canonique, identique
       // quel que soit le point d'entrée.
-      return [...chemin.slice(boucle)].sort()[0];
+      issue = [...chemin.slice(boucle)].sort()[0];
+      break;
     }
+    rang.set(amont.id, chemin.length);
     chemin.push(amont.id);
     courante = amont;
   }
-  return courante.id;
+
+  // Tout le chemin partage la racine trouvée — y compris la queue qui MÈNE à
+  // un cycle sans en faire partie.
+  for (const id of chemin) memo.set(id, issue);
+  return issue;
 }
 
 /** La tête du fil : celle que personne ne supplante, la plus récente. */
