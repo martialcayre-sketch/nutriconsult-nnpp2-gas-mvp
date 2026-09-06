@@ -78,12 +78,24 @@ adversariale de ce lot, sur du code mergé le jour même.
    patient inchangés ; qui cherche des révocations dans les logs doit le savoir.
 5. **La course à la NAISSANCE d'un lien est inchangée** (`D-126` §3). Elle ne
    peut pas salir l'encart : la ligne reste à `consommeLe` nul.
+6. **AUCUN BANC NE GARDE L'ALLER-RETOUR `DateTime`.** Le compare-and-swap
+   suppose qu'une valeur lue par Prisma puis renvoyée dans un `where`
+   corresponde encore à la ligne. Une perte de précision rendrait le prédicat
+   TOUJOURS faux — et plus aucun patient n'entrerait. La revue adversariale l'a
+   vérifié à la main, sur le vrai client et une base jetable en `TIMESTAMP(3)` :
+   aller-retour fidèle, `count = 1` puis `count = 0` au rejeu, et l'UPDATE émis
+   est plat (sans `IN (SELECT …)`), ce qui est la condition pour que Postgres
+   réévalue le prédicat sur la version verrouillée. Les bancs, eux, comparent
+   contre un double : ils ne verraient pas cette perte. Le mécanisme pour
+   combler ce trou existe (`web/prisma/checks/` et le service Postgres du CI) ;
+   il n'est pas mobilisé ici.
 
 **Règle d'arbitrage, pour les lignes que rien ne départage.** De deux erreurs
 possibles, on choisit toujours celle qui fait **renvoyer un accès de trop** —
 coût : un e-mail, que la prochaine connexion corrige — jamais celle qui fait
 **attendre en silence un patient jamais entré**, dont le coût est l'onboarding
 entier.
+
 ### D-127 — La sélection d'une priorité est un acte praticien : elle se pose au serveur, s'écrit une fois pour toutes, et ne se rattrape pas
 
 - Date : 2026-09-06

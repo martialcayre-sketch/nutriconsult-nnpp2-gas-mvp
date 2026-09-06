@@ -148,11 +148,24 @@ describe('GET /portail/lien/[jeton]', () => {
     expect(appel.where.expireLe).not.toHaveProperty('gte');
   });
 
-  // La course elle-même, jouée : la fermeture praticien a bougé l'horizon entre
-  // notre lecture et notre écriture. Le compare-and-swap ne matche plus, le
-  // lien n'est PAS brûlé, et aucune session ne s'ouvre.
+  // LA COURSE ELLE-MÊME, JOUÉE — et ce banc DOIT rougir sur le prédicat d'avant.
+  // La fermeture praticien a bougé l'horizon entre notre lecture et notre
+  // écriture : la ligne porte désormais l'instant de fermeture, POSTÉRIEUR à
+  // toute horloge que la route aurait pu figer avant d'attendre le verrou.
+  //
+  // Le double joue la ligne réelle, pas un compte constant. Sous le
+  // compare-and-swap, la valeur lue ne correspond plus : count 0, lien non
+  // brûlé. Sous la forme horloge de `D-126` (`{ gt: … }`), le nouvel horizon
+  // satisfait encore le prédicat : count 1, session ouverte — et les deux
+  // assertions ci-dessous tombent.
   it('une fermeture survenue depuis la lecture fait échouer la consommation', async () => {
-    prisma.portailMagicLink.updateMany.mockResolvedValue({ count: 0 });
+    const HORIZON_APRES_FERMETURE = new Date(Date.now() + 1_000);
+    prisma.portailMagicLink.updateMany.mockImplementation(async ({ where }) => {
+      const attendu = where.expireLe;
+      return attendu instanceof Date
+        ? { count: attendu.getTime() === HORIZON_APRES_FERMETURE.getTime() ? 1 : 0 }
+        : { count: HORIZON_APRES_FERMETURE > attendu.gt ? 1 : 0 };
+    });
     const res = await appeler();
     expect(res.headers.get('location')).toContain('/portail/lien/indisponible');
     expect(res.headers.get('set-cookie')).toBeNull();

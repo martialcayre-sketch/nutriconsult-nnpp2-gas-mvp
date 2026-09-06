@@ -117,6 +117,9 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
   // déréférence `mock.calls[0][0]`, donc l'absence d'appel y échoue déjà.
   it('n’écrit JAMAIS `consommeLe` — cette colonne ne dit que l’entrée du patient', async () => {
     await DELETE(request());
+    // La garantie tient DANS ce banc : sans cette ligne, la boucle serait
+    // vide-donc-verte le jour où l'écriture disparaîtrait.
+    expect(prisma.portailMagicLink.updateMany).toHaveBeenCalledTimes(1);
     for (const [appel] of prisma.portailMagicLink.updateMany.mock.calls) {
       expect(appel.data).not.toHaveProperty('consommeLe');
       expect(appel.data).toHaveProperty('expireLe');
