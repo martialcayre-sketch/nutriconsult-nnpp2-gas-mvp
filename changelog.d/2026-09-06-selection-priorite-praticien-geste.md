@@ -1,4 +1,4 @@
-### La sélection d'une priorité se consigne, et le serveur cesse de croire l'écran sur parole (2026-09-06)
+### Le praticien peut retenir une priorité, et le serveur cesse de croire l'écran sur parole (2026-09-06)
 
 La table posée plus tôt dans la journée reçoit ce qui l'écrit et ce qui la lit.
 Une priorité retenue par le praticien est désormais **un acte enregistré** :
@@ -28,8 +28,21 @@ déclenche plus — c'est **la sélection** qui est écartée, pas la décision 
 Sans cette précaution, consigner une priorité aurait pu faire disparaître de
 l'écran un épisode que le praticien avait pourtant confirmé.
 
-**Ce qui reste à faire.** L'écran ne propose pas encore de choisir : le geste
-s'ouvre par l'interface au prochain lot, avec sa propre revue. Et quand une
-sélection est écartée pour cause de péremption, l'écran montre qu'aucune
-priorité n'est retenue sans expliquer pourquoi — cette phrase-là part avec le
-geste.
+**Et le praticien peut enfin choisir.** Sous « Priorité et limites », là où le
+constructeur de protocole refusait jusqu'ici sans dire où aller, un panneau
+présente les priorités candidates — **avec leur rang et leur statut de
+confiance**, pour qu'on décide avec ou contre le classement du moteur, jamais à
+l'aveugle — et demande le motif. Le bouton reste fermé tant que le motif manque.
+
+La priorité retenue s'affiche ensuite **avec sa justification**, et non seulement
+son nom : c'est la moitié de l'acte, et c'est ce qu'on vient relire. Changer
+d'avis rouvre le formulaire avec un motif **vierge** — on ne recycle pas la
+justification d'un choix pour fonder le suivant.
+
+Le panneau **se tait** là où quelqu'un d'autre parle déjà : décision suspendue,
+aucun candidat classé, pas de carte. Répéter aurait ajouté du bruit, et proposer
+un choix que le moteur refuserait aurait été pire.
+
+**Ce qui reste à faire.** Quand une sélection est écartée parce qu'elle ne tient
+plus, l'écran montre qu'aucune priorité n'est retenue sans expliquer pourquoi.
+Cette phrase-là reste due.

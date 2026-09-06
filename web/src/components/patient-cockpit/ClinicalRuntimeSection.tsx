@@ -10,6 +10,10 @@ import { EpisodeConfirmationPanel, type ContournementSaisi } from './EpisodeConf
 import { recoupementsContradictions } from './recoupementContradictions';
 import { MissingDataPanel } from './MissingDataPanel';
 import { DecisionSummaryCard } from './DecisionSummaryCard';
+import {
+  SelectionPrioritePanel,
+  type EtatSelectionPriorite,
+} from './SelectionPrioritePanel';
 import { ProtocolMiniBuilder } from './ProtocolMiniBuilder';
 import { ProtocolConsultationPanel } from './ProtocolConsultationPanel';
 import { ProtocolVersionHistory, type ProtocolVersionItem } from './ProtocolVersionHistory';
@@ -288,6 +292,11 @@ export function ClinicalRuntimeSection({
   const [partageMedecin, setPartageMedecin] = useState<string | null>(null);
   const [saveState, setSaveState] = useState<ProtocolSaveState>('idle');
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Sélection d'une priorité ([[D-127]]) : état PROPRE à ce geste, jamais celui
+  // du protocole — un refus de sélection ne doit pas s'afficher sur le
+  // constructeur, ni l'inverse.
+  const [selectionState, setSelectionState] = useState<EtatSelectionPriorite>('idle');
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   // Validation « pour diffusion » (C2A LOT-03 Part B).
   const [approvedAt, setApprovedAt] = useState<string | null>(null);
   const [approvalStale, setApprovalStale] = useState(false);
@@ -989,6 +998,47 @@ export function ClinicalRuntimeSection({
     needIdsPrioriteSelectionnee,
   ]);
 
+  // LE GESTE DE SÉLECTION D'UNE PRIORITÉ ([[D-127]]). L'écran transmet un
+  // candidat et un motif ; auteur, horodatage et empreinte de carte sont posés
+  // au serveur.
+  //
+  // IL RECHARGE PLUTÔT QU'IL NE FABRIQUE. La carte qui suit une sélection n'est
+  // pas dérivable ici — son empreinte passe par `node:crypto`. Reconstruire un
+  // état local ferait diverger l'écran de ce que le serveur servira au prochain
+  // GET, et le POST de version suivant partirait sur une carte que
+  // `refusChaineC1` rejetterait en 409.
+  const retenirPriorite = async (candidateId: string, motif: string) => {
+    if (fixture || !runtime || runtime.status !== 'ready') return;
+    setSelectionState('saving');
+    setSelectionError(null);
+    try {
+      const response = await fetch('/api/praticien/cockpit/priorite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          episode: runtime.snapshot.assessmentEpisode,
+          decisionCard: runtime.decisionCard,
+          candidateId,
+          rationale: motif,
+        }),
+      });
+      const payload = (await response.json()) as { ok: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        setSelectionState('error');
+        // Le message du serveur EST le message : il nomme le refus (motif
+        // manquant, candidat inconnu, carte périmée, course concurrente). Le
+        // remplacer par un texte d'écran perdrait la seule information utile.
+        setSelectionError(payload.error ?? 'Échec de l’enregistrement de la priorité.');
+        return;
+      }
+      setSelectionState('idle');
+      await loadProposal(jalonConfirme);
+    } catch {
+      setSelectionState('error');
+      setSelectionError('Erreur technique lors de l’enregistrement de la priorité.');
+    }
+  };
+
   // Enregistrement EXPLICITE d'une version relue (jamais silencieux, jamais
   // d'envoi patient). Anti-écrasement via baseVersionId → 409 version_stale.
   const saveVersion = async (submission: RelectureProtocoleSoumission) => {
@@ -1313,6 +1363,19 @@ export function ClinicalRuntimeSection({
         />
       )}
       {affiche('decision') && <DecisionSummaryCard decisionCard={decisionCard} />}
+      {/* LE GESTE, JUSTE SOUS LA CARTE QUI LE MOTIVE ([[D-127]]). Il se place
+          entre « Priorité et limites » — qui montre ce que le moteur a classé —
+          et le constructeur de protocole, qui refusait jusqu'ici sans dire où
+          aller. En mode fixture, aucun geste : la fiche de démonstration
+          n'écrit pas dans un dossier. */}
+      {affiche('decision') && !fixture && (
+        <SelectionPrioritePanel
+          decisionCard={decisionCard}
+          etat={selectionState}
+          erreur={selectionError}
+          onRetenir={(candidateId, motif) => { void retenirPriorite(candidateId, motif); }}
+        />
+      )}
       {/* RECOUPEMENT FACTUEL contradiction ↔ décision (`D-119`) : quand une
           contradiction ouverte confronte un instrument qui fonde aussi un
           candidat (ou le canal de plainte), le dire À CÔTÉ de la carte — le

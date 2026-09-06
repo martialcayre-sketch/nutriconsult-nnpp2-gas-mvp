@@ -209,7 +209,24 @@ seul côté rendrait 409 sur une carte honnête.
 **Ce qui reste dû, et qui est le vrai « en le nommant »** : l'écran montre
 qu'aucune priorité n'est retenue, il n'explique pas encore POURQUOI celle qui
 avait été posée ne l'est plus. Le serveur le journalise sans nommer ni le motif
-ni le candidat. La phrase à l'écran part avec le geste de sélection.
+ni le candidat.
+
+**§10. Le geste d'écran, et ses trois silences.** `SelectionPrioritePanel` se
+place sous « Priorité et limites » — là où `ProtocolMiniBuilder` refusait sans
+dire où aller. Il montre le RANG et le STATUT de chaque candidat : le praticien
+décide avec ou contre le classement du moteur, jamais à l'aveugle. Le motif est
+exigé à l'écran comme au serveur — la route refuserait de toute façon, mais un
+refus après coup ferait perdre la saisie. Il RECHARGE au lieu de fabriquer :
+l'empreinte de la carte passe par `node:crypto`, un état local divergerait de ce
+que le prochain GET servira, et le POST de version suivant partirait sur une
+carte que `refusChaineC1` rejetterait.
+
+Il **ne rend rien** dans trois cas, chacun ayant son propriétaire ailleurs à
+l'écran : décision bloquée (« Priorité et limites » le dit déjà, avec le motif
+signé — et proposer un choix que `buildDecisionCard` refuserait serait pire que
+répéter), aucun candidat classé (table non signée), aucune carte. Changer d'avis
+rouvre le formulaire avec un motif **vierge** : recycler la justification d'un
+choix pour fonder le suivant est exactement ce que l'append-only refuse.
 
 **§9. Les bancs devaient décrire un dossier, pas une commodité.** Trente-huit cas
 sont passés au rouge au déplacement de §1bis, et c'était le bon signal : ils
