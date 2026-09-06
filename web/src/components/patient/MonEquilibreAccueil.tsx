@@ -104,7 +104,7 @@ export function MonEquilibreAccueil({
   return (
     <div className="w-full max-w-md">
       <div className="bg-surface rounded-lg shadow-card border border-border p-8">
-        <h1 className="font-display text-[26px] font-bold leading-tight text-foreground mb-6 text-center">Mon équilibre</h1>
+        <h1 className="font-display text-2xl font-bold leading-tight text-foreground mb-6 text-center">Mon équilibre</h1>
 
         <div className="flex justify-center mb-4">
           {indiceGlobal !== null ? (
@@ -139,9 +139,10 @@ export function MonEquilibreAccueil({
               Points à explorer avec votre praticien
             </p>
             <ul className="space-y-1.5">
-              {/* Item priorité maquette : 15,5px, icône 19px encre cuivre. */}
+              {/* Item priorité maquette : `text-sm` (15px, la maquette disait 15,5),
+                  icône 19px encre cuivre. */}
               {priorites.map(p => (
-                <li key={p.id} className="flex items-center gap-3 text-[15.5px] text-foreground bg-muted rounded-xl px-[15px] py-[13px]">
+                <li key={p.id} className="flex items-center gap-3 text-sm text-foreground bg-muted rounded-xl px-[15px] py-[13px]">
                   <Sprout aria-hidden="true" size={19} strokeWidth={2} className="shrink-0 text-copper-ink" />
                   {p.libellePatient}
                 </li>

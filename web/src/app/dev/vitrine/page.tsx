@@ -28,7 +28,7 @@ function BlocSocle({ titre }: { titre: string }) {
       <p className="text-xs font-semibold uppercase tracking-[.06em] text-solar-ink">
         Vitrine 5.0 · socle V1
       </p>
-      <h1 className="font-display text-[1.875rem] font-bold tracking-[-0.02em]">{titre}</h1>
+      <h1 className="font-display text-3xl font-bold tracking-[-0.02em]">{titre}</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Canvas, échelle typographique, ombres, rayons et focus clavier — à
         comparer avec la maquette cible.

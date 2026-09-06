@@ -216,7 +216,7 @@ function FriseJours({ episode }: { episode: EpisodeAgendaAli }) {
           <span
             key={e.index}
             title={e.dateJour}
-            className={`inline-flex h-6 w-6 items-center justify-center rounded text-[10px] font-medium tabular-nums ${classe}`}
+            className={`inline-flex h-6 w-6 items-center justify-center rounded text-3xs font-medium tabular-nums ${classe}`}
           >
             {e.index}
           </span>

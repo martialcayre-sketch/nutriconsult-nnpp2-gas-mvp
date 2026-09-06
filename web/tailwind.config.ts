@@ -123,6 +123,11 @@ const config: Config = {
       // text-[14px] pour rester pilotables centralement. `metric` porte les
       // valeurs de métriques (32px display).
       fontSize: {
+        // Palier bas ajouté le 2026-09-06 avec la fermeture de l'échelle aux
+        // valeurs arbitraires : dix sites écrivaient 9 à 11 px en dur, et les
+        // remonter tous à `text-2xs` aurait grossi des labels denses (badges
+        // capitales, légendes de graphe) de 2,5 px. 10 px leur donne un palier.
+        '3xs': ['0.625rem', { lineHeight: '1.3' }], // 10px — badges capitales, légendes denses
         '2xs': ['0.71875rem', { lineHeight: '1.35' }], // 11.5px — statuts, labels de jauge
         xs: ['0.78125rem', { lineHeight: '1.4' }], // 12.5px — eyebrows, labels uppercase
         '13': ['0.8125rem', { lineHeight: '1.45' }], // 13px — chips, mono (heures, sources)

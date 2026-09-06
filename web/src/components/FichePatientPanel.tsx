@@ -200,7 +200,7 @@ function MomentumCard({ momentum }: { momentum: ResultatMomentum | null }) {
           au libellé patient (« En progression ») ; le laisser ici aurait
           corrigé la phrase et gardé le jugement. */}
       <Badge variant="neutral">{momentum.tendance}</Badge>
-      <span className="text-[10px] text-muted-foreground text-center leading-tight">
+      <span className="text-3xs text-muted-foreground text-center leading-tight">
         {MENTION_NATURE_INDICE_GLOBAL}
       </span>
     </div>
@@ -1080,7 +1080,7 @@ export function FichePatientPanel({
                                   depuis la v12 ; le praticien y a droit aussi. */}
                               {sub.sens && (
                                 <span
-                                  className="text-[10px] px-1 rounded bg-muted text-muted-foreground"
+                                  className="text-3xs px-1 rounded bg-muted text-muted-foreground"
                                   title={sub.sens === 'symptome'
                                     ? 'Score élevé = symptômes plus importants'
                                     : 'Score élevé = meilleur fonctionnement'}
@@ -1560,12 +1560,13 @@ export function FichePatientPanel({
               visible depuis tous les onglets, pas seulement le cockpit. */}
           <div>
           {/* Bandeau trajectoire — toujours visible. Anatomie maquette cible :
-              Spirale (emblème décoratif), identité en display 19px, position en
+              Spirale (emblème décoratif), identité en display `text-lg` (18px, la
+              maquette disait 19), position en
               mono, chip d'état à droite. */}
           <div className="flex flex-wrap items-center gap-4 border-b border-border bg-surface px-[18px] py-3.5">
             <SpiraleTrajectoire enCours className="shrink-0" />
             <div className="min-w-0">
-              <p className="font-display text-[19px] font-bold leading-tight text-foreground">{nomComplet}</p>
+              <p className="font-display text-lg font-bold leading-tight text-foreground">{nomComplet}</p>
               <p className="font-mono text-13 text-muted-foreground">
                 {derniereReponse ? `Dernière réponse le ${derniereReponse}` : 'Aucune réponse reçue'}
               </p>
@@ -1574,7 +1575,7 @@ export function FichePatientPanel({
                 cycles G2. Rien n'est affiché tant qu'aucun cycle n'existe. */}
             {bandeauEpisode && (
               <div className="min-w-0 border-l border-border pl-4">
-                <p className="font-display text-[15px] font-semibold leading-tight text-foreground">
+                <p className="font-display text-sm font-semibold leading-tight text-foreground">
                   Épisode {bandeauEpisode.numeroEpisode} en cours
                 </p>
                 <p className="font-mono text-13 text-muted-foreground">{bandeauEpisode.positionLibelle}</p>

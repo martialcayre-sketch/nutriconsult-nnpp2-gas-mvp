@@ -270,7 +270,7 @@ export function ChronogrammeSommeil({ nuits }: { nuits: NuitRow[] }) {
           </BarChart>
         </ResponsiveContainer>
       </div>
-      <p className="mt-1 text-[11px] text-muted-foreground">
+      <p className="mt-1 text-2xs text-muted-foreground">
         Teinte : semaine 1 → 3. Liseré ambré : nuit de week-end. Portions claires : temps
         d’endormissement (en tête) et éveil au lit le matin (en pied) — les deux seuls éveils
         dont l’heure est recueillie. L’éveil nocturne n’est connu qu’en durée cumulée : il se

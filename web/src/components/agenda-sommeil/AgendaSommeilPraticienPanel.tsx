@@ -28,7 +28,7 @@ function Tuile({ libelle, valeur, appui }: { libelle: string; valeur: string | n
       ) : (
         <p className="text-base font-semibold text-foreground tabular-nums">{valeur}</p>
       )}
-      {appui && <p className="text-[11px] text-muted-foreground">{appui}</p>}
+      {appui && <p className="text-2xs text-muted-foreground">{appui}</p>}
     </div>
   );
 }
@@ -125,7 +125,7 @@ function Frequences({ a }: { a: AgregatsAgenda }) {
         <strong>{a.AGD_FREQ_WASO30_SEM}</strong> · l’un ou l’autre{' '}
         <strong>{a.AGD_FREQ_CRITERE_SEM}</strong>
       </p>
-      <p className="text-[11px] text-muted-foreground">
+      <p className="text-2xs text-muted-foreground">
         Convention de recherche : ≥ 3 nuits/semaine.
         {partiel
           ? ` Calculé sur ${a.AGD_NB_NUITS_FREQ} nuits — les nuits notées avant la refonte des bornes ne sont pas classables pour ce seuil.`

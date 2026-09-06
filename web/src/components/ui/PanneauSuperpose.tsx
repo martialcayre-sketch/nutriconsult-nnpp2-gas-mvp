@@ -139,7 +139,7 @@ export function PanneauSuperpose({
               {surtitre && (
                 <p className="text-xs font-semibold uppercase tracking-[.06em] text-solar-ink">{surtitre}</p>
               )}
-              <Dialog.Title className="font-display text-[19px] font-bold text-foreground">{titre}</Dialog.Title>
+              <Dialog.Title className="font-display text-lg font-bold text-foreground">{titre}</Dialog.Title>
               <Dialog.Description
                 className={descriptionMasquee ? 'sr-only' : 'mt-1 text-sm text-muted-foreground'}
               >

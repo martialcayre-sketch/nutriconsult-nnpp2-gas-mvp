@@ -42,18 +42,13 @@ import { describe, expect, it } from 'vitest';
 //   - `shadow-sm`, dont les deux occurrences sont un commentaire et le point de
 //     curseur de `ScoreZones` — le micro-élément que le §10 autorise nommément.
 //
-// QUESTION OUVERTE, VOLONTAIREMENT NON GARDÉE — L'ÉCHELLE EST-ELLE FERMÉE ?
-// Le §10 énumère sept paliers sans dire si la liste est close. Comme
-// `fontSize` vit sous `theme.extend`, les paliers natifs de Tailwind
-// survivent et restent disponibles. L'arbre s'en sert massivement :
-//   · 117 usages de `text-lg`/`xl`/`2xl`/`3xl` (paliers natifs, hors tableau) ;
-//   · 19 tailles arbitraires `text-[…]` hors des deux que le §10 proscrit,
-//     dont `text-[15.5px]`, `text-[10.5px]` et `text-[1.875rem]`.
-// Les secondes contredisent le principe énoncé (« pilotables centralement »)
-// même si le §10 ne les nomme pas. Mais les corriger DÉPLACE DES PIXELS sur
-// douze fichiers, et les baselines visuelles ne comparent rien hors Linux :
-// c'est une décision de design system, pas un ajustement de garde. Tant
-// qu'elle n'est pas prise, ce fichier ne garde que ce qui a été tranché.
+// CE QUE LA GARDE NE DIT PAS : LES PALIERS NATIFS SONT LÉGITIMES.
+// `text-lg`/`xl`/`2xl`/`3xl` (18/20/24/30px) ne sont pas gardés, et c'est
+// délibéré — décision du 2026-09-06. `fontSize` vit sous `theme.extend`, donc
+// ils survivent, et la configuration les pilote centralement : ils satisfont le
+// principe du §10. Le tableau du §10 est l'échelle de l'UI DENSE (10 → 16px)
+// plus la métrique ; entre 16 et 32px il n'y avait aucun palier, et 117 usages
+// natifs remplissaient ce trou sans que rien ne le dise. C'est désormais écrit.
 
 const RACINE_WEB = path.resolve(__dirname, '../../..');
 
@@ -81,14 +76,13 @@ const REGLES = [
   },
   {
     nom: 'taille typographique arbitraire',
-    correction: 'utiliser `text-13` / `text-14` (design-system-d1.md §10)',
-    // BORNÉE AUX DEUX PALIERS QUE LE §10 PROSCRIT NOMMÉMENT. La forme large
-    // (`text-[<taille>]`) rend 19 occurrences sur l'arbre — `text-[10px]`,
-    // `text-[15.5px]`, `text-[26px]` — qu'aucune décision de design system ne
-    // couvre : les élargir ici imposerait un changement de pixels sur douze
-    // fichiers sous couvert de garde. Voir la question ouverte en tête de
-    // fichier ; élargir ce motif le jour où l'échelle est déclarée fermée.
-    motif: /\btext-\[1[34]px\]/g,
+    correction: 'utiliser un palier nommé ou natif (design-system-d1.md §10)',
+    // ÉLARGIE LE 2026-09-06 À TOUTE VALEUR ARBITRAIRE, la question de l'échelle
+    // ayant été tranchée : arbitraires proscrites, paliers natifs de Tailwind
+    // admis. Le motif borné aux deux paliers que le §10 nommait laissait passer
+    // dix-sept autres magic numbers, dont `text-[15.5px]` et un `text-[1.875rem]`
+    // qui valait déjà exactement `text-3xl`. Les dix-neuf sont migrés.
+    motif: /\btext-\[[^\]]+\]/g,
   },
 ] as const;
 
@@ -126,6 +120,21 @@ describe('Design system — les tokens ne se contournent pas', () => {
       'taille typographique arbitraire',
     ]);
     expect(infractions('<p className="text-13" />')).toEqual([]);
+  });
+
+  it('ATTRAPE les arbitraires que le §10 ne nommait pas — c’est l’élargissement', () => {
+    // Les trois formes réellement trouvées dans l'arbre le 2026-09-06, que le
+    // motif borné à `text-[13px]`/`[14px]` laissait toutes passer.
+    for (const forme of ['text-[26px]', 'text-[15.5px]', 'text-[1.875rem]']) {
+      expect(infractions(`<p className="${forme}" />`), forme).toEqual([
+        'taille typographique arbitraire',
+      ]);
+    }
+  });
+
+  it('ACCEPTE les paliers natifs de Tailwind — ils sont pilotables centralement', () => {
+    expect(infractions('<h1 className="text-3xl" /><h2 className="text-2xl" />')).toEqual([]);
+    expect(infractions('<p className="text-lg" /><span className="text-3xs" />')).toEqual([]);
   });
 
   it('ne compte pas un motif qui n’est écrit qu’en commentaire', () => {

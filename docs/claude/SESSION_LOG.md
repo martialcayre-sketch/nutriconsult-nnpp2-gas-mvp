@@ -5127,3 +5127,22 @@ variante de `Button`. Un écart s'établit sur un comptage qualifié, jamais sur
 
 Prochaine action — trancher si l'échelle typographique est fermée : 117 paliers
 natifs et 19 tailles arbitraires en dépendent.
+
+## 2026-09-06 — L'échelle typographique se ferme aux arbitraires
+
+Décidé — toute valeur `text-[…]` est proscrite ; les paliers natifs de Tailwind
+(18/20/24/30 px) sont admis, `fontSize` vivant sous `theme.extend` et la config
+les pilotant centralement. Palier bas `text-3xs` (10 px) ajouté. Les 19 valeurs
+arbitraires de l'arbre sont migrées, 13 fichiers. La garde du §10 est élargie en
+conséquence, avec ses cas de rouge synthétique.
+
+Le diagnostic n'était pas « fermée ou ouverte » mais un **trou** : aucun palier
+entre 16 et 32 px, que 136 usages remplissaient chacun à sa façon.
+
+Écarté — migrer aussi les 117 usages natifs : 136 sites touchés pour déplacer des
+pixels sur des titres que personne ne conteste.
+
+Prochaine action — régénérer les 8 baselines visuelles (workflow manuel,
+Ubuntu), regarder chaque image, les committer dans la PR. `fiche-cockpit` et
+`fiche-tiroir-besoins` changent : 19 → 18 px sur un nom de patient et un titre
+de tiroir.
