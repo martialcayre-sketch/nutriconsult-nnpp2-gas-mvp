@@ -161,6 +161,36 @@ export function passationsC1Fixture() {
 
 export type ChaineC1Fixture = ChaineC1 & { episode: ConfirmedAssessmentEpisode };
 
+/** Le motif consigné par la sélection de fixture — sans portée clinique. */
+export const MOTIF_SELECTION_FIXTURE = 'Sélection praticien de fixture, sans portée clinique.';
+
+/**
+ * La LIGNE PERSISTÉE dont `lireSelectionPriorite` tire la sélection de
+ * `chaineC1DeReference({ selection })` — [[D-127]].
+ *
+ * Pourquoi ce compagnon existe. Depuis [[D-127]] §1bis, le recalcul serveur ne
+ * réinjecte plus la sélection du corps de requête : il la RELIT EN BASE. Un
+ * banc qui soumet une carte portant une sélection doit donc décrire un dossier
+ * où cette sélection a réellement été posée — sinon le serveur recalcule une
+ * carte SANS sélection, et le banc lit un 409 comme une régression alors qu'il
+ * décrit exactement ce que la garde existe pour faire.
+ *
+ * Les trois champs hachés — candidat, horodatage, motif — viennent d'ICI et de
+ * `chaineC1DeReference`, jamais de deux littéraux recopiés : c'est le même
+ * motif que pour l'épisode, deux sources finiraient par diverger d'un
+ * caractère et le 409 serait indéchiffrable.
+ */
+export function ligneSelectionDeFixture(candidateId: string, id = 'SEL_FIXTURE') {
+  assertBanc();
+  return {
+    id,
+    candidateId,
+    rationale: MOTIF_SELECTION_FIXTURE,
+    selectedAt: new Date(HORODATAGE_C1_FIXTURE),
+    supersedesSelectionId: null,
+  };
+}
+
 /**
  * La chaîne C1 du dossier de référence, telle que le serveur la recalculera.
  *
@@ -209,7 +239,7 @@ export function chaineC1DeReference(options: {
         candidateId: options.selection,
         selectedAt: HORODATAGE_C1_FIXTURE,
         selectedBy: 'practitioner',
-        rationale: 'Sélection praticien de fixture, sans portée clinique.',
+        rationale: MOTIF_SELECTION_FIXTURE,
       }
     : null;
   return {

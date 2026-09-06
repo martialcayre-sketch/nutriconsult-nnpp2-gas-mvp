@@ -182,6 +182,44 @@ le compromis que le précédent a déjà tranché, et il se referme à l'applica
 - Le **parcours 3 du LOT-03** (arbitrage → révision) reprend après cette
   réparation : son spec est écrit, complet, et n'attend que la chaîne.
 
+**Suivi — 2026-09-06, seconde PR (côté serveur).** Migration appliquée et
+vérifiée par conteneur (une seule tentative, dix colonnes, zéro ligne, RLS
+active, les deux gardes sous leur forme attendue). La lecture partagée, la route
+d'écriture et la réinjection sont livrées. Deux points que l'écriture du code a
+imposés, et qui n'étaient pas dans la rédaction initiale :
+
+**§8. La péremption devait être traitée, pas seulement nommée.** §2 disait que
+l'empreinte servirait à ce que « la sélection périmée soit écartée EN LE
+NOMMANT ». Le code a montré que sans mécanisme, elle n'est pas écartée du
+tout : `buildDecisionCard` **jette** sur une sélection devenue inapplicable —
+décision bloquée par un constat de sécurité apparu depuis (`DC-12` retire les
+candidats), ou candidat dont la règle ne se déclenche plus — et le rejeu du
+cockpit rattrape cette exception en servant « proposition ». Persister la
+sélection sans traiter sa péremption aurait donc rendu ATTEIGNABLE la régression
+que `D-118` a fermée : un épisode confirmé redevenant un formulaire à confirmer.
+
+`construireChaineC1Tolerante` construit avec la sélection, et **sans elle** si la
+construction échoue. Le repli n'est tenté qu'avec une sélection non nulle, et si
+la construction sans elle échoue à son tour l'erreur remonte intacte : le seul
+cas absorbé est « la chaîne se construit sans la sélection mais pas avec »,
+c'est-à-dire exactement la péremption — aucune autre panne n'est masquée. Il est
+partagé par le cockpit ET le vérificateur, comme la lecture : un repli fait d'un
+seul côté rendrait 409 sur une carte honnête.
+
+**Ce qui reste dû, et qui est le vrai « en le nommant »** : l'écran montre
+qu'aucune priorité n'est retenue, il n'explique pas encore POURQUOI celle qui
+avait été posée ne l'est plus. Le serveur le journalise sans nommer ni le motif
+ni le candidat. La phrase à l'écran part avec le geste de sélection.
+
+**§9. Les bancs devaient décrire un dossier, pas une commodité.** Trente-huit cas
+sont passés au rouge au déplacement de §1bis, et c'était le bon signal : ils
+soumettaient une carte PORTANT une sélection sur un dossier où rien n'avait été
+posé. Ils décrivent désormais la base correspondante
+(`ligneSelectionDeFixture`, source unique avec `chaineC1DeReference` — deux
+littéraux recopiés auraient divergé d'un caractère et rendu le 409
+indéchiffrable). Un cas a été rendu explicite plutôt que laissé vert : celui du
+dossier portant un signal passait par le repli au lieu de la voie qu'il annonce.
+
 ### D-126 — Désactiver un dossier ferme les liens en vol, par l'horizon et non par l'événement
 
 - Date : 2026-09-06

@@ -18,6 +18,10 @@ const { getServerSession, prisma, writes } = vi.hoisted(() => {
       // `findUnique` : rejeu d'un épisode persisté par le GET (`D-118`) ;
       // `upsert` : persistance de l'épisode à la confirmation (`D-118`).
       assessmentEpisode: { findMany: vi.fn(), findFirst: vi.fn(), findUnique: vi.fn(), upsert: vi.fn() },
+      // Sélection praticien d'une priorité (`D-127`) : relue aux DEUX sites de
+      // construction de carte. Vide par défaut ⇒ `selectionPraticien: null`,
+      // c'est-à-dire l'état d'un dossier où personne n'a encore choisi.
+      decisionPrioritySelection: { findMany: vi.fn() },
       // Préconditions de confirmation T0 (D-052).
       syntheseIA: { findFirst: vi.fn() },
       // Journal des accès (G-TRUST-04) : écriture d'audit, pas clinique.
@@ -89,6 +93,8 @@ describe('/api/praticien/cockpit', () => {
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     // Aucune ancre confirmée par défaut. Depuis `D-113` la lecture des ancres
     // passe par `findMany` + filtre de forme : `findFirst` sur `milestone:
     // 'T0'` ne voyait pas les cycles rouverts.
@@ -376,6 +382,8 @@ describe('/api/praticien/cockpit — lecture d’un état passé (SP-TT)', () =>
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({ anamnese: {} });
@@ -444,6 +452,8 @@ describe('/api/praticien/cockpit — les constats déterministes traversent la r
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     brancherPassations(responses);
     prisma.consultation.findFirst.mockResolvedValue(CONSULTATION_VALIDEE_FIXTURE);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
@@ -607,6 +617,8 @@ describe('/api/praticien/cockpit — chaîne C1 rebranchée, table signée', () 
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     brancherPassations(runtimeGolden, dossierGolden);
     prisma.consultation.findFirst.mockResolvedValue({
       anamnese: {
@@ -724,6 +736,8 @@ describe('/api/praticien/cockpit — ouverture d’un cycle (`D-113`)', () => {
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findMany.mockResolvedValue([t0Pose]);
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
@@ -801,6 +815,8 @@ describe('/api/praticien/cockpit — persistance et rejeu de l’épisode (`D-11
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
     prisma.patient.findFirst.mockResolvedValue(patient);
+    // Aucune sélection praticien par défaut (`D-127`).
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findMany.mockResolvedValue([]);
     prisma.assessmentEpisode.findUnique.mockResolvedValue(null);
     prisma.assessmentEpisode.upsert.mockResolvedValue({});

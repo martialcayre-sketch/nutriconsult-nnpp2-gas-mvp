@@ -13,6 +13,9 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     arbitrageBiologique: { findMany: vi.fn() },
+    // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
+    // serveur, qui ne réinjecte plus la valeur soumise.
+    decisionPrioritySelection: { findMany: vi.fn() },
     journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
     $transaction: vi.fn().mockResolvedValue([]),
   },
@@ -31,6 +34,7 @@ import {
   CANDIDAT_RANG_1,
   CANDIDAT_RANG_2,
   chaineC1DeReference,
+  ligneSelectionDeFixture,
   passationsC1Fixture,
   retablirTablePriorites,
   signerTablePriorites,
@@ -152,6 +156,16 @@ describe('POST /api/praticien/protocoles/versions', () => {
     // Aucun arbitrage biologique par défaut : la garde LOT-06 ne mord que sur
     // une résolution d'intention `conditionnelle_biologie`.
     prisma.arbitrageBiologique.findMany.mockResolvedValue([]);
+    // LA SÉLECTION PRATICIEN EST PERSISTÉE (`D-127`), et le banc décrit
+    // désormais un dossier où elle a réellement été posée. Depuis §1bis le
+    // recalcul serveur ne réinjecte plus la sélection du corps de requête : il
+    // la RELIT ICI. Rendre `[]` ferait recalculer une carte SANS sélection,
+    // donc 409 sur toutes les écritures — un refus juste, mais qui décrirait un
+    // dossier où personne n'a choisi. Les cas qui veulent CE dossier-là posent
+    // `[]` eux-mêmes.
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([
+      ligneSelectionDeFixture(CANDIDAT_RANG_1),
+    ]);
     // Contenu de la version active (GET) : nul par défaut, l'historique reste servi.
     prisma.protocolDraft.findUnique.mockResolvedValue(null);
     signerTablePriorites();
@@ -343,6 +357,12 @@ describe('POST /api/praticien/protocoles/versions', () => {
     // d'intégrité — une carte forgée rendrait ce cas vert pour la mauvaise
     // raison, désormais en 409.
     const changedPriorityCard = referenceAutrePriorite.decisionCard;
+    // Ce cas décrit un praticien qui a retenu l'AUTRE candidat : la base doit
+    // porter CETTE sélection-là, sinon le recalcul rendrait 409 et le cas
+    // passerait au vert pour la mauvaise raison — c'est la garde C5 qu'il vise.
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([
+      ligneSelectionDeFixture(CANDIDAT_RANG_2),
+    ]);
     const res = await POST(postRequest({
       episode, decisionCard: changedPriorityCard,
       submission: { ...submission, actions: [{ ...action, foodCompassRef: c5Ref() }] },

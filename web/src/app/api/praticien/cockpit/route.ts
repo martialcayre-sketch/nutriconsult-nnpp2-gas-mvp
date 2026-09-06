@@ -9,7 +9,7 @@ import { ORDRE_CONSULTATION_PORTEUSE, whereConsultationPorteuse } from '@/lib/co
 import { filtrerPassationsExploitables } from '@/lib/scoring/validite';
 import { confirmAssessmentEpisode } from '@/lib/clinical-engine/assessmentEpisode';
 import { canonicalJson, canonicalSha256 } from '@/lib/clinical-engine/canonical';
-import { construireChaineC1, type PlainteDominante } from '@/lib/clinical-engine/chaineC1';
+import { type PlainteDominante } from '@/lib/clinical-engine/chaineC1';
 import {
   adaptRuntimeInputs,
   isRuntimeMilestone,
@@ -17,6 +17,10 @@ import {
   type AncreCycleCourant,
 } from '@/lib/clinical-engine/runtimeFromPrisma';
 import { lireEffetsIndesirables } from '@/lib/clinical-engine/effetsIndesirablesPrisma';
+import {
+  construireChaineC1Tolerante,
+  lireSelectionPriorite,
+} from '@/lib/clinical-engine/selectionPrioritePrisma';
 import {
   messageRefusPreconditions,
   type PreconditionsT0,
@@ -417,20 +421,31 @@ export async function GET(req: Request): Promise<NextResponse<CockpitRuntimeApiR
       if (episode) {
         try {
           const idSuffix = `${milestoneRaw}-${proposalHash.slice(0, 16)}`;
-          const chaine = construireChaineC1({
+          const decisionCardIdRejeu = `runtime-decision-${idSuffix}`;
+          // La sélection praticien, relue en base ([[D-127]]) par la MÊME
+          // fonction que `verifierChaineC1` — deux lectures divergentes
+          // rendraient 409 sur une carte honnête ([[D-101]]) — et construite par
+          // le MÊME repli : une sélection devenue inapplicable est écartée, elle
+          // n'emporte pas l'épisode confirmé ([[D-118]]).
+          const { chaine, selectionEcartee } = construireChaineC1Tolerante({
             snapshotId: `runtime-snapshot-${idSuffix}`,
             reviewId: `runtime-review-${idSuffix}`,
-            decisionCardId: `runtime-decision-${idSuffix}`,
+            decisionCardId: decisionCardIdRejeu,
             patientId: idPatient,
             horodatage: episode.confirmedAt as string,
             episode,
             patientContext: inputs.patientContext,
             responses: inputs.responses,
-            selectionPraticien: null,
             signauxAlerte: inputs.signauxAlerte,
             etatPopulation: inputs.etatPopulation,
             effetsIndesirables: await lireEffetsIndesirables(idPatient),
-          });
+          }, await lireSelectionPriorite(idPatient, decisionCardIdRejeu));
+          if (selectionEcartee) {
+            // Un acte praticien n'est plus servi : le dire au journal en
+            // attendant de le dire à l'écran ([[D-127]], dettes). Jamais le
+            // motif ni le candidat — la ligne nomme un dossier, pas un choix.
+            console.warn('[cockpit GET] sélection de priorité écartée : elle ne tient plus sur ce dossier');
+          }
           return await reponsePrete(idPatient, chaine, { rejoue: true });
         } catch (erreurRejeu) {
           // Le dossier ne porte plus ce que l'épisode cite (passation retirée,
@@ -589,7 +604,12 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
     // UN SEUL HORODATAGE (`now`) pour l'épisode, le snapshot, la revue et la
     // carte : `createdAt` et `asOf` entrent dans les empreintes, et le
     // vérificateur les réutilise tels qu'ils ont été soumis.
-    const { snapshot, review, decisionCard, plainteDominante } = construireChaineC1({
+    // Une confirmation d'épisode ne sélectionne RIEN — la sélection reste un
+    // geste praticien DISTINCT. Ce qui a changé avec [[D-127]], c'est qu'une
+    // sélection déjà posée sur cette carte se relit ici : confirmer à nouveau le
+    // même épisode ne l'efface donc pas. Lecture ET repli sont ceux du
+    // vérificateur ([[D-101]]) — sinon 409 sur une carte que ce POST émet.
+    const { chaine: { snapshot, review, decisionCard, plainteDominante } } = construireChaineC1Tolerante({
       snapshotId: `runtime-snapshot-${idSuffix}`,
       reviewId: `runtime-review-${idSuffix}`,
       decisionCardId: `runtime-decision-${idSuffix}`,
@@ -598,9 +618,6 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       episode,
       patientContext: inputs.patientContext,
       responses: inputs.responses,
-      // Une confirmation d'épisode ne sélectionne RIEN : la sélection d'une
-      // priorité est un geste praticien distinct, hors périmètre du LOT-04.
-      selectionPraticien: null,
       signauxAlerte: inputs.signauxAlerte,
       etatPopulation: inputs.etatPopulation,
       // Lus par la fonction PARTAGÉE avec `verifierChaineC1` ([[D-101]]) : ce
@@ -608,7 +625,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
       // divergentes rendraient 409 sur une carte que cette route vient
       // d'écrire. Drapeau éteint ⇒ `undefined`, aucune requête neuve.
       effetsIndesirables: await lireEffetsIndesirables(idPatient),
-    });
+    }, await lireSelectionPriorite(idPatient, `runtime-decision-${idSuffix}`));
     // Après `loadRuntimeInputs`, donc après que l'appartenance du patient au
     // praticien a été vérifiée — un patient d'un autre praticien est sorti en
     // 404 bien avant cette ligne. Le service ne pose ni authentification, ni

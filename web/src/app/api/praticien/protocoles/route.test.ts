@@ -11,6 +11,9 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     syntheseIA: { findFirst: vi.fn() },
     assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn() },
+    // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
+    // serveur, qui ne réinjecte plus la valeur soumise.
+    decisionPrioritySelection: { findMany: vi.fn() },
     journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
     $transaction: vi.fn().mockResolvedValue([]),
   },
@@ -27,6 +30,7 @@ import {
   ANAMNESE_C1_FIXTURE_AVEC_SIGNAL,
   CANDIDAT_RANG_1,
   chaineC1DeReference,
+  ligneSelectionDeFixture,
   HORODATAGE_C1_FIXTURE,
   passationsC1Fixture,
   retablirTablePriorites,
@@ -109,6 +113,15 @@ describe('POST /api/praticien/protocoles', () => {
     vi.clearAllMocks();
     prisma.$transaction.mockResolvedValue([]);
     prisma.assessmentEpisode.findMany.mockResolvedValue([]);
+    // LA SÉLECTION PRATICIEN EST PERSISTÉE (`D-127`), et le banc décrit
+    // désormais un dossier où elle a réellement été posée. Depuis §1bis le
+    // recalcul serveur ne réinjecte plus la sélection du corps de requête : il
+    // la RELIT ICI. Rendre `[]` ferait recalculer une carte SANS sélection,
+    // donc 409 sur toutes les écritures — un refus juste, mais qui décrirait un
+    // dossier où personne n'a choisi.
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([
+      ligneSelectionDeFixture(CANDIDAT_RANG_1),
+    ]);
     // Par défaut, le patient appartient au praticien en session (garde d'appartenance).
     prisma.patient.findUnique.mockResolvedValue({ praticienEmail: 'praticien@wellneuro.fr' });
     // Dossier qui PASSE les préconditions T0 (D-052) ET dont la chaîne C1 se
@@ -326,6 +339,14 @@ describe('POST /api/praticien/protocoles', () => {
     // C'est `DC-12` qui mord — le red flag retire le candidat au lieu de
     // coexister avec lui. Le vérificateur doit donc accepter une chaîne
     // légitimement DÉPOURVUE de sélection, et c'est ce que ce cas garde.
+    //
+    // LA BASE EST VIDÉE EXPLICITEMENT (`D-127`) : personne n'a rien sélectionné
+    // sur ce dossier. Sans cette ligne, le cas passerait quand même — le repli
+    // de `construireChaineC1Tolerante` écarterait la sélection de fixture — mais
+    // il éprouverait le REPLI au lieu de ce qu'il annonce. Un vert obtenu par un
+    // autre mécanisme que celui qu'on décrit ne garde rien. La péremption a son
+    // propre banc, dans `selectionPrioritePrisma.test.ts`.
+    prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     const chaine = chaineC1DeReference({ anamnese: ANAMNESE_C1_FIXTURE_AVEC_SIGNAL });
 
     const res = await POST(postRequest({
