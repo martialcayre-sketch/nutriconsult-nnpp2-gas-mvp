@@ -39,6 +39,31 @@ describe('PortailPage — restauration de session', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  // `premiereAssignation` ne compte que les assignations NON complétées
+  // (`session/route.ts`, `statut: { not: 'Complété' }`). Elle est donc null
+  // AUSSI pour un patient qui a tout rempli — à qui cet écran fermait la porte
+  // du hub, et annonçait des questionnaires « prochainement » alors qu'il n'en
+  // attendait aucun.
+  it('laisse le hub accessible et ne promet rien quand aucune assignation n’est en attente', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        ok: true,
+        patient: { idPatient: 'PAT_TEST', prenom: 'Sophie', nom: 'Nicola', email: 'sophie.nicola@example.test' },
+        consultation: null,
+        premiereAssignation: null,
+      }),
+    }));
+
+    render(<PortailPage />);
+
+    await waitFor(() => expect(screen.getByText('Merci !')).not.toBeNull());
+    const lien = screen.getByRole('link', { name: 'Accéder à mon parcours' });
+    expect(lien.getAttribute('href')).toBe('/portail/PAT_TEST/questionnaires');
+    expect(screen.queryByText(/mettra vos questionnaires à disposition prochainement/)).toBeNull();
+    expect(screen.getByText(/aucun questionnaire en attente/)).not.toBeNull();
+  });
+
   // LOT-04 : plus de gate email. Sans cookie valide, la page redirige vers la
   // page de connexion (Google + redemande de lien magique).
   it('redirige vers /portail/connexion lorsque la restauration est refusée', async () => {

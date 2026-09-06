@@ -46,6 +46,9 @@ export function ConsultationScreen({ idAssignation, email, statutReponses, onVoi
 
   const handleDemande = async () => {
     setDemandeLoading(true);
+    // Remis à blanc à l'entrée : le message affiché doit porter sur CETTE
+    // tentative, pas sur l'échec de chargement qui l'a précédée.
+    setError('');
     try {
       const res = await fetch('/api/patient/consentement', {
         method: 'POST',
@@ -54,6 +57,13 @@ export function ConsultationScreen({ idAssignation, email, statutReponses, onVoi
       });
       const data = await res.json();
       if (data.ok) setDemandeEnvoyee(true);
+      // La route rend TOUJOURS un `error` rédigé quand `ok` est faux (401, 403,
+      // 409 `invalid_state`, 410 expiré ou annulé…). Sans cette branche, tous
+      // ces refus laissaient l'écran strictement inchangé : le patient
+      // recliquait sur un geste déjà refusé, sans jamais savoir pourquoi.
+      else { setError(data.error); }
+    } catch {
+      setError('Erreur réseau. Réessayez.');
     } finally {
       setDemandeLoading(false);
     }
