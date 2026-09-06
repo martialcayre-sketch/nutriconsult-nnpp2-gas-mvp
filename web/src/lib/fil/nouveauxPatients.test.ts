@@ -12,6 +12,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     idPatient: 'PAT_SEED_01',
     patient: 'Sophie Nicola',
     creeLe: '2026-08-24T12:00:00.000Z',
+    accesRevoque: false,
     accesEnvoyeLe: '2026-08-24T12:05:00.000Z',
     accesEnEchec: false,
     connecteLe: '2026-08-25T09:00:00.000Z',
@@ -52,6 +53,27 @@ describe('etapeNouveauPatient', () => {
     // validation : zéro assignation après validation n'est PAS une attente.
     expect(etapeNouveauPatient(source({ nbAssignations: 0 }))).toBe('pack_absent');
     expect(libelleEtape('pack_absent')).toBe('Pack de base absent');
+  });
+
+  it('un accès révoqué se nomme pour lui-même, avant toute porte', () => {
+    // Le dossier n'a jamais été ouvert par le patient ET le praticien vient de
+    // révoquer : c'est la révocation qui se dit, pas une mise en service à
+    // poursuivre — et elle se dit aussi quand le patient était bien entré.
+    const jamaisEntre = source({
+      accesRevoque: true,
+      connecteLe: null,
+      onboardingValide: false,
+      nbAssignations: 0,
+    });
+    expect(etapeNouveauPatient(jamaisEntre)).toBe('acces_revoque');
+    expect(etapeNouveauPatient(source({ accesRevoque: true }))).toBe('acces_revoque');
+    expect(libelleEtape('acces_revoque')).toBe('Accès révoqué');
+  });
+
+  it('un dossier révoqué n’attend rien : le praticien a fermé lui-même', () => {
+    const [ligne] = lignesNouveauxPatients([source({ accesRevoque: true, connecteLe: null })]);
+    expect(ligne.etape).toBe('acces_revoque');
+    expect(estEnAttente(ligne)).toBe(false);
   });
 
   it('les trois portes franchies : complet', () => {

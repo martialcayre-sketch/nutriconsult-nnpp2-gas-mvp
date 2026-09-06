@@ -20,8 +20,14 @@
  * (renvoyer l'accès, assigner un pack) reste au dossier, comme le reste.
  */
 
-/** Étape franchie la plus avancée — l'ordre du type EST l'ordre du parcours. */
+/** Étape franchie la plus avancée — l'ordre du type EST l'ordre du parcours.
+ *
+ * `acces_revoque` ouvre la liste sans faire partie du parcours : ce n'est pas
+ * une porte restée fermée mais une porte REFERMÉE, par le praticien lui-même.
+ * Elle prime donc sur les trois autres, qui décrivent une mise en service en
+ * cours — ce qu'un dossier révoqué n'est plus. */
 export type EtapeNouveauPatient =
+  | 'acces_revoque'
   | 'acces_non_envoye'
   | 'jamais_connecte'
   | 'onboarding_a_finir'
@@ -35,6 +41,9 @@ export type SourceNouveauPatient = {
   patient: string;
   /** Création du dossier (ISO). */
   creeLe: string;
+  /** Le praticien a révoqué l'accès au portail (`accessTokenRevoked`). Aucune
+   * porte n'est à ouvrir : il vient de la fermer. */
+  accesRevoque: boolean;
   /** Dernier e-mail d'accès au portail effectivement parti (ISO), sinon null. */
   accesEnvoyeLe: string | null;
   /** Une tentative d'envoi a échoué ou n'est jamais partie, et rien n'a abouti
@@ -56,6 +65,7 @@ export type LigneNouveauPatient = SourceNouveauPatient & {
 };
 
 const LIBELLES: Record<EtapeNouveauPatient, string> = {
+  acces_revoque: 'Accès révoqué',
   acces_non_envoye: 'Accès non envoyé',
   jamais_connecte: 'Jamais connecté',
   onboarding_a_finir: 'Onboarding à finir',
@@ -74,6 +84,10 @@ const LIBELLES: Record<EtapeNouveauPatient, string> = {
  * d'où un libellé qui ne se confond avec aucun des trois précédents.
  */
 export function etapeNouveauPatient(source: SourceNouveauPatient): EtapeNouveauPatient {
+  // La révocation passe AVANT les trois portes : elle est le geste du
+  // praticien lui-même. Présenter un dossier révoqué comme un accès à renvoyer
+  // ou un onboarding à finir l'enverrait défaire sa propre décision.
+  if (source.accesRevoque) return 'acces_revoque';
   if (!source.accesEnvoyeLe || source.accesEnEchec) return 'acces_non_envoye';
   if (!source.connecteLe) return 'jamais_connecte';
   if (!source.onboardingValide) return 'onboarding_a_finir';
@@ -86,9 +100,10 @@ export function libelleEtape(etape: EtapeNouveauPatient): string {
 }
 
 /** Un dossier complet n'appelle aucun geste : il reste listé (le praticien a
- * demandé à VOIR ses nouveaux patients), il ne se compte pas comme en attente. */
+ * demandé à VOIR ses nouveaux patients), il ne se compte pas comme en attente.
+ * Un dossier révoqué non plus — l'attente qu'il porterait a été close exprès. */
 export function estEnAttente(ligne: LigneNouveauPatient): boolean {
-  return ligne.etape !== 'complet';
+  return ligne.etape !== 'complet' && ligne.etape !== 'acces_revoque';
 }
 
 /**
