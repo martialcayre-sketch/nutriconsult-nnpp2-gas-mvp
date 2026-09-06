@@ -226,6 +226,7 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     analyteLibelle: 'Ferritine',
     valeur: 42.5,
     unite: 'µg/L',
+    uniteCatalogue: 'µg/L',
     preleveLe: '2026-09-01T08:00:00.000Z',
     source: 'saisie_praticien',
     saisiLe: '2026-09-01T09:00:00.000Z',
@@ -364,7 +365,66 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
     fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     expect(screen.queryByText(/n’est plus servi par le catalogue/)).toBeNull();
+    // L'unité, elle, reste connue : elle vient de la LIGNE, pas de la liste.
+    expect(screen.getByLabelText(/Valeur corrigée \(µg\/L\)/)).toBeTruthy();
+  });
+
+  it('sans `uniteCatalogue` NI catalogue lu, l’écran n’affirme aucune unité', async () => {
+    // Réponse d'une version antérieure ET catalogue en panne : les deux
+    // sources manquent. On ne suppose pas que l'unité n'a pas bougé (`DC-24`).
+    const sansChamp = { ...ORIGINE } as Record<string, unknown>;
+    delete sansChamp.uniteCatalogue;
+    monterAvec([sansChamp], undefined, 'panne');
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
     expect(screen.getByText(/Unité non vérifiable pour l’instant/)).toBeTruthy();
+    expect(screen.getByLabelText(/à confirmer au catalogue/)).toBeTruthy();
+  });
+
+  it('`uniteCatalogue` à NULL est une unité connue et VIDE, pas une ignorance', async () => {
+    // Le banc qui protège la distinction `null` / `undefined`. Un `??` à la
+    // place des `!== undefined` se lirait exactement pareil et ferait retomber
+    // l'unité vide sur la liste du catalogue : la divergence serait tue, alors
+    // que passer de « µg/L » à AUCUNE unité est une divergence bien réelle.
+    monterAvec([{ ...ORIGINE, unite: 'µg/L', uniteCatalogue: null }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
+    expect(screen.getByText(/aucune unité/)).toBeTruthy();
+    expect(screen.queryByText(/Unité non vérifiable pour l’instant/)).toBeNull();
+  });
+
+  it('… et face à une mesure SANS unité, ce même `null` ne signale aucune divergence', async () => {
+    monterAvec([{ ...ORIGINE, unite: null, uniteCatalogue: null }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.queryByText(/a changé au catalogue/)).toBeNull();
+  });
+
+  it('la cascade a un ORDRE : c’est la ligne qui fait foi, pas la liste du catalogue', async () => {
+    // La liste sert « µg/L » ; la ligne dit que l'analyte porte « mg/L »
+    // aujourd'hui. C'est la ligne qui gagne — elle est lue sans filtre `actif`,
+    // la liste ne l'est pas.
+    monterAvec([{ ...ORIGINE, unite: 'µg/L', uniteCatalogue: 'mg/L' }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    expect(screen.getByLabelText(/Valeur corrigée \(mg\/L\)/)).toBeTruthy();
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
+  });
+
+  it('analyte RETIRÉ dont l’unité a bougé : l’alerte se déclenche — c’est le cas que M2 visait', async () => {
+    // Le catalogue ne sert que les ACTIFS : passer par sa liste rendait cette
+    // alerte structurellement inatteignable pour un analyte retiré, donc pour
+    // la population exacte que ce lot ouvre à la correction et celle où
+    // l'unité a justement pu bouger (contre-revue du 2026-09-06, m17).
+    monterAvec([{ ...ORIGINE, unite: 'mg/L', uniteCatalogue: 'µg/L' }], undefined, 'vide');
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Corriger la mesure du/ }));
+    // L'analyte est bien annoncé retiré…
+    expect(screen.getByText(/n’est plus servi par le catalogue/)).toBeTruthy();
+    // … ET l'unité qui sera consignée est nommée, divergence signalée.
+    expect(screen.getByLabelText(/Valeur corrigée \(µg\/L\)/)).toBeTruthy();
+    expect(screen.getByText(/a changé au catalogue/)).toBeTruthy();
   });
 
   it('catalogue LU ET VIDE : là, « n’est plus servi » dit vrai — ce n’est pas le cas de panne', async () => {

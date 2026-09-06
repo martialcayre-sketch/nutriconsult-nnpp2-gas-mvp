@@ -56,7 +56,15 @@ export type ResultatConsigne = {
   analyteCode: string;
   analyteLibelle: string;
   valeur: number;
+  /** L'unité CONSIGNÉE avec la mesure — celle qui avait cours ce jour-là. */
   unite: string | null;
+  /**
+   * L'unité que l'analyte porte AUJOURD'HUI au catalogue — celle qu'une
+   * correction consignera. Rendue pour TOUTE ligne, analyte retiré compris :
+   * la route du catalogue ne sert que les analytes actifs, si bien que l'écran
+   * ne pouvait pas comparer les deux là où le catalogue a justement bougé.
+   */
+  uniteCatalogue: string | null;
   preleveLe: string;
   source: string;
   /** Horodatage serveur de la saisie — inantidatable, et il date la correction. */
@@ -154,7 +162,8 @@ type LigneLue = {
   source: string;
   saisiLe: Date;
   supersedesResultatId: string | null;
-  analyte: { libelle: string };
+  /** La relation, non filtrée par `actif` : `unite` y est celle d'AUJOURD'HUI. */
+  analyte: { libelle: string; unite: string | null };
 };
 
 function versConsigne(ligne: LigneLue, corrigeeParId: string | null = null): ResultatConsigne {
@@ -164,6 +173,7 @@ function versConsigne(ligne: LigneLue, corrigeeParId: string | null = null): Res
     analyteLibelle: ligne.analyte.libelle,
     valeur: Number(ligne.valeur),
     unite: ligne.unite,
+    uniteCatalogue: ligne.analyte.unite,
     preleveLe: ligne.preleveLe.toISOString(),
     source: ligne.source,
     saisiLe: ligne.saisiLe.toISOString(),
@@ -182,7 +192,9 @@ const CHAMPS_LUS = {
   source: true,
   saisiLe: true,
   supersedesResultatId: true,
-  analyte: { select: { libelle: true } },
+  // La RELATION n'est pas filtrée par `actif` : elle rend l'unité courante
+  // même d'un analyte retiré, ce que la route du catalogue ne fait pas.
+  analyte: { select: { libelle: true, unite: true } },
 } as const;
 
 export async function GET(req: Request) {

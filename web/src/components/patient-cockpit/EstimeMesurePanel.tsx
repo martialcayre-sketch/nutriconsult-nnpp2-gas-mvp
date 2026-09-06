@@ -28,6 +28,12 @@ type ResultatAffiche = {
   analyteLibelle: string;
   valeur: number;
   unite: string | null;
+  /**
+   * L'unité que l'analyte porte AUJOURD'HUI au catalogue — celle qui sera
+   * consignée. `undefined` si la réponse est d'une version antérieure : on
+   * n'affirme alors RIEN, on ne suppose pas qu'elle n'a pas bougé.
+   */
+  uniteCatalogue?: string | null;
   preleveLe: string;
   source: string;
   saisiLe: string;
@@ -78,8 +84,31 @@ function CorrectionMesure({
   // faux — sur une donnée clinique, un facteur 1000 silencieux. Et le cas
   // n'est pas théorique : la correction est ouverte aux analytes retirés,
   // c'est-à-dire là où le catalogue a bougé (contre-revue du 2026-09-06, M2).
-  const uniteConsignee = analyteAuCatalogue ? analyteAuCatalogue.unite : null;
-  const uniteChange = analyteAuCatalogue !== null && uniteConsignee !== mesure.unite;
+  //
+  // L'UNITÉ QUI SERA CONSIGNÉE VIENT DE LA LIGNE, plus de la liste du
+  // catalogue. La route du catalogue ne sert que les analytes ACTIFS : passer
+  // par elle rendait l'alerte de divergence structurellement inatteignable
+  // pour un analyte RETIRÉ — c'est-à-dire pour la population exacte que ce
+  // lot ouvre à la correction, et celle où l'unité a justement pu bouger
+  // (contre-revue du 2026-09-06, m17). Le serveur, lui, relit l'unité sur la
+  // relation `analyte`, qui n'est pas filtrée par `actif`.
+  //
+  // La liste reste en SECOURS pour une réponse d'une version antérieure ; et
+  // si aucune des deux ne renseigne, on n'affirme rien — on ne suppose pas
+  // qu'une unité inconnue n'a pas bougé (`DC-24`, même discipline que la série).
+  //
+  // `!== undefined`, JAMAIS `??` — et le prédicat porte un nom pour que
+  // l'intention survive au prochain refactor. `null` est une unité CONNUE et
+  // vide (l'analyte n'en porte aucune au catalogue, cas clinique réel) ;
+  // `undefined` est une ignorance. Les collapser en `mesure.uniteCatalogue ??
+  // analyteAuCatalogue?.unite` se lit exactement pareil et ferait retomber
+  // l'unité vide sur la liste, donc taire une divergence bien réelle.
+  const catalogueRenseigne = mesure.uniteCatalogue !== undefined;
+  const uniteConnue = catalogueRenseigne || analyteAuCatalogue !== null;
+  const uniteConsignee = catalogueRenseigne
+    ? mesure.uniteCatalogue
+    : (analyteAuCatalogue?.unite ?? null);
+  const uniteChange = uniteConnue && uniteConsignee !== mesure.unite;
 
   // Le focus suit le geste : sans cela, le bouton « Corriger » disparaît et le
   // focus retombe sur le document — un utilisateur clavier perd sa place et
@@ -112,12 +141,16 @@ function CorrectionMesure({
           CATALOGUE EN PANNE, sur un analyte parfaitement actif
           (contre-revue du 2026-09-06, m11). */}
       {catalogueLu && analyteAuCatalogue === null && (
+        // La phrase s'arrête là. La seconde moitié — « l'unité sera celle
+        // qu'il y porte au moment de consigner » — était une ESQUIVE écrite
+        // quand cette unité était inconnaissable ici. Elle l'est désormais :
+        // le label la nomme et la bannière la compare. La garder ferait douter
+        // des deux, dans le seul cas que ce diff existe pour éclairer.
         <p className="mt-1 text-xs text-muted-foreground">
-          Cet analyte n’est plus servi par le catalogue : l’unité sera celle qu’il y porte au
-          moment de consigner.
+          Cet analyte n’est plus servi par le catalogue.
         </p>
       )}
-      {!catalogueLu && (
+      {!uniteConnue && (
         <p className="mt-1 text-xs text-muted-foreground">
           Unité non vérifiable pour l’instant : elle sera reprise du catalogue au moment de
           consigner.
@@ -125,7 +158,7 @@ function CorrectionMesure({
       )}
       <label className="mt-2 block text-xs text-muted-foreground" htmlFor={`correction-${mesure.id}`}>
         Valeur corrigée
-        {analyteAuCatalogue
+        {uniteConnue
           ? uniteConsignee
             ? ` (${uniteConsignee})`
             : ''

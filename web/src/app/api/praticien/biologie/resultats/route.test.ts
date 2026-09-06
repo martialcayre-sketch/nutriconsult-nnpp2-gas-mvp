@@ -40,7 +40,8 @@ const LIGNE_CONSIGNEE = {
   source: 'saisie_praticien',
   saisiLe: new Date('2026-09-01T09:00:00.000Z'),
   supersedesResultatId: null,
-  analyte: { libelle: 'Ferritine' },
+  // La RELATION rend l'unité COURANTE du catalogue — ici inchangée.
+  analyte: { libelle: 'Ferritine', unite: 'µg/L' },
 };
 
 /** La correction de `res1` : même analyte, même prélèvement, valeur neuve. */
@@ -114,6 +115,7 @@ describe('GET — la série du dossier, journalisée (GD-1)', () => {
         analyteLibelle: 'Ferritine',
         valeur: 42.5,
         unite: 'µg/L',
+        uniteCatalogue: 'µg/L',
         preleveLe: '2026-09-01T08:00:00.000Z',
         source: 'saisie_praticien',
         saisiLe: '2026-09-01T09:00:00.000Z',
@@ -121,6 +123,26 @@ describe('GET — la série du dossier, journalisée (GD-1)', () => {
         corrigeeParId: null,
       },
     ]);
+  });
+
+  it('l’unité COURANTE du catalogue est rendue même pour un analyte RETIRÉ', async () => {
+    // La route du catalogue ne sert que les analytes actifs : l'écran ne
+    // pouvait donc pas comparer les unités là où le catalogue a justement
+    // bougé (contre-revue du 2026-09-06, m17). La RELATION, elle, n'est pas
+    // filtrée par `actif` — c'est par elle que l'unité courante arrive.
+    prisma.resultatBiologique.findMany.mockResolvedValue([
+      { ...LIGNE_CONSIGNEE, unite: 'mg/L', analyte: { libelle: 'Ferritine', unite: 'µg/L' } },
+    ]);
+    const payload = await (await GET(getRequest('PAT1'))).json();
+    expect(payload.resultats[0].unite).toBe('mg/L');
+    expect(payload.resultats[0].uniteCatalogue).toBe('µg/L');
+  });
+
+  it('la relation lue porte le LIBELLÉ et l’UNITÉ : perdre l’unité rendrait l’alerte muette', async () => {
+    await GET(getRequest('PAT1'));
+    expect(prisma.resultatBiologique.findMany.mock.calls[0][0].select.analyte).toEqual({
+      select: { libelle: true, unite: true },
+    });
   });
 
   it('la série est rendue ENTIÈRE, corrigée comprise, et le SERVEUR dit laquelle fait foi', async () => {

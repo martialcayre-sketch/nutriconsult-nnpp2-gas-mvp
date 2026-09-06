@@ -71,6 +71,15 @@ le second temps le **dit** et nomme les deux. Afficher l'ancienne ferait taper
 un nombre sous un libellé faux — sur une donnée clinique, un facteur mille
 silencieux.
 
+**Y compris pour un analyte retiré du catalogue**, ce qui n'allait pas de soi :
+la liste du catalogue ne sert que les analytes actifs, si bien que l'alerte
+était inatteignable pour la population que ce geste ouvre justement à la
+correction — et celle où l'unité a le plus de chances d'avoir bougé. L'unité
+courante est désormais rendue **avec chaque mesure**, lue sur l'analyte
+lui-même et non sur la liste. Quand ni cette lecture ni la liste ne renseignent,
+l'écran n'affirme **aucune** unité plutôt que de supposer qu'elle n'a pas
+changé (`DC-24`).
+
 **Un catalogue non lu n'affirme rien** (`DC-24`, la règle que la série
 appliquait déjà deux panneaux plus haut). Tant que le catalogue est en vol — ou
 s'il est en panne —, l'écran ne dit plus « cet analyte n'est plus servi » : il
