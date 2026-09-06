@@ -547,7 +547,11 @@ step "Build"
 # `portail/[token]/{ce-qui-compte,comprehension,dossier}` appellent leur drapeau
 # au RENDU SERVEUR et rendent `notFound()` s'il est éteint. Sans eux au build,
 # les trois écrans sont introuvables et le parcours E2E n'a rien à ouvrir.
-WN_CB_ENABLED=true WN_CB_PROPOSITION=true \
+# `WN_CB_RESULTS_ENABLED` : étage 2 (résultats réels). Contrairement aux deux
+# drapeaux ci-dessus, il n'est PAS posé en production — le banc ouvre ici la
+# seule position où la surface de saisie existe, pour que le parcours qui la
+# traverse ne soit pas muet.
+WN_CB_ENABLED=true WN_CB_PROPOSITION=true WN_CB_RESULTS_ENABLED=true \
   WN_CE_QUI_COMPTE=true WN_COMPREHENSION=true WN_DOSSIER_DEUX_VOIX=true \
   npm run build
 # E2E contre le build de production tout juste produit : plus rapide (pas de

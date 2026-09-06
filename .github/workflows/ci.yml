@@ -900,9 +900,15 @@ jobs:
         # sans eux au build, les trois écrans sont introuvables et le parcours
         # du dossier à deux voix n'a rien à ouvrir. Ils ne sont pas posés en
         # production : ici l'E2E ouvre la seule position où ces écrans existent.
+        #
+        # `WN_CB_RESULTS_ENABLED` (étage 2, résultats réels) n'est PAS posé en
+        # production : ici le banc ouvre la seule position où la surface de
+        # saisie existe, au lieu d'aligner l'E2E sur la production comme le
+        # font les deux drapeaux au-dessus.
         env:
           WN_CB_ENABLED: 'true'
           WN_CB_PROPOSITION: 'true'
+          WN_CB_RESULTS_ENABLED: 'true'
           WN_CE_QUI_COMPTE: 'true'
           WN_COMPREHENSION: 'true'
           WN_DOSSIER_DEUX_VOIX: 'true'

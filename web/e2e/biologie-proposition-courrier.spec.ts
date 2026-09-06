@@ -18,8 +18,9 @@
 // Les drapeaux `WN_CB_ENABLED` et `WN_CB_PROPOSITION` sont exportés par
 // `scripts/wn-test-worktree.sh` et par le job `verify` : sans eux la route rend
 // 503 et ce spec passerait au vert en ne trouvant rien à cliquer.
-import { test, expect, type Page } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { praticienSessionCookie } from './helpers/auth';
+import { confirmerEpisodeT0, ouvrirSousVueBiologie } from './helpers/biologie';
 import {
   provisionnerDossierBiologie,
   nettoyerDossierBiologie,
@@ -30,47 +31,6 @@ import {
 const PATIENT_ID = 'PAT_SEED_02';
 
 test.describe.configure({ mode: 'serial' });
-
-/**
- * LE GESTE QUI OUVRE TOUT — et que le cadrage avait manqué.
- *
- * Le panneau de proposition n'est monté que sur un runtime `ready`. Depuis
- * `D-118`, ce `ready` a DEUX origines légitimes, et ce helper accepte les
- * deux :
- *
- *  - la CONFIRMATION — le bouton, cliqué ici, sur la première traversée du
- *    dossier : le POST persiste alors l'épisode ;
- *  - le REJEU — au chargement suivant, le GET rejoue l'épisode persisté et le
- *    bandeau « Épisode T0 confirmé » s'affiche sans redemander le geste.
- *    C'est le comportement que `D-118` installe : un test qui exigerait le
- *    bouton à chaque page exigerait le défaut que la décision vient de fermer.
- *
- * L'ATTENTE RESTE EXPLICITE, jamais un `isVisible()` conditionnel sur
- * l'instant : on attend que L'UN des deux états soit rendu — le cockpit a pu
- * ne pas finir son aller-retour —, puis on ne clique que si c'est le bouton.
- *
- * Le bouton, quand c'est lui, doit être ACTIF : désactivé, il dit que la
- * fixture ne satisfait pas les préconditions dures (rideau cotable, anamnèse
- * consignée, synthèse validée postérieure au rideau), et la checklist
- * affichée nomme laquelle.
- */
-async function confirmerEpisodeT0(page: Page): Promise<void> {
-  const confirmerT0 = page.getByRole('button', { name: 'Confirmer l’épisode T0' });
-  // LE SIGNAL DU REJEU EST LE RAIL, PAS LE BANDEAU. Sur un épisode rejoué, la
-  // fiche n'ouvre plus la phase Décision — elle n'est plus « exigible » — et le
-  // bandeau « Épisode T0 confirmé », filtré par phase affichée, peut être monté
-  // hors écran. L'onglet du rail, lui, est visible quelle que soit la phase, et
-  // son libellé « renseignée » dérive de la base (trajectoire) depuis `D-118`.
-  const railRenseigne = page.getByRole('tab', { name: 'Décision 21 j renseignée' });
-  await expect(confirmerT0.or(railRenseigne).first()).toBeVisible();
-  if ((await railRenseigne.count()) > 0) return;
-  await expect(
-    confirmerT0,
-    'le bouton de confirmation T0 est désactivé : une précondition dure manque '
-      + 'à la fixture (rideau, anamnèse ou synthèse) — la checklist à l’écran dit laquelle',
-  ).toBeEnabled();
-  await confirmerT0.click();
-}
 
 test.describe('Surface biologie — proposition, déclaration, courrier', () => {
   test.beforeAll(async () => {
@@ -112,17 +72,7 @@ test.describe('Surface biologie — proposition, déclaration, courrier', () => 
       `la proposition est indisponible — corps : ${corpsSonde}`,
     ).toBe(true);
 
-    const rail = page.getByRole('tablist', { name: 'Cycle clinique' });
-    await rail.getByRole('tab', { name: /Actions/ }).click();
-
-    // La phase Actions est bien celle qui s'affiche — sinon l'absence du
-    // panneau ne dirait rien de la biologie, seulement de la navigation.
-    await expect(page.getByRole('heading', { name: 'Protocole 21 jours' })).toBeVisible();
-
-    // Depuis l'audit du 2026-09-02, la phase Actions se structure en
-    // sous-vues : la proposition de bilan vit sous « Biologie ».
-    await page.getByRole('group', { name: 'Sections de la phase Actions' })
-      .getByRole('button', { name: 'Biologie' }).click();
+    await ouvrirSousVueBiologie(page);
 
     // Deux comptages avant l'assertion, et ils ne sont pas décoratifs : la
     // route répond `ok` et la phase Actions s'affiche, donc si le panneau
@@ -222,11 +172,7 @@ test.describe('Surface biologie — proposition, déclaration, courrier', () => 
     // d'onglet ci-dessous reste correct dans les deux états.
     await confirmerEpisodeT0(page);
 
-    await page.getByRole('tablist', { name: 'Cycle clinique' }).getByRole('tab', { name: /Actions/ }).click();
-
-    // Sous-vue « Biologie » (audit 2026-09-02) — même geste qu'au test 1.
-    await page.getByRole('group', { name: 'Sections de la phase Actions' })
-      .getByRole('button', { name: 'Biologie' }).click();
+    await ouvrirSousVueBiologie(page);
 
     const panneau = page.getByRole('region', { name: 'Biologie — proposition de bilan' });
     await expect(panneau).toBeVisible();
