@@ -49,7 +49,7 @@ export function MonParcoursAccueil({
 
   return (
     <PatientCard padding="lg" className="border-primary/30">
-      <h1 className="font-display text-[26px] font-bold leading-tight text-foreground">Mon parcours</h1>
+      <h1 className="font-display text-2xl font-bold leading-tight text-foreground">Mon parcours</h1>
       <p className="mt-1 text-base text-muted-foreground">
         {prenom ? `Bonjour ${prenom}.` : 'Bonjour.'}
       </p>

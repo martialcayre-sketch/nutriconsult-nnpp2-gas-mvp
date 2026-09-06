@@ -815,7 +815,7 @@ function BoutonRayon({
     >
       {children}
       {aVenir && (
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[9px] font-bold uppercase tracking-[.08em] text-muted-foreground">
+        <span className="rounded-full bg-muted px-2 py-0.5 text-3xs font-bold uppercase tracking-[.08em] text-muted-foreground">
           à venir
         </span>
       )}

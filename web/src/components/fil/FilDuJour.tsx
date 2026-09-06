@@ -77,12 +77,12 @@ function CarteDuFil({
             <span className="text-sm font-semibold text-foreground">{carte.patient}</span>
             {/* Marqueur textuel de l'imminence — jamais la couleur seule (A5-R1). */}
             {imminente && (
-              <span className="rounded-full border border-accent/60 bg-accent/10 px-2 py-0.5 text-[10.5px] font-bold uppercase tracking-[.06em] text-solar-ink">
+              <span className="rounded-full border border-accent/60 bg-accent/10 px-2 py-0.5 text-3xs font-bold uppercase tracking-[.06em] text-solar-ink">
                 Maintenant
               </span>
             )}
           </div>
-          <p className="text-[15.5px] font-semibold text-foreground mt-0.5 truncate">{carte.titre}</p>
+          <p className="text-sm font-semibold text-foreground mt-0.5 truncate">{carte.titre}</p>
           {/* Badge d'adhésion inline (maquette : « Adhésion : fragile ») —
               seulement quand il appelle une conversation. Réutilise l'agrégat
               SP-MET ; jamais un score. */}

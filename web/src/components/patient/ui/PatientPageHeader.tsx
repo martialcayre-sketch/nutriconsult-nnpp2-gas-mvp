@@ -21,7 +21,7 @@ export function PatientPageHeader({
     <div className={center ? 'text-center mb-6' : 'mb-1'}>
       <div className="flex items-center justify-between gap-3">
         {/* 26px : taille du titre pcard de la maquette cible. */}
-        <Tag className={`font-display font-bold text-foreground ${as === 'h1' ? 'text-[26px] leading-tight' : 'text-lg'}`}>{title}</Tag>
+        <Tag className={`font-display font-bold text-foreground ${as === 'h1' ? 'text-2xl leading-tight' : 'text-lg'}`}>{title}</Tag>
         {accessory}
       </div>
       {subtitle && <p className="text-muted-foreground text-base mt-2">{subtitle}</p>}

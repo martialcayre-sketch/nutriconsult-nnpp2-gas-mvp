@@ -56,7 +56,7 @@ function ContenuLogin() {
           <p className="text-xs text-muted-foreground">{erreur.detail}</p>
           {/* Le code brut : ce qui permet à un appel au support de partir d'un
               fait plutôt que d'un « ça ne marche pas ». */}
-          <p className="text-[11px] text-muted-foreground/70 mt-1">Code : {codeErreur}</p>
+          <p className="text-2xs text-muted-foreground/70 mt-1">Code : {codeErreur}</p>
         </div>
       )}
 

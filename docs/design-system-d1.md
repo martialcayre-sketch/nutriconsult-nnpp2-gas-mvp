@@ -569,6 +569,7 @@ composants. Paliers :
 
 | Classe | Taille | Usage maquette |
 |---|---|---|
+| `text-3xs` | 10px | badges capitales, légendes denses (ajouté 2026-09-06) |
 | `text-2xs` | 11,5px | statuts du rail de phases, labels de jauge |
 | `text-xs` | 12,5px | eyebrows, labels uppercase (tracking .06em) |
 | `text-13` | 13px | chips, mono (heures, sources, positions) |
@@ -577,8 +578,27 @@ composants. Paliers :
 | `text-base` | 16px | corps (line-height 1.55) |
 | `text-metric` | 32px | valeurs de métriques (`font-display`) |
 
-Les valeurs arbitraires `text-[13px]`/`text-[14px]` sont proscrites —
-utiliser `text-13`/`text-14` (pilotables centralement).
+#### L'échelle est fermée aux valeurs arbitraires, ouverte aux paliers natifs (2026-09-06)
+
+**Toute valeur arbitraire `text-[…]` est proscrite** — pas seulement
+`text-[13px]`/`text-[14px]`, les seules que ce paragraphe nommait jusqu'ici. Un
+`text-[26px]` n'est pilotable centralement par rien : c'est un nombre magique
+dans un `className`, et c'est exactement ce que le principe de cette section
+refuse. La garde
+`web/src/components/ui/design-system.guard.test.ts` le tient.
+
+**Les paliers natifs de Tailwind restent disponibles** — `text-lg` (18px),
+`text-xl` (20px), `text-2xl` (24px), `text-3xl` (30px). `fontSize` vit sous
+`theme.extend` : ils survivent, et ils sont pilotables centralement par la
+configuration, ce que le principe exige. Le tableau ci-dessus est **l'échelle
+de l'UI dense** (10 → 16px) plus la métrique ; entre 16 et 32px, il n'y avait
+aucun palier, et 117 usages de `text-lg`/`xl`/`2xl`/`3xl` remplissaient ce trou
+sans que rien ne le dise. C'est désormais dit.
+
+**Migration du 2026-09-06** — les 19 valeurs arbitraires de l'arbre sont passées
+au palier le plus proche : 9/10/10,5px → `text-3xs` · 11px → `text-2xs` ·
+15/15,5px → `text-sm` · 19px → `text-lg` · 26px → `text-2xl` · `1.875rem` →
+`text-3xl` (qui valait déjà exactement la même chose).
 
 ### Rayons
 

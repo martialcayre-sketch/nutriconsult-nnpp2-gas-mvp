@@ -214,7 +214,7 @@ export function LigneDePrises({ prises, onChange, desactive = false }: Props) {
           {GRADUATIONS.map((g) => (
             <div key={g} className="absolute top-0 bottom-0" style={{ left: `${(g / MINUTES_JOUR) * 100}%` }}>
               <div className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-border" />
-              <span className="absolute bottom-0 -translate-x-1/2 text-[10px] text-muted-foreground">
+              <span className="absolute bottom-0 -translate-x-1/2 text-3xs text-muted-foreground">
                 {offsetVersHeure(g).slice(0, 2)}h
               </span>
             </div>
