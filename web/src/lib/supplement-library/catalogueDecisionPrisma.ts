@@ -21,6 +21,12 @@ export type CatalogueDecision = {
   seuilsParIngredient: ReadonlyMap<string, readonly SeuilFonctionnelSource[]>;
   claimsValidesParRegle: ReadonlyMap<string, boolean>;
   declencheur: readonly OrigineDeclencheur[];
+  /**
+   * `critereId` → constat posé sur le dossier. Une clé ABSENTE signifie
+   * « personne ne s'est prononcé » ; `false` signifie « constaté absent ».
+   * Les deux refusent, et le moteur ne les dit pas de la même façon.
+   */
+  constatsParCritere: ReadonlyMap<string, boolean>;
 };
 
 /**
@@ -129,13 +135,28 @@ async function lireSeuilsEtAlertes(ingredientIds: readonly string[]): Promise<{
  *    clinique (besoin dégradé + plainte + anamnèse) qui appartient à un
  *    patient. L'atelier n'en a pas. Le fabriquer donnerait à lire « tableau
  *    complet » là où personne n'a été examiné.
+ *
+ * `constatsParCritere` suit la même règle et pour la même raison ([[D-138]]) :
+ * un critère est constaté SUR UN DOSSIER, par un praticien qui signe. Sans
+ * dossier — c'est le cas de la prévisualisation de l'atelier —, la carte reste
+ * vide et toute règle conditionnée à un critère se voit refusée
+ * `condition_critere_non_constate`. Ce n'est pas une limite du moteur : c'est
+ * le verdict juste. Une règle à critère ne peut rien produire là où personne
+ * n'a rien constaté.
  */
 export async function lireCatalogueDecision(
   ingredientIds: readonly string[],
+  /**
+   * Le dossier sur lequel la décision porte, quand il y en a un. Absent en
+   * prévisualisation d'atelier — et c'est alors le fait qui compte, pas un
+   * défaut d'appel.
+   */
+  dossier?: { idPatient: string; critereIds: readonly string[] },
 ): Promise<CatalogueDecision> {
-  const [publie, { seuils, alertes }] = await Promise.all([
+  const [publie, { seuils, alertes }, constats] = await Promise.all([
     catalogueAlertesPublie(),
     lireSeuilsEtAlertes(ingredientIds),
+    lireConstatsCriteres(dossier),
   ]);
   return {
     catalogueAlertesPublie: publie,
@@ -143,5 +164,25 @@ export async function lireCatalogueDecision(
     seuilsParIngredient: seuils,
     claimsValidesParRegle: new Map(),
     declencheur: [],
+    constatsParCritere: constats,
   };
+}
+
+/**
+ * Les constats posés sur CE dossier, pour les seuls critères que la résolution
+ * touche — jamais la table entière ([[D-138]]).
+ *
+ * L'absence de ligne n'est pas transformée en `false` : elle reste une absence,
+ * et le moteur la distingue d'un constat d'absence. C'est tout l'objet des deux
+ * causes de refus séparées.
+ */
+async function lireConstatsCriteres(
+  dossier?: { idPatient: string; critereIds: readonly string[] },
+): Promise<ReadonlyMap<string, boolean>> {
+  if (!dossier || dossier.critereIds.length === 0) return new Map();
+  const lignes = await prisma.critereDossierConstate.findMany({
+    where: { idPatient: dossier.idPatient, critereId: { in: [...dossier.critereIds] } },
+    select: { critereId: true, present: true },
+  });
+  return new Map(lignes.map((ligne) => [ligne.critereId, ligne.present]));
 }

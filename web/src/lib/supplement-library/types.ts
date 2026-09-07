@@ -62,6 +62,13 @@ export type IngredientResolu = { id: string; code: string; nomFr: string };
 export type FormeResolue = { id: string; code: string; labelFr: string };
 export type SourceResolue = { id: string; citation: string; lienUrl: string | null };
 
+/** Un mot du vocabulaire gouverné (`clinical_criteria`), résolu. */
+export type CritereResolu = {
+  critereId: string;
+  code: string;
+  labelFr: string;
+};
+
 export type RegleResolue = {
   regleId: string;
   versionRegle: number;
@@ -72,7 +79,19 @@ export type RegleResolue = {
   doseCibleHaute: number | null;
   gradePreuve: GradePreuveScientifique;
   justification: string;
+  /**
+   * ANCIEN champ à deux natures ([[D-138]]). Conservé le temps que plus aucun
+   * code ne l'écrive ; le moteur ne le lit plus. Ne rien en déduire.
+   */
   conditionSupplementaire: unknown;
+  /** Condition biologique, seule nature que `lireConditionBiologique` lit. */
+  conditionBiologie: unknown;
+  /**
+   * Critère gouverné auquel la règle est conditionnée, résolu (code et libellé
+   * joints) pour qu'un refus puisse le NOMMER au praticien plutôt que de citer
+   * un identifiant. `null` = règle non conditionnée à un critère.
+   */
+  conditionCritere: CritereResolu | null;
   source: SourceResolue;
   creeLe: string;
   validePar: string | null;

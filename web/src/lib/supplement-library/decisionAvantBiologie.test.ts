@@ -35,6 +35,8 @@ function regle(overrides: Partial<RegleResolue> = {}): RegleResolue {
     gradePreuve: 'modere',
     justification: 'Justification fixture.',
     conditionSupplementaire: null,
+    conditionBiologie: null,
+    conditionCritere: null,
     source: { id: 'src-1', citation: 'Source fixture 2024.', lienUrl: null },
     creeLe: '2026-01-01T00:00:00.000Z',
     validePar: 'praticien-1',
@@ -68,6 +70,7 @@ function contexte(overrides: Partial<ContexteDecision> = {}): ContexteDecision {
     alertesActives: [],
     seuilsActifs: [seuil()],
     claimsValides: true,
+    constatCritere: null,
     declencheur: TABLEAU_CLINIQUE_COMPLET,
     ...overrides,
   };
@@ -89,7 +92,7 @@ describe('Compléments avant biologie — ce qui fait naître une intention', ()
       regle: regle({
         regleId: 'rule-fer-01',
         ingredient: { id: 'ing-fer', code: 'FER', nomFr: 'Fer' },
-        conditionSupplementaire: { type: 'biologie', cible: 'ferritine' },
+        conditionBiologie: { type: 'biologie', cible: 'ferritine' },
       }),
       seuilsActifs: [seuil({ ingredientId: 'ing-fer' })],
     }));
@@ -103,7 +106,7 @@ describe('Compléments avant biologie — ce qui fait naître une intention', ()
   it('conserve l’échéance canonique portée par la condition', () => {
     const verdict = deciderIntentionAvantBiologie(contexte({
       regle: regle({
-        conditionSupplementaire: {
+        conditionBiologie: {
           type: 'biologie', cible: 'ferritine', echeance: '2026-03-01T00:00:00.000Z',
         },
       }),
@@ -112,6 +115,98 @@ describe('Compléments avant biologie — ce qui fait naître une intention', ()
       statut: 'conditionnelle_biologie',
       waitFor: { type: 'biologie', cible: 'ferritine', echeance: '2026-03-01T00:00:00.000Z' },
     });
+  });
+});
+
+// [[D-138]] — la condition de CRITÈRE. Un critère ne se calcule pas : il est
+// constaté par un praticien qui le signe. Trois issues, et elles ne disent pas
+// la même chose : personne ne s'est prononcé (une dette), le praticien a
+// constaté que non (un acquis clinique), le constat porte sur autre chose (un
+// défaut d'appelant).
+describe('Compléments avant biologie — la condition de critère', () => {
+  const CRITERE = { critereId: 'crit-isrs', code: 'sous_isrs', labelFr: 'Sous ISRS' };
+
+  it('refuse quand le critère n’a été constaté par personne — l’absence n’est pas une autorisation', () => {
+    const verdict = deciderIntentionAvantBiologie(contexte({
+      regle: regle({ conditionCritere: CRITERE }),
+      constatCritere: null,
+    }));
+    expect(verdict).toMatchObject({ verdict: 'refus', cause: 'condition_critere_non_constate' });
+    // Le refus NOMME le critère : un praticien doit savoir quel geste manque.
+    expect((verdict as { motif: string }).motif).toContain('Sous ISRS');
+    expect((verdict as { motif: string }).motif).toContain('n’est pas une autorisation');
+  });
+
+  it('refuse, mais AUTREMENT, quand le critère a été constaté ABSENT', () => {
+    const verdict = deciderIntentionAvantBiologie(contexte({
+      regle: regle({ conditionCritere: CRITERE }),
+      constatCritere: { critereId: 'crit-isrs', present: false },
+    }));
+    expect(verdict).toMatchObject({ verdict: 'refus', cause: 'condition_critere_non_remplie' });
+    expect((verdict as { motif: string }).motif).toContain('constaté ABSENT');
+  });
+
+  it('laisse naître l’intention quand le critère a été constaté PRÉSENT', () => {
+    expect(deciderIntentionAvantBiologie(contexte({
+      regle: regle({ conditionCritere: CRITERE }),
+      constatCritere: { critereId: 'crit-isrs', present: true },
+    }))).toMatchObject({ verdict: 'intention', statut: 'active' });
+  });
+
+  it('refuse un constat qui porte sur un AUTRE critère — il n’en tient pas lieu', () => {
+    expect(deciderIntentionAvantBiologie(contexte({
+      regle: regle({ conditionCritere: CRITERE }),
+      constatCritere: { critereId: 'crit-grossesse', present: true },
+    }))).toMatchObject({ verdict: 'refus', cause: 'constat_critere_incoherent' });
+  });
+
+  // L'ORDRE N'EST PAS INDIFFÉRENT. Une règle dont le critère n'est pas rempli
+  // ne s'applique pas à ce dossier : il n'y a alors rien à suspendre à un
+  // bilan. Si la biologie passait d'abord, l'écran annoncerait « en attente de
+  // ferritine » pour une règle qui ne concerne pas ce patient.
+  it('tranche le critère AVANT la biologie', () => {
+    expect(deciderIntentionAvantBiologie(contexte({
+      regle: regle({
+        conditionCritere: CRITERE,
+        conditionBiologie: { type: 'biologie', cible: 'ferritine' },
+      }),
+      constatCritere: null,
+    }))).toMatchObject({ verdict: 'refus', cause: 'condition_critere_non_constate' });
+  });
+
+  // Le critère constaté présent NE DISPENSE PAS de la biologie : les deux
+  // conditions vivent dans deux colonnes et se cumulent.
+  it('rend l’intention conditionnelle quand le critère est rempli et la biologie attendue', () => {
+    expect(deciderIntentionAvantBiologie(contexte({
+      regle: regle({
+        conditionCritere: CRITERE,
+        conditionBiologie: { type: 'biologie', cible: 'ferritine' },
+      }),
+      constatCritere: { critereId: 'crit-isrs', present: true },
+    }))).toMatchObject({
+      verdict: 'intention',
+      statut: 'conditionnelle_biologie',
+      waitFor: { type: 'biologie', cible: 'ferritine' },
+    });
+  });
+
+  // LE MOTEUR NE LIT PLUS L'ANCIENNE COLONNE. Elle survit en base le temps que
+  // le code cesse de l'écrire ; si le moteur la lisait encore, la séparation
+  // n'aurait rien séparé.
+  it('ignore `conditionSupplementaire`, qui ne porte plus de sens pour lui', () => {
+    expect(deciderIntentionAvantBiologie(contexte({
+      regle: regle({
+        conditionSupplementaire: { type: 'biologie', cible: 'ferritine' },
+        conditionBiologie: null,
+      }),
+    }))).toMatchObject({ verdict: 'intention', statut: 'active' });
+  });
+
+  // Une règle SANS condition de critère ne réclame aucun constat : le champ du
+  // contexte reste requis, mais `null` y est la réponse juste.
+  it('n’exige aucun constat d’une règle qui ne cite aucun critère', () => {
+    expect(deciderIntentionAvantBiologie(contexte({ constatCritere: null })))
+      .toMatchObject({ verdict: 'intention', statut: 'active' });
   });
 });
 
@@ -145,7 +240,7 @@ describe('Compléments avant biologie — l’absence d’information ne vaut ja
 
   it('refuse une condition supplémentaire illisible plutôt que de la lire comme absente', () => {
     const verdict = deciderIntentionAvantBiologie(contexte({
-      regle: regle({ conditionSupplementaire: { type: 'biologie', cible: '   ' } }),
+      regle: regle({ conditionBiologie: { type: 'biologie', cible: '   ' } }),
     }));
     expect(verdict).toMatchObject({ verdict: 'refus', cause: 'condition_illisible' });
   });
@@ -222,6 +317,7 @@ describe('Compléments avant biologie — catalogue de décision vide', () => {
     seuilsParIngredient: new Map(),
     claimsValidesParRegle: new Map(),
     declencheur: TABLEAU_CLINIQUE_COMPLET,
+    constatsParCritere: new Map(),
   };
 
   it('refuse explicitement plutôt que de rendre une liste vide', () => {
@@ -240,5 +336,54 @@ describe('Compléments avant biologie — catalogue de décision vide', () => {
       }],
     }, catalogue);
     expect(verdicts).toEqual([expect.objectContaining({ cause: 'catalogue_decision_vide' })]);
+  });
+});
+
+// [[D-138]] — LA CARTE DES CONSTATS, ET LA DISTINCTION QU'ELLE PORTE.
+//
+// `constatsParCritere` est une `Map<string, boolean>` : une clé ABSENTE dit
+// « personne ne s'est prononcé », un `false` dit « le praticien a constaté que
+// non ». Un `get(...) ?? false` confondrait les deux et ferait dire au moteur
+// qu'un constat existe là où il n'y en a aucun. Ces deux cas sont l'unique
+// garde de cette distinction : sans eux, la confusion passe VERTE — vérifié
+// par mutation.
+describe('Compléments avant biologie — clé absente ≠ constat d’absence', () => {
+  const CRITERE = { critereId: 'crit-isrs', code: 'sous_isrs', labelFr: 'Sous ISRS' };
+
+  function verdictsPour(constats: ReadonlyMap<string, boolean>) {
+    return deciderIntentionsAvantBiologie(
+      {
+        contractVersion: C4B_RESOLUTION_VERSION,
+        intentions: [{
+          intention: { id: 'int-1', code: 'SOMMEIL', labelFr: 'Sommeil', categorie: 'fonctionnel' },
+          regles: [regle({ conditionCritere: CRITERE })],
+        }],
+        codesInconnus: [],
+        aucunScoreAgrege: true,
+      },
+      {
+        catalogueAlertesPublie: true,
+        alertesParIngredient: new Map(),
+        seuilsParIngredient: new Map([['ing-omega3', [seuil()]]]),
+        claimsValidesParRegle: new Map([['rule-omega3-01', true]]),
+        declencheur: TABLEAU_CLINIQUE_COMPLET,
+        constatsParCritere: constats,
+      },
+    );
+  }
+
+  it('carte VIDE — personne ne s’est prononcé', () => {
+    expect(verdictsPour(new Map()))
+      .toEqual([expect.objectContaining({ cause: 'condition_critere_non_constate' })]);
+  });
+
+  it('carte portant `false` — le praticien a constaté que non', () => {
+    expect(verdictsPour(new Map([['crit-isrs', false]])))
+      .toEqual([expect.objectContaining({ cause: 'condition_critere_non_remplie' })]);
+  });
+
+  it('carte portant `true` — l’intention naît', () => {
+    expect(verdictsPour(new Map([['crit-isrs', true]])))
+      .toEqual([expect.objectContaining({ verdict: 'intention', statut: 'active' })]);
   });
 });
