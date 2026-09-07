@@ -199,14 +199,14 @@ describe('Historique par besoin — la règle de nouveauté vaut au grain du bes
 
   it('une seule passation ⇒ UNE lecture, jamais quatre copies', () => {
     const series = construireHistoriqueParBesoin([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
     ], T0, MAINTENANT);
     expect(series.get(BESOIN_STRESS) ?? []).toHaveLength(1);
   });
 
   it('…et donc aucun momentum : le besoin n’a pas été re-mesuré', () => {
     const series = construireHistoriqueParBesoin([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
     ], T0, MAINTENANT);
     const resultat = calculerMomentumParBesoin({ series })
       .find(r => r.besoin === BESOIN_STRESS);
@@ -215,8 +215,9 @@ describe('Historique par besoin — la règle de nouveauté vaut au grain du bes
 
   it('une re-passation rouvre le jalon du besoin, et le delta est réel', () => {
     const series = construireHistoriqueParBesoin([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
       {
+        statutValidite: null,
         idQuestionnaire: 'Q_STR_02',
         dateReponse: new Date('2026-01-20T00:00:00.000Z'),
         scoresJson: { rawAnswers: RAW_PSS10_J21 },
@@ -241,7 +242,7 @@ describe('Historique par besoin — la règle de nouveauté vaut au grain du bes
     process.env.WN_ENABLE_VALIDITE_PASSATIONS = '1';
     try {
       const series = construireHistoriqueParBesoin([
-        { idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
+        { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
         {
           idQuestionnaire: 'Q_STR_02',
           dateReponse: new Date('2026-01-20T00:00:00.000Z'),
@@ -260,7 +261,7 @@ describe('Historique par besoin — la règle de nouveauté vaut au grain du bes
     // une ligne que le LOT-00 s'est engagé à transmettre.
     delete process.env.WN_ENABLE_VALIDITE_PASSATIONS;
     const series = construireHistoriqueParBesoin([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: T0, scoresJson: { rawAnswers: RAW_PSS10_T0 } },
       {
         idQuestionnaire: 'Q_STR_02',
         dateReponse: new Date('2026-01-20T00:00:00.000Z'),

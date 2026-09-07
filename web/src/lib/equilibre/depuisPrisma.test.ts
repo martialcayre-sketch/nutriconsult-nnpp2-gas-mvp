@@ -19,8 +19,8 @@ describe('depuisPrisma — adaptateur Prisma → moteur équilibre', () => {
 
   it('deux réponses au même questionnaire → seule la plus récente est retenue', () => {
     const dedoublonnees = construireReponsesParQuestionnaire([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateAncienne, scoresJson: { rawAnswers: { P1: '4' } } },
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateAncienne, scoresJson: { rawAnswers: { P1: '4' } } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
     ]);
     expect(dedoublonnees.Q_STR_02?.P1).toBe('2');
   });
@@ -58,14 +58,14 @@ describe('depuisPrisma — adaptateur Prisma → moteur équilibre', () => {
 
   it('réponse sans rawAnswers exploitable doit être ignorée', () => {
     const sansRawAnswers = construireReponsesParQuestionnaire([
-      { idQuestionnaire: 'Q_STR_01', dateReponse: dateRecente, scoresJson: { A: { total: 16 }, global: 32 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_01', dateReponse: dateRecente, scoresJson: { A: { total: 16 }, global: 32 } },
     ]);
     expect(sansRawAnswers.Q_STR_01).toBeUndefined();
   });
 
   it('une réponse postérieure à dateLimite ne doit pas être incluse', () => {
     const avecDateLimite = construireReponsesParQuestionnaire(
-      [{ idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } }],
+      [{ statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } }],
       dateAncienne
     );
     expect(avecDateLimite.Q_STR_02).toBeUndefined();
@@ -73,8 +73,8 @@ describe('depuisPrisma — adaptateur Prisma → moteur équilibre', () => {
 
   it('resoudreDateT0 doit être la plus ancienne réponse, pas la plus récente', () => {
     const result = resoudreDateT0([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: {} },
-      { idQuestionnaire: 'Q_STR_01', dateReponse: dateAncienne, scoresJson: {} },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateRecente, scoresJson: {} },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_01', dateReponse: dateAncienne, scoresJson: {} },
     ]);
     expect(result?.getTime()).toBe(dateAncienne.getTime());
   });
@@ -86,7 +86,7 @@ describe('depuisPrisma — adaptateur Prisma → moteur équilibre', () => {
   it('construireHistoriqueEquilibre doit ommettre les jalons futurs', () => {
     const dateT0Future = new Date();
     const historiqueFutur = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0Future, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0Future, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
     ]);
     expect(historiqueFutur.length).toBeLessThanOrEqual(1);
   });
@@ -94,7 +94,7 @@ describe('depuisPrisma — adaptateur Prisma → moteur équilibre', () => {
   it('ancreT0 explicite (LOT-08) ancre les jalons sur cette date, pas sur la 1re réponse', () => {
     const premiereReponse = new Date('2026-01-10T00:00:00.000Z');
     const reponses = [
-      { idQuestionnaire: 'Q_STR_02', dateReponse: premiereReponse, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: premiereReponse, scoresJson: { rawAnswers: RAW_ANSWERS_Q_STR_02 } },
     ];
 
     // T0 global = 2026-01-10 → une lecture T0 datée du 2026-01-10 existe.
@@ -133,7 +133,7 @@ describe('construireHistoriqueEquilibre — règle de nouveauté (lot 1, F1)', (
 
   it('une seule réponse puis silence : une seule lecture, pas quatre', () => {
     const historique = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
     ]);
 
     expect(historique).toHaveLength(1);
@@ -143,8 +143,8 @@ describe('construireHistoriqueEquilibre — règle de nouveauté (lot 1, F1)', (
   it('une réponse nouvelle à J21 : deux lectures, et la seconde est datée J21', () => {
     const dateJ21 = new Date(dateT0.getTime() + 21 * JOUR_MS);
     const historique = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateJ21, scoresJson: { rawAnswers: RAW_J21 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateJ21, scoresJson: { rawAnswers: RAW_J21 } },
     ]);
 
     expect(historique).toHaveLength(2);
@@ -161,8 +161,9 @@ describe('construireHistoriqueEquilibre — règle de nouveauté (lot 1, F1)', (
   it('une passation hors mapping des besoins ne rouvre pas de jalon', () => {
     // Q_SOM_06 (fatigue de Pichot) : exploitable, mais retiré des sources en v4.
     const historique = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
       {
+        statutValidite: null,
         idQuestionnaire: 'Q_SOM_06',
         dateReponse: new Date(dateT0.getTime() + 21 * JOUR_MS),
         scoresJson: { rawAnswers: { F1: '3', F2: '3', F3: '2', F4: '2', F5: '3', F6: '2', F7: '3', F8: '2' } },
@@ -176,8 +177,9 @@ describe('construireHistoriqueEquilibre — règle de nouveauté (lot 1, F1)', (
     // Sans `rawAnswers`, la ligne est ignorée par le moteur : la compter comme
     // nouveauté ré-émettrait la lecture précédente à l'identique.
     const historique = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
       {
+        statutValidite: null,
         idQuestionnaire: 'Q_SOM_01',
         dateReponse: new Date(dateT0.getTime() + 21 * JOUR_MS),
         scoresJson: { global: 12 },
@@ -192,8 +194,8 @@ describe('construireHistoriqueEquilibre — règle de nouveauté (lot 1, F1)', (
     // à J21 — c'est une mesure stable, pas un silence. Elle doit être servie.
     const dateJ21 = new Date(dateT0.getTime() + 21 * JOUR_MS);
     const historique = construireHistoriqueEquilibre([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
-      { idQuestionnaire: 'Q_STR_02', dateReponse: dateJ21, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateT0, scoresJson: { rawAnswers: RAW_T0 } },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: dateJ21, scoresJson: { rawAnswers: RAW_T0 } },
     ]);
 
     expect(historique).toHaveLength(2);

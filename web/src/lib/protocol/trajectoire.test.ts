@@ -14,10 +14,14 @@ const RAW = {
   P1: '2', P2: '2', P3: '3', P4: '3', P5: '3',
   P6: '2', P7: '3', P8: '3', P9: '2', P10: '3',
 };
-const reponse = (iso: string) => ({
+const reponse = (iso: string, statutValidite: string | null = null) => ({
   idQuestionnaire: 'Q_STR_02',
   dateReponse: new Date(iso),
   scoresJson: { rawAnswers: RAW },
+  // Défaut `null` : la fixture ne porte aucun jugement de validité, ce qui est
+  // le cas de la quasi-totalité des cas de ce banc. Le paramètre existe pour
+  // que les cas qui VEULENT une passation retirée puissent le dire.
+  statutValidite,
 });
 // `cycleId` / `versionScore` sont stockés depuis le gate G2 : par défaut la
 // fixture représente une ligne écrite APRÈS le gate (cycle = son propre id,
@@ -75,6 +79,54 @@ describe('construireTrajectoire (C2B LOT-09)', () => {
     expect(cycle.momentum).not.toBeNull();
     // Aucune réponse après J21 : les jalons suivants restent non mesurés.
     expect(cycle.jalons.find((j) => j.jalon === 'J42')?.mesure).toBe(false);
+  });
+
+  // ── A03 : le statut de validité doit atteindre le moteur ───────────────
+  //
+  // Ces deux cas sont la CONTREPARTIE du correctif. Le moteur portait déjà le
+  // filtre ; ce sont les adaptateurs qui l'affamaient en perdant le champ, et
+  // le type optionnel faisait passer cet oubli pour un « VALID ». Sans ces cas,
+  // rien ne distinguerait un filtre qui marche d'un filtre jamais atteint.
+
+  it('une passation RETIRÉE ne mesure pas son jalon et n’ouvre aucun momentum (A03)', () => {
+    const initial = process.env.WN_ENABLE_VALIDITE_PASSATIONS;
+    process.env.WN_ENABLE_VALIDITE_PASSATIONS = '1';
+    try {
+      const tr = construireTrajectoire({
+        episodes: [t0('ep_T0', '2026-01-01T00:00:00.000Z')],
+        reponses: [
+          reponse('2026-01-01T00:00:00.000Z'),
+          // Exactement le cas du test précédent, à ceci près : le praticien a
+          // retiré cette passation du raisonnement.
+          reponse('2026-01-22T00:00:00.000Z', 'INVALID'),
+        ],
+      });
+      const cycle = tr.cycles[0];
+      expect(cycle.jalons.find((j) => j.jalon === 'J21')?.mesure).toBe(false);
+      expect(cycle.momentum, 'une passation retirée a produit un momentum').toBeNull();
+    } finally {
+      if (initial === undefined) delete process.env.WN_ENABLE_VALIDITE_PASSATIONS;
+      else process.env.WN_ENABLE_VALIDITE_PASSATIONS = initial;
+    }
+  });
+
+  it('drapeau ÉTEINT : la même passation retirée compte encore — le filtre est gardé', () => {
+    // La contrepartie de la contrepartie. Sans ce cas, le précédent pourrait
+    // passer au vert pour une raison sans rapport avec le statut.
+    const initial = process.env.WN_ENABLE_VALIDITE_PASSATIONS;
+    delete process.env.WN_ENABLE_VALIDITE_PASSATIONS;
+    try {
+      const tr = construireTrajectoire({
+        episodes: [t0('ep_T0', '2026-01-01T00:00:00.000Z')],
+        reponses: [
+          reponse('2026-01-01T00:00:00.000Z'),
+          reponse('2026-01-22T00:00:00.000Z', 'INVALID'),
+        ],
+      });
+      expect(tr.cycles[0].jalons.find((j) => j.jalon === 'J21')?.mesure).toBe(true);
+    } finally {
+      if (initial !== undefined) process.env.WN_ENABLE_VALIDITE_PASSATIONS = initial;
+    }
   });
 
   it('jalon sans couverture → « non mesuré », jamais un 0 (A8-2)', () => {

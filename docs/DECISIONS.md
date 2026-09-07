@@ -4,6 +4,66 @@
 
 ## Décisions actives
 
+### D-146 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
+
+- Date : 2026-09-08
+- Statut : accepté et exécuté.
+- Domaine : clinique, trajectoire, validité des passations
+
+- Contexte : `A03` de l'audit du 2026-09-06. L'audit désigne
+  `web/src/lib/fil/momentumJ21.ts:56` — un adaptateur qui SÉLECTIONNE
+  `statutValidite` en base puis le PERD en construisant l'objet passé au moteur
+  de trajectoire.
+
+**1. Le moteur n'était pas en cause ; il était affamé.**
+`filtrerPassationsExploitables` existe, il est correct, et quatorze sites sur
+seize l'atteignent. La contre-preuve est dans le dépôt :
+`api/praticien/trajectoire/route.ts:101` passe ses lignes BRUTES au même moteur
+et filtre donc correctement. Seuls les adaptateurs qui reconstruisaient un objet
+intermédiaire perdaient le champ.
+
+**2. La cause racine est le TYPE, pas les adaptateurs.** `ReponseBrute` déclarait
+`statutValidite?: string | null`, et son commentaire assumait le défaut :
+« absent, la passation vaut VALID ». Un champ facultatif dont l'absence signifie
+« valide » rend l'OUBLI indiscernable d'une AFFIRMATION — un fail-open que le
+compilateur approuve en silence. Corriger les deux adaptateurs aurait laissé le
+piège armé pour le troisième.
+
+**3. Rendre le champ obligatoire a immédiatement trouvé un site que personne
+n'avait vu.** Ni l'audit, ni l'instruction, ni la contre-épreuve adverse :
+`clinical-engine/clinicalSnapshot.ts:151`, dans la chaîne C1. Ses entrées sont
+filtrées en amont (`cockpit/route.ts:250`, `verifierChaineC1.ts:80`), donc
+l'oubli y était inoffensif — mais silencieux. Il y porte désormais un `null`
+EXPLICITE qui nomme l'hypothèse et dit quoi faire le jour où elle tombe.
+
+**4. Ce que le défaut produisait, mesuré.** Le mutant qui remet les adaptateurs
+dans leur état d'avant rend, pour une passation que le praticien avait
+explicitement RETIRÉE du raisonnement : `{ tendance: 'stable', delta: 0 }`. Ce
+n'est pas une donnée manquante affichée comme manquante — c'est une lecture
+fabriquée à partir d'une passation écartée, présentée comme un momentum. Le
+drapeau `WN_ENABLE_VALIDITE_PASSATIONS` est POSÉ en production depuis le
+2026-08-19 (`D-077`), relu sur Scalingo le 2026-09-07 : le défaut était ACTIF,
+pas latent.
+
+**5. Ce que la contre-épreuve a DÉMENTI, et qu'il ne faut pas propager.**
+L'instruction affirmait qu'une passation invalidée « peut ancrer T0 ». C'est
+FAUX : `resoudreDateT0` est inatteignable par ces chemins, `trajectoire.ts:140`
+passant toujours `dateAncre = episodeAncre.confirmedAt`. L'affirmation la plus
+alarmante du dossier ne tenait pas, et la consigner ici évite qu'elle revienne.
+
+**6. Portée réelle, bornée.** Le défaut est INERTE sans épisode d'ancre confirmé,
+et ne mord que sur les onze questionnaires sources de besoin (sur soixante-cinq).
+Le nombre de passations non-`VALID` en production au 2026-09-08 est **non
+établi** — le dernier comptage au registre (`D-077`, 111 passations, toutes
+`VALID`) est antérieur à l'ouverture de la route d'invalidation. Le défaut de
+code est prouvé ; son déclenchement effectif ne l'est pas.
+
+**7. Le coût assumé.** Vingt-cinq fixtures portent désormais `statutValidite:
+null` explicitement — même comportement qu'avant, mais dit. C'est exactement le
+prix qui achète l'impossibilité de l'oublier, et `adaptateursValidite.test.ts`
+prend les deux adaptateurs par leur seule sortie observable pour que le champ ne
+se reperde pas.
+
 ### D-145 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
 
 - Date : 2026-09-07
