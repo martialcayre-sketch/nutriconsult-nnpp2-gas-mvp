@@ -2,8 +2,9 @@
 //
 // Module PUR : il ne lit rien: la couche appelante lui passe ce qu'elle a lu du
 // catalogue. Il rend un VERDICT motivé, jamais un booléen — un refus doit dire
-// lequel des sept obstacles il a rencontré, et « pas d'obstacle constaté » n'est
-// pas un motif de refus recevable (`DC-34`, `DC-35`).
+// LEQUEL des obstacles il a rencontré (`CauseRefus` les énumère, et deux
+// obstacles voisins ne se confondent jamais), et « pas d'obstacle constaté »
+// n'est pas un motif de refus recevable (`DC-34`, `DC-35`).
 //
 // L'inversion qui fait tout l'objet du module (`D-056`, arbitrage 2) : les
 // conditions négatives de la spec — « aucune alerte active », « seuils
@@ -47,6 +48,13 @@ export type CauseRefus =
   | 'aucun_seuil_publie'
   | 'seuil_depasse'
   | 'condition_illisible'
+  // Les trois issues d'une condition de CRITÈRE ([[D-138]]). Elles refusent
+  // toutes, et elles ne disent pas la même chose : seule la première est une
+  // dette (un geste manque), la deuxième est un constat clinique acquis, la
+  // troisième est un défaut d'appelant.
+  | 'condition_critere_non_constate'
+  | 'condition_critere_non_remplie'
+  | 'constat_critere_incoherent'
   | 'declencheur_insuffisant';
 
 export type WaitForBiologie = { type: 'biologie'; cible: string; echeance?: string };
@@ -87,6 +95,18 @@ export type ContexteDecision = {
   seuilsActifs: readonly SeuilFonctionnelSource[];
   claimsValides: boolean;
   declencheur: readonly OrigineDeclencheur[];
+  /**
+   * Ce que l'appelant a LU dans `criteres_dossier_constates` pour le critère
+   * porté par la règle — `null` quand AUCUNE ligne n'existe ([[D-138]]).
+   *
+   * Le champ est requis, y compris pour une règle sans condition de critère :
+   * l'appelant doit avoir regardé. Un appelant qui ne lit pas passe `null`, ce
+   * qui vaut « non constaté » et REFUSE — fail-closed, comme les autres
+   * absences de ce module (`DC-24`). Le `critereId` y figure pour que le module
+   * puisse VÉRIFIER que le constat porte bien sur le critère de la règle : un
+   * constat d'un autre critère n'est pas un constat.
+   */
+  constatCritere: { critereId: string; present: boolean } | null;
 };
 
 function refus(
@@ -106,7 +126,9 @@ function refus(
 }
 
 /**
- * Lecture de `conditionSupplementaire`, typée `unknown` en base.
+ * Lecture de `conditionBiologie`, typée `unknown` en base ([[D-138]] : la
+ * colonne ne porte plus QUE cette nature — la référence de critère a sa propre
+ * colonne, et sa propre porte, plus haut dans la décision).
  *
  * Trois issues et trois seulement : absente (règle inconditionnelle), lisible
  * comme condition biologique, ou ILLISIBLE — et une condition illisible est un
@@ -144,7 +166,10 @@ function depasseSeuilHaut(regle: RegleResolue, seuil: SeuilFonctionnelSource): b
  * Décide d'UNE règle. L'ordre des contrôles n'est pas indifférent : la
  * validation d'abord (barrière `D-003` — rien d'actionnable sans validation
  * praticien signée), la sécurité ensuite (`DC-12`, `DC-23` — un signal de
- * sécurité prime), le déclencheur clinique en dernier.
+ * sécurité prime), le déclencheur clinique, puis les CONDITIONS portées par la
+ * règle : le critère ([[D-138]]) avant la biologie, parce qu'une règle dont le
+ * critère n'est pas rempli ne s'applique pas à ce dossier — il n'y a alors rien
+ * à suspendre à un bilan.
  */
 export function deciderIntentionAvantBiologie(contexte: ContexteDecision): VerdictAvantBiologie {
   const { regle } = contexte;
@@ -235,8 +260,48 @@ export function deciderIntentionAvantBiologie(contexte: ContexteDecision): Verdi
     );
   }
 
-  // 4. Statut de naissance selon la condition portée par la règle.
-  const condition = lireConditionBiologique(regle.conditionSupplementaire);
+  // 4. Condition de CRITÈRE ([[D-138]]) — avant la biologie, parce qu'elle ne
+  //    porte pas sur le même plan : une règle dont le critère n'est pas rempli
+  //    NE S'APPLIQUE PAS à ce dossier, il n'y a donc rien à suspendre à un
+  //    bilan. Un critère ne se calcule pas : il est constaté par un praticien
+  //    qui le signe (rien dans le dépôt ne dit ce qu'un critère lit chez un
+  //    patient — l'inventer serait inventer de la clinique, `DC-19`, `DC-20`).
+  const critere = regle.conditionCritere;
+  if (critere !== null) {
+    const constat = contexte.constatCritere;
+    if (constat === null) {
+      return refus(
+        'condition_critere_non_constate',
+        `La règle « ${regle.regleId} » est conditionnée au critère « ${critere.labelFr} », `
+          + `et ce critère n’a pas été constaté sur ce dossier. Une information absente n’est `
+          + `pas une autorisation : le constat doit être posé — présent ou absent — avant `
+          + `qu’une intention puisse en naître.`,
+        ingredient,
+        regle.regleId,
+      );
+    }
+    if (constat.critereId !== critere.critereId) {
+      return refus(
+        'constat_critere_incoherent',
+        `Le constat fourni porte sur un autre critère que celui de la règle `
+          + `« ${regle.regleId} » : il ne peut pas en tenir lieu.`,
+        ingredient,
+        regle.regleId,
+      );
+    }
+    if (!constat.present) {
+      return refus(
+        'condition_critere_non_remplie',
+        `Le critère « ${critere.labelFr} », auquel la règle « ${regle.regleId} » est `
+          + `conditionnée, a été constaté ABSENT sur ce dossier : la règle ne s’y applique pas.`,
+        ingredient,
+        regle.regleId,
+      );
+    }
+  }
+
+  // 5. Statut de naissance selon la condition BIOLOGIQUE portée par la règle.
+  const condition = lireConditionBiologique(regle.conditionBiologie);
   if (condition.forme === 'illisible') {
     return refus(
       'condition_illisible',
@@ -279,6 +344,23 @@ export function deciderIntentionAvantBiologie(contexte: ContexteDecision): Verdi
  * vide. Sans cette porte, la boucle rendrait `[]` — et `[]` se lirait « aucune
  * intention indiquée » là où il faut lire « rien n'a été examiné ».
  */
+/**
+ * Le constat à passer au moteur pour cette règle — `null` dès qu'il n'y a rien
+ * à passer, ce qui vaut « non constaté » et refuse ([[D-138]]).
+ *
+ * `has` puis `get` plutôt qu'un `?? false` : une clé absente et un constat
+ * d'absence ne sont pas la même chose, et les confondre ferait dire au moteur
+ * « le praticien a constaté que non » là où personne ne s'est prononcé.
+ */
+function constatPour(
+  regle: RegleResolue,
+  constats: ReadonlyMap<string, boolean>,
+): { critereId: string; present: boolean } | null {
+  const critere = regle.conditionCritere;
+  if (critere === null || !constats.has(critere.critereId)) return null;
+  return { critereId: critere.critereId, present: constats.get(critere.critereId) === true };
+}
+
 export function deciderIntentionsAvantBiologie(
   resolution: ResolutionIntentions,
   catalogue: {
@@ -287,6 +369,7 @@ export function deciderIntentionsAvantBiologie(
     seuilsParIngredient: ReadonlyMap<string, readonly SeuilFonctionnelSource[]>;
     claimsValidesParRegle: ReadonlyMap<string, boolean>;
     declencheur: readonly OrigineDeclencheur[];
+    constatsParCritere: ReadonlyMap<string, boolean>;
   },
 ): VerdictAvantBiologie[] {
   if (!sentinelleADeQuoiConclure(resolution)) {
@@ -311,6 +394,7 @@ export function deciderIntentionsAvantBiologie(
         seuilsActifs: catalogue.seuilsParIngredient.get(regle.ingredient.id) ?? [],
         claimsValides: catalogue.claimsValidesParRegle.get(regle.regleId) ?? false,
         declencheur: catalogue.declencheur,
+        constatCritere: constatPour(regle, catalogue.constatsParCritere),
       }));
     }
   }

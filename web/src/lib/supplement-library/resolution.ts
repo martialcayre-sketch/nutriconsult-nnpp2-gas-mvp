@@ -22,6 +22,8 @@ type LigneRegle = {
   typeRegle: string;
   justification: string;
   conditionSupplementaire: unknown;
+  conditionBiologie: unknown;
+  conditionCritere: { id: string; code: string; labelFr: string } | null;
   doseCibleBasse: number | null;
   doseCibleHaute: number | null;
   gradePreuveScientifique: string;
@@ -71,6 +73,14 @@ function versRegleResolue(regle: LigneRegle): RegleResolue {
     gradePreuve: parseGradePreuveScientifique(regle.gradePreuveScientifique),
     justification: regle.justification,
     conditionSupplementaire: regle.conditionSupplementaire ?? null,
+    conditionBiologie: regle.conditionBiologie ?? null,
+    conditionCritere: regle.conditionCritere
+      ? {
+          critereId: regle.conditionCritere.id,
+          code: regle.conditionCritere.code,
+          labelFr: regle.conditionCritere.labelFr,
+        }
+      : null,
     source: regle.sourceReference,
     creeLe: regle.creeLe.toISOString(),
     validePar: regle.validePar,
@@ -126,6 +136,10 @@ export async function resoudreIntentions(
         typeRegle: true,
         justification: true,
         conditionSupplementaire: true,
+        conditionBiologie: true,
+        // Le critère est JOINT, pas seulement son identifiant : un refus doit
+        // pouvoir NOMMER le critère au praticien ([[D-138]]).
+        conditionCritere: { select: { id: true, code: true, labelFr: true } },
         doseCibleBasse: true,
         doseCibleHaute: true,
         gradePreuveScientifique: true,

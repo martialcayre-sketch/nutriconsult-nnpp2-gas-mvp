@@ -4,6 +4,7 @@ const { prisma } = vi.hoisted(() => ({
   prisma: {
     supplementSafetyAlert: { count: vi.fn() },
     ingredientFunctionalThreshold: { findMany: vi.fn() },
+    critereDossierConstate: { findMany: vi.fn() },
   },
 }));
 
@@ -41,6 +42,7 @@ describe('lireCatalogueDecision', () => {
     vi.clearAllMocks();
     prisma.supplementSafetyAlert.count.mockResolvedValue(0);
     prisma.ingredientFunctionalThreshold.findMany.mockResolvedValue([]);
+    prisma.critereDossierConstate.findMany.mockResolvedValue([]);
   });
 
   // LA GARDE EST AU NIVEAU CATALOGUE, PAS INGRÉDIENT (`D-056` arbitrage 2) :
@@ -106,5 +108,52 @@ describe('lireCatalogueDecision', () => {
     const catalogue = await lireCatalogueDecision(['ing_1']);
     expect(catalogue.claimsValidesParRegle.size).toBe(0);
     expect(catalogue.declencheur).toEqual([]);
+  });
+
+  // [[D-138]] — LES CONSTATS DE CRITÈRES : lus seulement s'il y a un DOSSIER.
+  // Hors dossier (prévisualisation d'atelier), la carte reste vide et toute
+  // règle à critère se voit refusée. Ce n'est pas une limite du moteur : c'est
+  // le verdict juste, personne n'ayant rien constaté.
+  describe('constats de critères', () => {
+    it('ne lit RIEN hors dossier — l’atelier n’a pas de patient', async () => {
+      const catalogue = await lireCatalogueDecision(['ing_1']);
+      expect(prisma.critereDossierConstate.findMany).not.toHaveBeenCalled();
+      expect(catalogue.constatsParCritere.size).toBe(0);
+    });
+
+    it('ne lit RIEN quand le dossier existe mais qu’aucune règle ne cite de critère', async () => {
+      await lireCatalogueDecision(['ing_1'], { idPatient: 'PAT_1', critereIds: [] });
+      expect(prisma.critereDossierConstate.findMany).not.toHaveBeenCalled();
+    });
+
+    // La requête est BORNÉE aux critères que la résolution touche, jamais la
+    // table entière : un dossier n'a pas à être relu en entier pour trancher
+    // deux règles.
+    it('borne la lecture au dossier ET aux critères cités', async () => {
+      await lireCatalogueDecision(['ing_1'], { idPatient: 'PAT_1', critereIds: ['crit_a', 'crit_b'] });
+      expect(prisma.critereDossierConstate.findMany).toHaveBeenCalledWith({
+        where: { idPatient: 'PAT_1', critereId: { in: ['crit_a', 'crit_b'] } },
+        select: { critereId: true, present: true },
+      });
+    });
+
+    // LE POINT QUI COMPTE : un constat d'ABSENCE reste `false` dans la carte,
+    // il ne disparaît pas. C'est ce qui permet au moteur de distinguer « le
+    // praticien a constaté que non » de « personne ne s'est prononcé ».
+    it('conserve un constat d’absence, au lieu de l’effacer', async () => {
+      prisma.critereDossierConstate.findMany.mockResolvedValue([
+        { critereId: 'crit_a', present: false },
+        { critereId: 'crit_b', present: true },
+      ]);
+      const catalogue = await lireCatalogueDecision(
+        ['ing_1'],
+        { idPatient: 'PAT_1', critereIds: ['crit_a', 'crit_b', 'crit_c'] },
+      );
+      expect(catalogue.constatsParCritere.get('crit_a')).toBe(false);
+      expect(catalogue.constatsParCritere.get('crit_b')).toBe(true);
+      // `crit_c` n'a AUCUNE ligne : il est absent de la carte, il n'y vaut pas
+      // `false`. Les deux se disent différemment au praticien.
+      expect(catalogue.constatsParCritere.has('crit_c')).toBe(false);
+    });
   });
 });

@@ -35,6 +35,8 @@ function regleResolue(overrides: Partial<RegleResolue> = {}): RegleResolue {
     gradePreuve: 'modere',
     justification: 'Justification sourcée.',
     conditionSupplementaire: null,
+    conditionBiologie: null,
+    conditionCritere: null,
     source: { id: 'src_1', citation: 'Revue Micronutrition, 2024', lienUrl: null },
     creeLe: '2026-07-01T00:00:00.000Z',
     validePar: 'praticien@wellneuro.fr',
@@ -246,7 +248,7 @@ describe('evaluerSentinelle', () => {
     prisma.clinicalRule.findMany.mockResolvedValue([
       {
         id: 'regle_mag_sommeil', intentTagId: 'tag_0', typeRegle: 'recommande',
-        justification: 'Justification sourcée.', conditionSupplementaire: null,
+        justification: 'Justification sourcée.', conditionSupplementaire: null, conditionBiologie: null, conditionCritere: null,
         doseCibleBasse: 110, doseCibleHaute: 310, gradePreuveScientifique: 'modere',
         versionRegle: 1, creeLe: new Date('2026-07-01T00:00:00.000Z'),
         validePar: 'praticien@wellneuro.fr', valideLe: new Date('2026-07-02T00:00:00.000Z'),
@@ -255,7 +257,7 @@ describe('evaluerSentinelle', () => {
       },
       {
         id: 'regle_mag_stress_brouillon', intentTagId: 'tag_1', typeRegle: 'recommande',
-        justification: 'Brouillon non validé.', conditionSupplementaire: null,
+        justification: 'Brouillon non validé.', conditionSupplementaire: null, conditionBiologie: null, conditionCritere: null,
         doseCibleBasse: 220, doseCibleHaute: 220, gradePreuveScientifique: 'modere',
         versionRegle: 1, creeLe: new Date('2026-07-03T00:00:00.000Z'),
         validePar: null, valideLe: null,

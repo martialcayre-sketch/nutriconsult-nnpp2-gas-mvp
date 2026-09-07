@@ -32,6 +32,7 @@ function regleMag(overrides: Record<string, unknown> = {}) {
   return {
     id: 'regle_mag', intentTagId: 'tag_sommeil', typeRegle: 'recommande',
     justification: 'Justification magnésium.', conditionSupplementaire: null,
+    conditionBiologie: null, conditionCritere: null,
     doseCibleBasse: 100, doseCibleHaute: 300, gradePreuveScientifique: 'modere',
     versionRegle: 1, creeLe: new Date('2026-07-01T00:00:00.000Z'),
     validePar: 'praticien@wellneuro.fr', valideLe: new Date('2026-07-02T00:00:00.000Z'),
