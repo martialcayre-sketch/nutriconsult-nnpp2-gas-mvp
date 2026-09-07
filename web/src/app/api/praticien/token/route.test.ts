@@ -1,10 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { getServerSession, prisma, verifierAppartenancePatient } = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   prisma: {
     patient: { findUnique: vi.fn(), update: vi.fn() },
-    portailMagicLink: { updateMany: vi.fn() },
+    portailMagicLink: { create: vi.fn(), updateMany: vi.fn() },
     // `$transaction` reçoit un tableau de promesses déjà construites : les
     // exécuter suffit, et les appels sont enregistrés sur les mocks ci-dessus.
     $transaction: vi.fn(async (operations: unknown[]) => Promise.all(operations)),
@@ -29,7 +29,7 @@ vi.mock('@/lib/consultation/email', () => ({
   sendPortailLinkEmail: vi.fn(),
 }));
 
-import { sendPortailLinkEmail } from '@/lib/consultation/email';
+import { sendMagicLinkEmail, sendPortailLinkEmail } from '@/lib/consultation/email';
 import { DELETE, POST } from './route';
 
 function request(query = 'idPatient=PAT_1'): Request {
@@ -188,5 +188,83 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
       'PAT_1',
       'p@wellneuro.fr',
     );
+  });
+});
+
+// Ce que la RÉPONSE dit de l'envoi. Trois `catch` muets rendaient
+// `success: true` sur un envoi mort, et l'écran annonçait « envoyé ».
+describe('POST /api/praticien/token — ce que la réponse dit de l’envoi', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Le gate G4 est éteint par défaut (`featureFlag.ts`) : sans ce drapeau,
+    // `action: 'lien_magique'` répond 404 et le banc ne prouverait rien.
+    vi.stubEnv('WN_G4_LIEN_MAGIQUE', 'true');
+    // `empreinteJeton` échoue explicitement sans secret (`lienMagique.ts`) :
+    // la route partirait alors en `exception`, et le banc mesurerait l'inverse
+    // de ce qu'il croit mesurer.
+    vi.stubEnv('NEXTAUTH_SECRET', 'secret-de-banc');
+    getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
+    verifierAppartenancePatient.mockResolvedValue('ok');
+    prisma.patient.findUnique.mockResolvedValue({
+      idPatient: 'PAT_1',
+      email: 'sophie.nicola@example.test',
+      prenom: 'Sophie',
+      praticienEmail: 'p@wellneuro.fr',
+      actif: true,
+      accessTokenRevoked: false,
+    });
+    prisma.patient.update.mockResolvedValue({});
+    prisma.portailMagicLink.create.mockResolvedValue({});
+    vi.mocked(sendPortailLinkEmail).mockResolvedValue('Envoye');
+    vi.mocked(sendMagicLinkEmail).mockResolvedValue('Envoye');
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('un renvoi d’accès réussi le dit', async () => {
+    const json = await (await POST(postRequest({ idPatient: 'PAT_1', action: 'resend' }))).json();
+    expect(json.success).toBe(true);
+    expect(json.envoi).toBe('envoye');
+  });
+
+  it('un renvoi d’accès mort ne s’annonce plus « renvoyé »', async () => {
+    vi.mocked(sendPortailLinkEmail).mockRejectedValueOnce(new Error('smtp down'));
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'resend' }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.envoi).toBe('echoue');
+  });
+
+  it('une messagerie non configurée se distingue d’un envoi mort', async () => {
+    vi.mocked(sendPortailLinkEmail).mockResolvedValueOnce('Non_envoye');
+    const json = await (await POST(postRequest({ idPatient: 'PAT_1', action: 'resend' }))).json();
+    expect(json.envoi).toBe('non_configure');
+  });
+
+  it('le lien à usage unique est ÉMIS même quand son e-mail échoue', async () => {
+    // Deux faits distincts, et l'écran doit dire les deux : le lien existe en
+    // base (il est rendu), et le patient ne l'a pas reçu.
+    vi.mocked(sendMagicLinkEmail).mockRejectedValueOnce(new Error('smtp down'));
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'lien_magique' }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.lien).toContain('/portail/lien/');
+    expect(json.envoi).toBe('echoue');
+  });
+
+  it('le lien à usage unique distingue lui aussi la messagerie absente', async () => {
+    vi.mocked(sendMagicLinkEmail).mockResolvedValueOnce('Non_envoye');
+    const json = await (await POST(postRequest({ idPatient: 'PAT_1', action: 'lien_magique' }))).json();
+    expect(json.envoi).toBe('non_configure');
+  });
+
+  it('« Copier le lien » n’envoie rien, et ne dit donc RIEN de l’envoi', async () => {
+    // La garde qui compte : poser 'envoye' par défaut ferait annoncer un
+    // e-mail parti là où aucun n'a jamais été tenté.
+    const json = await (await POST(postRequest({ idPatient: 'PAT_1', action: 'lien' }))).json();
+    expect(json.lien).toBeTruthy();
+    expect('envoi' in json).toBe(false);
+    expect(sendPortailLinkEmail).not.toHaveBeenCalled();
   });
 });

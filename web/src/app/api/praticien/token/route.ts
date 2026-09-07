@@ -2,7 +2,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { buildGoogleConnexionUrl, buildMagicLinkUrl, sendMagicLinkEmail, sendPortailLinkEmail } from '@/lib/consultation/email';
+import { buildGoogleConnexionUrl, buildMagicLinkUrl, sendMagicLinkEmail, sendPortailLinkEmail, type EnvoiAcces } from '@/lib/consultation/email';
 import { emailPraticien, verifierAppartenancePatient } from '@/lib/praticien/appartenance';
 import { isG4LienMagiqueEnabled } from '@/lib/portail/featureFlag';
 import { creerJeton, empreinteJeton, expirationDepuis, originePraticien } from '@/lib/portail/lienMagique';
@@ -10,6 +10,11 @@ import { creerJeton, empreinteJeton, expirationDepuis, originePraticien } from '
 export type TokenActionResponse = {
   success: boolean;
   lien?: string;
+  /**
+   * Absent quand la route n'envoie rien (`action: 'lien'`, DELETE) ; posé
+   * sinon. `success: true` ne dit que l'écriture, jamais l'envoi.
+   */
+  envoi?: EnvoiAcces;
   error?: string;
   reason?: 'unauthenticated' | 'invalid_payload' | 'patient_not_found' | 'forbidden' | 'portal_revoked' | 'exception';
 };
@@ -105,14 +110,21 @@ export async function POST(req: Request): Promise<NextResponse<TokenActionRespon
         },
       });
       const lienMagique = buildMagicLinkUrl(jeton);
+      // Le lien est émis en base quoi qu'il arrive ; seul `envoi` dit si le
+      // patient l'a reçu. Nom distinct de l'`envoi` du chemin « issue »/
+      // « resend » plus bas : les deux blocs sont imbriqués, et deux `envoi`
+      // homonymes de types différents sont un piège de relecture.
+      let envoiMagique: EnvoiAcces = 'envoye';
       try {
-        await sendMagicLinkEmail(patient.email, patient.prenom, lienMagique, patient.idPatient);
+        const statut = await sendMagicLinkEmail(patient.email, patient.prenom, lienMagique, patient.idPatient);
+        if (statut === 'Non_envoye') envoiMagique = 'non_configure';
       } catch (e) {
+        envoiMagique = 'echoue';
         console.error('[praticien/token lien_magique] email:', (e as Error).message);
       }
       // Le jeton est renvoyé au praticien qui vient de le faire émettre pour
       // son propre patient — même exposition que `action: 'lien'` aujourd'hui.
-      return NextResponse.json({ success: true, lien: lienMagique });
+      return NextResponse.json({ success: true, lien: lienMagique, envoi: envoiMagique });
     }
 
     // « issue »/« resend » ré-ouvrent l'accès : si le praticien avait révoqué ce
@@ -124,17 +136,24 @@ export async function POST(req: Request): Promise<NextResponse<TokenActionRespon
     }
 
     const lien = buildGoogleConnexionUrl();
+    // `action: 'lien'` est une COPIE : aucun envoi, donc AUCUN champ `envoi`
+    // dans la réponse. Poser 'envoye' par défaut ferait dire à l'écran qu'un
+    // e-mail est parti là où rien n'a jamais été envoyé.
+    let envoi: EnvoiAcces | undefined;
     if (action !== 'lien') {
+      envoi = 'envoye';
       try {
         // En serverless, on attend explicitement la promesse pour eviter que
         // l'envoi best-effort soit interrompu juste apres la reponse HTTP.
-        await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+        const statut = await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+        if (statut === 'Non_envoye') envoi = 'non_configure';
       } catch (e) {
+        envoi = 'echoue';
         console.error('[praticien/token POST] email:', (e as Error).message);
       }
     }
 
-    return NextResponse.json({ success: true, lien });
+    return NextResponse.json({ success: true, lien, ...(envoi ? { envoi } : {}) });
   } catch {
     return NextResponse.json({ success: false, reason: 'exception', error: "Erreur technique lors de l'envoi du token." });
   }

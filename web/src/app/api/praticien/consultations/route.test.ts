@@ -98,7 +98,7 @@ describe('POST /api/praticien/consultations', () => {
     getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
     prisma.patient.findUnique.mockResolvedValue(patient);
     prisma.consultation.create.mockResolvedValue({});
-    sendPortailLinkEmail.mockResolvedValue(undefined);
+    sendPortailLinkEmail.mockResolvedValue('Envoye');
   });
 
   it('refuse sans session (401)', async () => {
@@ -152,6 +152,37 @@ describe('POST /api/praticien/consultations', () => {
   // garde manquait ici alors qu'assignation, pack et envoi de booklet
   // l'avaient déjà — et le libellé de la clôture promet au praticien
   // qu'aucun document ne partira.
+  it('un envoi mort ne s’annonce plus « envoyé » — la consultation est créée quand même', async () => {
+    // LE DÉFAUT A05, EN UN CAS. Le `catch` avalait l'échec et la route rendait
+    // `success: true` sans rien dire : l'écran affichait « lien d'accès envoyé
+    // au patient » sur un e-mail qui n'était jamais parti.
+    sendPortailLinkEmail.mockRejectedValueOnce(new Error('smtp down'));
+    const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    // `success` ne parle QUE de l'écriture : la consultation existe.
+    expect(json.success).toBe(true);
+    expect(prisma.consultation.create).toHaveBeenCalledOnce();
+    expect(json.envoi).toBe('echoue');
+  });
+
+  it('une messagerie non configurée se distingue d’un envoi mort', async () => {
+    // Deux causes, deux gestes : réessayer n'a aucun sens quand aucun SMTP
+    // n'est posé. La route rend le statut, elle ne le devine pas.
+    sendPortailLinkEmail.mockResolvedValueOnce('Non_envoye');
+    const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+    const json = await res.json();
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(json.envoi).toBe('non_configure');
+  });
+
+  it('un envoi réussi le dit explicitement', async () => {
+    const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+    const json = await res.json();
+    expect(json.envoi).toBe('envoye');
+  });
+
   it('dossier au suivi clôturé : 409, aucun e-mail, aucun jeton relevé', async () => {
     prisma.patient.findUnique.mockResolvedValue({
       ...patient,
