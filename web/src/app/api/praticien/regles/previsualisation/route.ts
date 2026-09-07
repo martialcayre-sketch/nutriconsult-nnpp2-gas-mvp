@@ -3,6 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { isC4Enabled } from '@/lib/supplement-library/featureFlag';
 import { resoudreIntentions } from '@/lib/supplement-library/resolution';
+import {
+  deciderIntentionsAvantBiologie,
+  type VerdictAvantBiologie,
+} from '@/lib/supplement-library/decisionAvantBiologie';
+import { lireCatalogueDecision } from '@/lib/supplement-library/catalogueDecisionPrisma';
 import type { ResolutionIntentions } from '@/lib/supplement-library/types';
 
 // Prévisualisation de résolution (C4, LOT-03b) — « tester une intention »
@@ -22,7 +27,26 @@ const CODES_MAX = 20;
 const CODE_MAX = 100;
 
 export type ReglesPrevisualisationApiResponse =
-  | { ok: true; resolution: ResolutionIntentions }
+  | {
+      ok: true;
+      resolution: ResolutionIntentions;
+      /**
+       * Ce que le MOTEUR de décision avant biologie rend sur cette résolution
+       * ([[D-133]]).
+       *
+       * IL N'AVAIT AUCUN APPELANT : `deciderIntentionsAvantBiologie` n'était
+       * importé que par son propre banc. Cette prévisualisation est son premier,
+       * et le seul lieu où il puisse l'être sans dossier — elle ne touche ni
+       * protocole ni patient, la barrière de `D-003` reste entière.
+       *
+       * LES VERDICTS SONT DES REFUS, ET C'EST LA VÉRITÉ D'AUJOURD'HUI : le
+       * catalogue de décision est vide, les claims ne sont reliés à rien, et le
+       * déclencheur clinique appartient à un dossier que l'atelier n'a pas. Ce
+       * que le champ apporte, c'est de nommer LEQUEL de ces obstacles mord en
+       * premier — invisible jusqu'ici.
+       */
+      verdicts: VerdictAvantBiologie[];
+    }
   | { ok: false; reason: string; error: string };
 
 function echec(reason: string, error: string, status: number) {
@@ -60,7 +84,18 @@ export async function POST(req: Request): Promise<NextResponse<ReglesPrevisualis
     }
 
     const resolution = await resoudreIntentions(codes, { inclureNonValidees: true });
-    return NextResponse.json({ ok: true, resolution });
+    // Les ingrédients que la résolution TOUCHE, et eux seuls : le contexte ne se
+    // lit jamais sur le catalogue entier.
+    const ingredientIds = [
+      ...new Set(
+        resolution.intentions.flatMap(({ regles }) => regles.map((regle) => regle.ingredient.id)),
+      ),
+    ];
+    const verdicts = deciderIntentionsAvantBiologie(
+      resolution,
+      await lireCatalogueDecision(ingredientIds),
+    );
+    return NextResponse.json({ ok: true, resolution, verdicts });
   } catch (err) {
     console.error(
       '[praticien/regles/previsualisation POST]',

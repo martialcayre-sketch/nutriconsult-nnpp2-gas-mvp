@@ -4,6 +4,72 @@
 
 ## Décisions actives
 
+### D-133 — Le moteur C4 avait tout pour décider, et personne pour l'appeler
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « 1, 2 puis 3 », le second point étant le moteur sans appelant)
+- Domaine : atelier de règles cliniques (C4), moteur de décision avant biologie.
+  **Aucun seuil posé, aucune règle écrite, aucune migration, aucun chemin
+  patient touché.**
+- Porte sur : `D-056` (arbitrages 1 et 2), `D-003` (barrière de validation),
+  `D-131` et `D-132` (les écrivains du catalogue), `DC-24`, `D-125`
+
+**Le défaut.** `deciderIntentionAvantBiologie` et
+`deciderIntentionsAvantBiologie` sont écrits, testés, complets — et **leur seul
+importeur était leur propre banc**. Aucun module de `src/` ne les appelait. Le
+moteur que `D-056` arbitrage 1 annonçait comme « livré » ne tournait donc nulle
+part, et sa mutité passait pour l'effet du catalogue vide alors qu'elle tenait
+d'abord à l'absence d'appelant. C'est le **cinquième** exemplaire du motif de la
+journée, après `D-127`, `D-130`, `D-131` et le constat de `D-132`.
+
+**Où il est branché, et pourquoi là.** La **prévisualisation d'atelier**
+(`/api/praticien/regles/previsualisation`) — le seul lieu qui puisse l'appeler
+sans dossier. Son en-tête le dit déjà d'elle-même : « cette sortie ne doit JAMAIS
+alimenter un chemin protocole ou patient ». La barrière de `D-003` reste donc
+entière : rien de ce que le moteur rend ici n'atteint un protocole, une
+diffusion ou un patient.
+
+**Deux entrants ne se dérivent pas, et ils sont rendus FERMÉS plutôt
+qu'inventés.** L'absence d'information ne vaut jamais autorisation (`DC-24`,
+`D-056` arbitrage 2) :
+
+1. **`claimsValides` — aucun lien n'existe.** Le moteur exige de savoir si les
+   claims cités par une règle sont valides au corpus. Or `ClinicalRule` ne porte
+   **aucune référence de claim** : `claim_id` existe côté biologie
+   (`biology_functional_ranges`), jamais ici, et la source d'une règle est une
+   citation bibliographique, pas un identifiant de corpus. La carte reste vide,
+   donc `false` pour chaque règle, et le refus `claims_non_valides` dit une chose
+   vraie — rien n'établit la validité de ces claims. **Le lien règle ↔ claim est
+   une dette nommée ici** ; le combler demandera un arbitrage (le schéma, ou le
+   contrat du moteur).
+2. **`declencheur` — il appartient à un dossier.** Le tableau clinique (besoin
+   dégradé + plainte + anamnèse) est patient-spécifique ; l'atelier n'a pas de
+   patient. Il reste vide. Le fabriquer donnerait à lire « tableau complet » là
+   où personne n'a été examiné.
+
+**Trois entrants se dérivent, et la lecture les prend.**
+`catalogueDecisionPrisma.ts` — module à part, même séparation que
+`selectionPrioritePrisma` : ce qui DÉCIDE reste pur, ce qui LIT vit ailleurs.
+
+- **Le catalogue d'alertes est publié dès qu'une alerte active existe**, garde au
+  niveau CATALOGUE et jamais ingrédient (`D-056` arbitrage 2).
+- **Une alerte n'atteint un ingrédient que par un seuil**, le schéma ne les
+  reliant pas directement — et seulement si ce seuil **bascule le risque**. Sans
+  ce terme, une alerte citée à titre documentaire refuserait l'ingrédient entier.
+- **Les seuils sont bornés aux ingrédients que la résolution touche**, jamais lus
+  sur le catalogue entier.
+
+**Ce que le branchement apporte concrètement.** Les verdicts sont aujourd'hui des
+refus — c'est la vérité de la production. Ce qu'ils ajoutent, c'est de nommer
+**lequel** des obstacles mord en premier, ce qu'aucun écran ne disait :
+l'atelier montrait les règles résolues sans laisser voir qu'aucune n'irait plus
+loin. Le premier message servi est celui de la sentinelle : « rien n'a été
+examiné — ce n'est pas un feu vert », la distinction que tout ce rayon défend.
+
+**Ce que ça n'ouvre pas.** Ni les seuils (`D-132` : une dose sans unité ne se
+compare à rien), ni le lien claims, ni aucun chemin patient.
+
 ### D-132 — Deux référentiels de plus, et un troisième qu'on n'ouvre pas : une dose sans unité ne se compare à rien
 
 - Date : 2026-09-07

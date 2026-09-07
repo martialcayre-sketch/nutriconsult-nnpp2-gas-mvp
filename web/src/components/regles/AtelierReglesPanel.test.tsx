@@ -130,6 +130,20 @@ const RESOLUTION_PREVIEW = {
     codesInconnus: [],
     aucunScoreAgrege: true,
   },
+  // Le verdict du moteur voyage avec la résolution (`D-133`) : sur un catalogue
+  // vide, c'est la sentinelle — « rien n'a été examiné », pas « aucune
+  // intention indiquée ».
+  verdicts: [
+    {
+      verdict: 'refus',
+      contractVersion: 'c4-decision-avant-biologie-v1',
+      cause: 'catalogue_decision_vide',
+      ingredient: null,
+      regleId: null,
+      motif: 'Aucune règle clinique validée n’atteint le moindre ingrédient : le catalogue de '
+        + 'décision est vide. Rien n’a été examiné — ce n’est pas un feu vert.',
+    },
+  ],
 };
 
 /**
@@ -995,4 +1009,22 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
     await waitFor(() => expect(screen.getAllByRole('alert').length).toBeGreaterThan(0));
     expect(screen.getByRole('button', { name: 'Réessayer' })).toBeTruthy();
   });
+
+  // LE VERDICT DU MOTEUR EST MONTRÉ, pas seulement transporté (`D-133`).
+  // L'atelier affichait les règles résolues sans dire qu'aucune n'irait plus
+  // loin ; c'est ce silence que le bloc referme.
+  it('montre ce que le moteur déciderait, sentinelle comprise', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+    fireEvent.change(screen.getByLabelText('Codes d’intention à tester'), {
+      target: { value: 'sommeil_fragmente' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Tester la résolution' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Décision avant biologie')).toBeTruthy();
+      expect(screen.getByText(/n’est pas un feu vert/)).toBeTruthy();
+    });
+  });
+
 });
