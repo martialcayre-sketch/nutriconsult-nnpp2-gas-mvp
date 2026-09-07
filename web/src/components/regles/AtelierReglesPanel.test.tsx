@@ -41,6 +41,8 @@ const REGLE = {
   justification: 'Justification sourcée du magnésium.',
   conditionSupplementaire: null,
   source: { id: 'src_1', citation: 'Revue Micronutrition, 2024', lienUrl: null },
+  // La base l'exige depuis [[D-140]] : une règle servie porte son claim.
+  claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' },
   creeLe: '2026-07-20T10:00:00.000Z',
   validePar: null,
   valideLe: null,
@@ -118,6 +120,7 @@ const RESOLUTION_PREVIEW = {
             gradePreuve: 'modere',
             justification: REGLE.justification,
             conditionSupplementaire: null,
+            claim: REGLE.claim,
             source: REGLE.source,
             creeLe: REGLE.creeLe,
             validePar: null,
@@ -407,6 +410,11 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
         gradePreuveScientifique: 'modere',
         justification: 'Justification mise à jour, méta-analyse 2026.',
         sourceReferenceId: 'src_1',
+        // [[D-140]] — le claim de la version en place est REPRIS sans ressaisie :
+        // une révision est une réécriture complète, et repartir vide ferait
+        // retaper à la main ce que la règle porte déjà.
+        claimId: 'WN-CL-2026-001',
+        versionClaim: 'v1.0',
         formePrefereeId: 'forme_bisg',
         doseCibleBasse: 100,
         doseCibleHaute: 300,
@@ -432,6 +440,17 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
     fireEvent.change(screen.getByLabelText('Justification'), {
       target: { value: 'Nouvelle règle sourcée.' },
     });
+    // [[D-140]] — le claim fondateur est un champ REQUIS : tant qu'il manque,
+    // le bouton reste fermé. La route refuserait de toute façon, mais un
+    // formulaire qui laisse envoyer ce qui sera rejeté fait perdre la saisie.
+    expect(bouton.disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Identifiant du claim fondateur'), {
+      target: { value: 'WN-CL-2026-001' },
+    });
+    expect(bouton.disabled).toBe(true); // l'identifiant seul ne désigne rien
+    fireEvent.change(screen.getByLabelText('Version du claim fondateur'), {
+      target: { value: 'v1.0' },
+    });
     expect(bouton.disabled).toBe(false);
     fireEvent.click(bouton);
 
@@ -446,6 +465,8 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
         gradePreuveScientifique: 'fort',
         justification: 'Nouvelle règle sourcée.',
         sourceReferenceId: 'src_1',
+        claimId: 'WN-CL-2026-001',
+        versionClaim: 'v1.0',
         poids: 1,
       });
     });
@@ -493,6 +514,12 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
       fireEvent.change(screen.getByLabelText('Source'), { target: { value: 'src_1' } });
       fireEvent.change(screen.getByLabelText('Justification'), {
         target: { value: 'Règle sourcée sur le zinc.' },
+      });
+      fireEvent.change(screen.getByLabelText('Identifiant du claim fondateur'), {
+        target: { value: 'WN-CL-2026-001' },
+      });
+      fireEvent.change(screen.getByLabelText('Version du claim fondateur'), {
+        target: { value: 'v1.0' },
       });
       fireEvent.click(screen.getByRole('button', { name: 'Créer le brouillon' }));
 

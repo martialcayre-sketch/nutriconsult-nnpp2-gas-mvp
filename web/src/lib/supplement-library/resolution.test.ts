@@ -26,6 +26,8 @@ function regle(overrides: Record<string, unknown> = {}) {
     conditionSupplementaire: null,
     conditionBiologie: null,
     conditionCritere: null,
+    claimId: 'WN-CL-2026-001',
+    versionClaim: 'v1.0',
     doseCibleBasse: 100,
     doseCibleHaute: 300,
     gradePreuveScientifique: 'modere',
@@ -123,12 +125,28 @@ describe('resoudreIntentions', () => {
       conditionSupplementaire: null,
     conditionBiologie: null,
     conditionCritere: null,
+      claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' },
       source: { id: 'src_1', citation: 'Revue Micronutrition, 2024', lienUrl: null },
       creeLe: '2026-07-01T00:00:00.000Z',
       validePar: 'praticien@wellneuro.fr',
       valideLe: '2026-07-02T00:00:00.000Z',
       regleValidee: true,
     });
+  });
+
+  // [[D-140]] — le COUPLE fait l'identité d'un claim. Une moitié seule ne
+  // désigne rien d'unique au corpus : la référence est rendue ABSENTE, jamais
+  // complétée. Le moteur refusera alors `claim_absent`, ce qui est le verdict
+  // juste ; recopier `claimId` seul laisserait croire à un claim identifiable.
+  it.each([
+    ['claim sans version', { claimId: 'WN-CL-2026-001', versionClaim: null }],
+    ['version sans claim', { claimId: null, versionClaim: 'v1.0' }],
+    ['ni l’un ni l’autre', { claimId: null, versionClaim: null }],
+  ])('rend une référence de claim dépareillée ABSENTE (%s)', async (_libelle, moities) => {
+    prisma.clinicalIntentTag.findMany.mockResolvedValue([tagSommeil]);
+    prisma.clinicalRule.findMany.mockResolvedValue([regle(moities)]);
+    const [resolue] = (await resoudreIntentions(['sommeil_fragmente'])).intentions[0].regles;
+    expect(resolue.claim).toBeNull();
   });
 
   it('exclut par défaut une règle active jamais validée (motif barrière D-003)', async () => {

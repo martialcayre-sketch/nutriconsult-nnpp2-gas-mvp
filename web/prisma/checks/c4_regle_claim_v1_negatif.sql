@@ -5,11 +5,19 @@
 --      lui, un CHECK devenu trop serré passerait vert et la route casserait) ;
 --   2. un `claim_id` hors format est REJETÉ (23514) ;
 --   3. une `version_claim` hors format est REJETÉE (23514) ;
---   4. une référence DÉPAREILLÉE — l'un des deux seul — est REJETÉE : le couple
---      (claim_id, version_claim) est ce qui est UNIQUE dans `rag_corpus_claims`,
---      un membre seul ne désigne rien ;
---   5. les deux colonnes existent et sont encore NULLABLES — c'est l'expand
---      d'un expand/contract, et le contract est nommé ici.
+--   4. une référence DÉPAREILLÉE — l'un des deux seul — est REJETÉE (23502) ;
+--   5. une règle qui ne nomme AUCUN claim est REJETÉE (23502).
+--
+-- LE MOTIF DES DEUX DERNIERS A CHANGÉ AVEC LE CONTRACT, et il faut le dire.
+-- Pendant l'expand, une référence dépareillée était refusée par le CHECK de
+-- PAIRE (23514) : le couple (claim_id, version_claim) est ce qui est UNIQUE
+-- dans `rag_corpus_claims`, un membre seul ne désigne rien. Depuis
+-- `20260907210000_regle_claim_obligatoire`, les deux colonnes sont NOT NULL —
+-- et le NOT NULL mord AVANT le CHECK, qu'il rend du même coup inatteignable
+-- par cette voie. Le refus est le même, sa raison a monté d'un cran. Le CHECK
+-- de paire reste en base comme trace de l'invariant, sans plus être ce qui
+-- l'applique : une mutation qui le retirerait ne ferait donc plus rougir ce
+-- fichier, et c'est exact.
 --
 -- CE QU'IL NE PRÉTEND PAS GARDER : que le claim cité EXISTE et soit VALIDE.
 -- Aucune clé étrangère n'est possible — `rag_corpus_claims` est une table
@@ -26,30 +34,38 @@ DECLARE
   nb integer;
   nullable text[];
 
-  -- Chaque entrée : une insertion qui DOIT échouer sur un CHECK. Toutes visent
-  -- des clés étrangères qui EXISTENT (fixtures ci-dessous), pour que le CHECK
-  -- soit le SEUL motif de rejet possible.
+  -- Chaque entrée : un libellé, une insertion qui DOIT échouer, et le SQLSTATE
+  -- attendu — attendre le bon motif est ce qui distingue « la garde mord » de
+  -- « quelque chose a échoué ». Toutes visent des clés étrangères qui EXISTENT
+  -- (fixtures ci-dessous), pour que la garde visée soit le seul motif possible.
   cas CONSTANT text[][] := ARRAY[
-    ['claim_id hors format',
+    ['claim_id hors format', '23514',
      $q$INSERT INTO clinical_rules (id, intent_tag_id, type_regle, poids, justification, ingredient_id,
         grade_preuve_scientifique, source_reference_id, updated_at, claim_id, version_claim)
         VALUES ('r_bad1', 'tag_contrat_c4', 'recommande', 1, 'Justification.', 'ing_contrat_c4',
                 'modere', 'src_contrat_c4', CURRENT_TIMESTAMP, 'CL-2026-001', 'v1.0')$q$],
-    ['version_claim hors format',
+    ['version_claim hors format', '23514',
      $q$INSERT INTO clinical_rules (id, intent_tag_id, type_regle, poids, justification, ingredient_id,
         grade_preuve_scientifique, source_reference_id, updated_at, claim_id, version_claim)
         VALUES ('r_bad2', 'tag_contrat_c4', 'recommande', 1, 'Justification.', 'ing_contrat_c4',
                 'modere', 'src_contrat_c4', CURRENT_TIMESTAMP, 'WN-CL-2026-001', 'premiere')$q$],
-    ['claim sans version — la référence ne désigne rien d''unique',
+    ['claim sans version — la référence ne désigne rien d''unique', '23502',
      $q$INSERT INTO clinical_rules (id, intent_tag_id, type_regle, poids, justification, ingredient_id,
         grade_preuve_scientifique, source_reference_id, updated_at, claim_id, version_claim)
         VALUES ('r_bad3', 'tag_contrat_c4', 'recommande', 1, 'Justification.', 'ing_contrat_c4',
                 'modere', 'src_contrat_c4', CURRENT_TIMESTAMP, 'WN-CL-2026-001', NULL)$q$],
-    ['version sans claim — l''inverse, et tout aussi vide',
+    ['version sans claim — l''inverse, et tout aussi vide', '23502',
      $q$INSERT INTO clinical_rules (id, intent_tag_id, type_regle, poids, justification, ingredient_id,
         grade_preuve_scientifique, source_reference_id, updated_at, claim_id, version_claim)
         VALUES ('r_bad4', 'tag_contrat_c4', 'recommande', 1, 'Justification.', 'ing_contrat_c4',
-                'modere', 'src_contrat_c4', CURRENT_TIMESTAMP, NULL, 'v1.0')$q$]
+                'modere', 'src_contrat_c4', CURRENT_TIMESTAMP, NULL, 'v1.0')$q$],
+    -- Le cas que le CONTRACT ferme, et que l'expand laissait passer : une règle
+    -- clinique qui ne nomme AUCUN claim fondateur.
+    ['règle sans claim fondateur', '23502',
+     $q$INSERT INTO clinical_rules (id, intent_tag_id, type_regle, poids, justification, ingredient_id,
+        grade_preuve_scientifique, source_reference_id, updated_at)
+        VALUES ('r_bad5', 'tag_contrat_c4', 'recommande', 1, 'Justification.', 'ing_contrat_c4',
+                'modere', 'src_contrat_c4', CURRENT_TIMESTAMP)$q$]
   ];
 BEGIN
   -- ── 0. Fixtures — vocabulaire, ingrédient et source de contrat ───────────
@@ -75,30 +91,32 @@ BEGIN
         SQLSTATE;
   END;
 
-  -- ── 2. Les quatre CHECK mordent ──────────────────────────────────────────
+  -- ── 2. Les cinq refus mordent, et chacun POUR SON MOTIF ──────────────────
   FOR i IN 1 .. array_length(cas, 1) LOOP
     refuse := false;
     BEGIN
-      EXECUTE cas[i][2];
+      EXECUTE cas[i][3];
     EXCEPTION
-      WHEN check_violation THEN
-        refuse := true;
       WHEN others THEN
-        RAISE EXCEPTION
-          'RÈGLE/CLAIM test négatif: « % » rejeté pour le mauvais motif (SQLSTATE %, attendu 23514 check_violation) — le CHECK visé a-t-il disparu ?',
-          cas[i][1], SQLSTATE;
+        IF SQLSTATE <> cas[i][2] THEN
+          RAISE EXCEPTION
+            'RÈGLE/CLAIM test négatif: « % » rejeté pour le mauvais motif (SQLSTATE %, attendu %) — la garde visée a-t-elle disparu au profit d''une autre ?',
+            cas[i][1], SQLSTATE, cas[i][2];
+        END IF;
+        refuse := true;
     END;
     IF NOT refuse THEN
       RAISE EXCEPTION 'RÈGLE/CLAIM test négatif: « % » a été ACCEPTÉ alors qu''il doit être rejeté', cas[i][1];
     END IF;
   END LOOP;
 
-  -- ── 3. L'ÉTAPE EST BIEN L'EXPAND : les colonnes sont encore NULLABLES ────
-  -- Le jour où ce cas rougira, c'est que la migration de resserrement
-  -- (`20260907210000_regle_claim_obligatoire`) a eu lieu — et il faudra alors
-  -- retirer ce terme, pas le contourner. Sans lui, l'oubli du contract passerait
-  -- inaperçu : une règle sans claim resterait possible en base, exactement ce
-  -- que l'invariant interdit.
+  -- ── 3. LE CONTRACT A EU LIEU : les deux colonnes sont NOT NULL ───────────
+  -- L'expand avait ici le terme INVERSE — « les colonnes sont encore nullables »
+  -- —, posé pour que l'oubli du resserrement ne puisse pas passer inaperçu. Le
+  -- resserrement `20260907210000_regle_claim_obligatoire` l'a fait rougir, et ce
+  -- terme-ci l'a remplacé : c'est la MÊME garde, retournée. Sans elle, un NOT
+  -- NULL perdu à la faveur d'une migration future rendrait de nouveau
+  -- représentable une règle clinique sans claim fondateur.
   SELECT array_agg(c.column_name::text ORDER BY c.column_name) INTO nullable
   FROM information_schema.columns c
   WHERE c.table_schema = 'public'
@@ -106,9 +124,9 @@ BEGIN
     AND c.column_name IN ('claim_id', 'version_claim')
     AND c.is_nullable = 'YES';
 
-  IF nullable IS DISTINCT FROM ARRAY['claim_id', 'version_claim'] THEN
+  IF nullable IS NOT NULL THEN
     RAISE EXCEPTION
-      'RÈGLE/CLAIM: les colonnes de claim ne sont plus toutes deux nullables (%). Si le resserrement a eu lieu, ce terme du contrat doit être RETIRÉ — pas contourné.',
+      'RÈGLE/CLAIM: colonne(s) de claim redevenue(s) NULLABLE(S) (%) — une règle clinique sans claim fondateur est de nouveau représentable.',
       nullable;
   END IF;
 
@@ -127,7 +145,7 @@ BEGIN
     RAISE EXCEPTION 'RÈGLE/CLAIM: index « clinical_rules_claim_idx » absent.';
   END IF;
 
-  RAISE NOTICE 'RÈGLE/CLAIM: référence bien formée acceptée, % CHECK rejetants (format ×2, paire ×2), colonnes encore nullables (expand), index présent.',
+  RAISE NOTICE 'RÈGLE/CLAIM: référence bien formée acceptée, % refus éprouvés (format ×2, colonne manquante ×3), colonnes NOT NULL (contract appliqué), index présent.',
     array_length(cas, 1);
 END $$;
 

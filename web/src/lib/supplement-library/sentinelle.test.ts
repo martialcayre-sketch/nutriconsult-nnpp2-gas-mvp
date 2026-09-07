@@ -37,6 +37,7 @@ function regleResolue(overrides: Partial<RegleResolue> = {}): RegleResolue {
     conditionSupplementaire: null,
     conditionBiologie: null,
     conditionCritere: null,
+    claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' },
     source: { id: 'src_1', citation: 'Revue Micronutrition, 2024', lienUrl: null },
     creeLe: '2026-07-01T00:00:00.000Z',
     validePar: 'praticien@wellneuro.fr',

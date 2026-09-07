@@ -37,6 +37,9 @@ function regle(overrides: Partial<RegleResolue> = {}): RegleResolue {
     conditionSupplementaire: null,
     conditionBiologie: null,
     conditionCritere: null,
+    // La base l'exige depuis [[D-140]] : une fixture sans claim décrirait une
+    // ligne que `clinical_rules` ne peut plus porter.
+    claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' },
     source: { id: 'src-1', citation: 'Source fixture 2024.', lienUrl: null },
     creeLe: '2026-01-01T00:00:00.000Z',
     validePar: 'praticien-1',
@@ -258,9 +261,30 @@ describe('Compléments avant biologie — l’absence d’information ne vaut ja
     }))).toMatchObject({ verdict: 'refus', cause: 'source_absente' });
   });
 
-  it('refuse des claims non valides au corpus', () => {
-    expect(deciderIntentionAvantBiologie(contexte({ claimsValides: false })))
-      .toMatchObject({ verdict: 'refus', cause: 'claims_non_valides' });
+  // [[D-140]] — DEUX causes séparées, et l'ordre compte : une règle qui ne
+  // nomme AUCUN claim est refusée pour ce qu'elle est, sans qu'on aille
+  // interroger le corpus sur une référence qui n'existe pas.
+  it('refuse une règle qui ne nomme aucun claim fondateur', () => {
+    const verdict = deciderIntentionAvantBiologie(contexte({
+      regle: regle({ claim: null }),
+      // Le corpus dirait « valide » : c'est bien la règle, pas lui, qui manque.
+      claimsValides: true,
+    }));
+    expect(verdict).toMatchObject({ verdict: 'refus', cause: 'claim_absent' });
+    expect((verdict as { motif: string }).motif).toContain('ne nomme aucun claim');
+  });
+
+  it('refuse un claim nommé mais non validé au corpus, et le NOMME dans le motif', () => {
+    const verdict = deciderIntentionAvantBiologie(contexte({
+      regle: regle({ claim: { claimId: 'WN-CL-2026-042', versionClaim: 'v2.1' } }),
+      claimsValides: false,
+    }));
+    expect(verdict).toMatchObject({ verdict: 'refus', cause: 'claims_non_valides' });
+    // Le motif d'avant [[D-140]] disait « les claims cités par la règle » alors
+    // qu'aucun ne l'était. Un refus qui ne peut pas nommer son objet envoie
+    // chercher le défaut au mauvais endroit.
+    expect((verdict as { motif: string }).motif).toContain('WN-CL-2026-042');
+    expect((verdict as { motif: string }).motif).toContain('v2.1');
   });
 });
 

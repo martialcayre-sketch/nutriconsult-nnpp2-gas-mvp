@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isC4Enabled } from '@/lib/supplement-library/featureFlag';
+import { claimValideAuCorpus } from '@/lib/rag/claims/validite';
 import {
   SELECTION_REGLE,
   serialiserRegle,
@@ -41,6 +42,12 @@ const MESSAGES_REFUS: Record<string, { message: string; status: number }> = {
   },
   source_introuvable: { message: 'Source inconnue ou inactive.', status: 422 },
   critere_introuvable: { message: 'Critère clinique inconnu ou inactif.', status: 422 },
+  claim_non_valide: {
+    message:
+      'Ce claim n’est pas validé au corpus : vérifiez son identifiant et sa version au poste '
+      + 'de revue des claims. Une règle ne peut reposer que sur un claim signé.',
+    status: 422,
+  },
 };
 
 function echec(reason: string, error: string, status: number) {
@@ -57,6 +64,8 @@ type PostBody = {
   sourceReferenceId?: unknown;
   poids?: unknown;
   conditionSupplementaire?: unknown;
+  claimId?: unknown;
+  versionClaim?: unknown;
 };
 
 type ResultatTransaction =
@@ -87,6 +96,15 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
     const verdict = validerContenuRegle(body);
     if (!verdict.ok) return echec(verdict.reason, verdict.message, 400);
     const { contenu } = verdict;
+
+    // Le claim se vérifie AVANT la transaction, contrairement aux autres
+    // référentiels : il ne dépend pas de la lignée (que seule la transaction
+    // connaît), et il vit dans une table SQL-brut hors `schema.prisma`
+    // ([[D-140]]). Refuser tôt évite d'ouvrir une transaction pour rien.
+    if (!(await claimValideAuCorpus(contenu.claim))) {
+      const refus = MESSAGES_REFUS.claim_non_valide;
+      return echec('claim_non_valide', refus.message, refus.status);
+    }
 
     const resultat: ResultatTransaction = await prisma.$transaction(async (tx) => {
       const origine = await tx.clinicalRule.findUnique({
@@ -155,6 +173,8 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
           doseCibleHaute: contenu.doseCibleHaute,
           gradePreuveScientifique: contenu.gradePreuveScientifique,
           sourceReferenceId: contenu.sourceReferenceId,
+          claimId: contenu.claim.claimId,
+          versionClaim: contenu.claim.versionClaim,
           actif: true,
           // Brouillon : validePar / valideLe restent nuls.
         },

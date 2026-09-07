@@ -24,6 +24,13 @@ type LigneRegle = {
   conditionSupplementaire: unknown;
   conditionBiologie: unknown;
   conditionCritere: { id: string; code: string; labelFr: string } | null;
+  // NULLABLES ICI ALORS QUE LA BASE LES EXIGE ([[D-140]]) : le code se déploie
+  // avant que le resserrement soit approuvé ([[D-087]]), et une ligne lue dans
+  // cette fenêtre pourrait n'en porter aucun. Typer `string` masquerait ce cas
+  // au lieu de le traiter — le moteur refuserait alors sur un `undefined`
+  // silencieux plutôt que sur un verdict nommé.
+  claimId: string | null;
+  versionClaim: string | null;
   doseCibleBasse: number | null;
   doseCibleHaute: number | null;
   gradePreuveScientifique: string;
@@ -80,6 +87,12 @@ function versRegleResolue(regle: LigneRegle): RegleResolue {
           code: regle.conditionCritere.code,
           labelFr: regle.conditionCritere.labelFr,
         }
+      : null,
+    // Le COUPLE fait l'identité d'un claim : une moitié seule ne désigne rien
+    // d'unique dans `rag_corpus_claims`. Une référence dépareillée est donc
+    // rendue ABSENTE, pas complétée — la moitié manquante ne s'invente pas.
+    claim: regle.claimId !== null && regle.versionClaim !== null
+      ? { claimId: regle.claimId, versionClaim: regle.versionClaim }
       : null,
     source: regle.sourceReference,
     creeLe: regle.creeLe.toISOString(),
@@ -140,6 +153,11 @@ export async function resoudreIntentions(
         // Le critère est JOINT, pas seulement son identifiant : un refus doit
         // pouvoir NOMMER le critère au praticien ([[D-138]]).
         conditionCritere: { select: { id: true, code: true, labelFr: true } },
+        // Le claim fondateur ([[D-140]]) : sa VALIDITÉ se lit au corpus
+        // (`lireCatalogueDecision`), sa RÉFÉRENCE se lit ici — pour que le
+        // refus puisse nommer le claim en cause.
+        claimId: true,
+        versionClaim: true,
         doseCibleBasse: true,
         doseCibleHaute: true,
         gradePreuveScientifique: true,

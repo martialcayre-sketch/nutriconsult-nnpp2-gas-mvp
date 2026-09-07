@@ -22,6 +22,11 @@
 // La lignée n'a pas d'identifiant propre dans le schéma V1 : elle est le
 // triplet (intention, ingrédient, type de règle) — même clé que la résolution
 // C4B (`resolution.ts`, `cleLignee`).
+import {
+  CLAIM_ID_RE,
+  VERSION_CLAIM_RE,
+  type ReferenceClaim,
+} from '@/lib/rag/claims/validite';
 import { parseGradePreuveScientifique, type GradePreuveScientifique } from './types';
 
 // ─── Statut d'une ligne ─────────────────────────────────────────────────────
@@ -106,6 +111,11 @@ export const SELECTION_REGLE = {
   doseCibleBasse: true,
   doseCibleHaute: true,
   gradePreuveScientifique: true,
+  // Le claim fondateur ([[D-140]]) : l'atelier le montre et le formulaire de
+  // révision le reprend — une révision est une réécriture complète, elle ne
+  // peut pas perdre en route ce que la base exige.
+  claimId: true,
+  versionClaim: true,
   versionRegle: true,
   actif: true,
   creeLe: true,
@@ -142,6 +152,10 @@ type LigneRegleAtelier = {
   doseCibleBasse: number | null;
   doseCibleHaute: number | null;
   gradePreuveScientifique: string;
+  // Nullables à la LECTURE alors que la base les exige : le code se déploie
+  // avant l'approbation du resserrement ([[D-087]], [[D-140]]).
+  claimId: string | null;
+  versionClaim: string | null;
   versionRegle: number;
   actif: boolean;
   creeLe: Date;
@@ -197,6 +211,12 @@ export type RegleAtelier = {
   justification: string;
   conditionSupplementaire: unknown;
   source: { id: string; citation: string; lienUrl: string | null };
+  /**
+   * Le claim du corpus qui fonde la règle ([[D-140]]). `null` ne peut plus
+   * naître — les routes l'exigent, la base l'exige — mais reste lisible pour
+   * une ligne écrite avant le resserrement.
+   */
+  claim: ReferenceClaim | null;
   creeLe: string;
   validePar: string | null;
   valideLe: string | null;
@@ -241,6 +261,11 @@ export function serialiserRegle(ligne: LigneRegleAtelier, lignee: LigneLignee[])
     justification: ligne.justification,
     conditionSupplementaire: ligne.conditionSupplementaire ?? null,
     source: ligne.sourceReference,
+    // Le COUPLE fait l'identité : une moitié seule ne désigne rien d'unique au
+    // corpus, elle est donc rendue absente plutôt que complétée.
+    claim: ligne.claimId !== null && ligne.versionClaim !== null
+      ? { claimId: ligne.claimId, versionClaim: ligne.versionClaim }
+      : null,
     creeLe: ligne.creeLe.toISOString(),
     validePar: ligne.validePar,
     valideLe: ligne.valideLe ? ligne.valideLe.toISOString() : null,
@@ -265,6 +290,8 @@ export type ContenuRegle = {
   sourceReferenceId: string;
   poids: number | null;
   conditionSupplementaire: { critereId: string } | null;
+  /** Le claim fondateur ([[D-140]]) — obligatoire, jamais nul. */
+  claim: ReferenceClaim;
 };
 
 export type VerdictContenu =
@@ -285,7 +312,8 @@ function doseOptionnelle(value: unknown): number | null | undefined {
 /**
  * Valide les champs de CONTENU communs à la création et à la révision.
  * Purement syntaxique : l'existence des référentiels (source, forme, critère)
- * reste vérifiée par les routes contre la base.
+ * et la VALIDITÉ du claim au corpus restent vérifiées par les routes contre la
+ * base.
  */
 export function validerContenuRegle(body: {
   formePrefereeId?: unknown;
@@ -296,6 +324,8 @@ export function validerContenuRegle(body: {
   sourceReferenceId?: unknown;
   poids?: unknown;
   conditionSupplementaire?: unknown;
+  claimId?: unknown;
+  versionClaim?: unknown;
 }): VerdictContenu {
   const sourceReferenceId = texteOptionnel(body.sourceReferenceId);
   if (!sourceReferenceId) {
@@ -303,6 +333,37 @@ export function validerContenuRegle(body: {
       ok: false,
       reason: 'source_requise',
       message: 'La source est obligatoire — une règle sans source ne peut pas exister.',
+    };
+  }
+
+  // LE CLAIM FONDATEUR ([[D-140]]). Deux champs, jamais un seul : le couple
+  // (claim_id, version_claim) est ce qui est UNIQUE au corpus. Le FORMAT est
+  // vérifié ici — il est recopié des CHECK de `rag_corpus_claims`, et permet de
+  // refuser une saisie manifestement fausse sans requête ; l'EXISTENCE et le
+  // statut `VALIDE` appartiennent aux routes, qui seules interrogent le corpus.
+  const claimId = texteOptionnel(body.claimId);
+  const versionClaim = texteOptionnel(body.versionClaim);
+  if (!claimId || !versionClaim) {
+    return {
+      ok: false,
+      reason: 'claim_requis',
+      message:
+        'Le claim fondateur est obligatoire — identifiant ET version. Une règle clinique '
+        + 'qui ne repose sur aucun claim validé du corpus ne peut pas exister.',
+    };
+  }
+  if (!CLAIM_ID_RE.test(claimId)) {
+    return {
+      ok: false,
+      reason: 'claim_format_invalide',
+      message: 'L’identifiant de claim doit avoir la forme WN-CL-0000-000.',
+    };
+  }
+  if (!VERSION_CLAIM_RE.test(versionClaim)) {
+    return {
+      ok: false,
+      reason: 'claim_format_invalide',
+      message: 'La version de claim doit avoir la forme v1.0.',
     };
   }
 
@@ -392,6 +453,7 @@ export function validerContenuRegle(body: {
       sourceReferenceId,
       poids,
       conditionSupplementaire,
+      claim: { claimId, versionClaim },
     },
   };
 }

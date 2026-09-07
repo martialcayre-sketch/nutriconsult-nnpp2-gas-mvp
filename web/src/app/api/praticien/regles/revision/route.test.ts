@@ -15,6 +15,9 @@ const { getServerSession, prisma } = vi.hoisted(() => {
     supplementSourceReference: { findUnique: vi.fn() },
     supplementIngredientForme: { findUnique: vi.fn() },
     clinicalCriterion: { findUnique: vi.fn() },
+    // `rag_corpus_claims` est SQL-brut hors `schema.prisma` : la validité du
+    // claim fondateur se lit en requête brute ([[D-140]]).
+    $queryRaw: vi.fn(),
     $transaction: vi.fn(),
   };
   return { getServerSession: vi.fn(), prisma: prismaMock };
@@ -45,6 +48,8 @@ const CREEE = {
   doseCibleBasse: null,
   doseCibleHaute: null,
   gradePreuveScientifique: 'fort',
+  claimId: 'WN-CL-2026-001',
+  versionClaim: 'v1.0',
   versionRegle: 3,
   actif: true,
   creeLe: new Date('2026-07-24T10:00:00.000Z'),
@@ -63,6 +68,8 @@ const CORPS = {
   gradePreuveScientifique: 'fort',
   justification: 'Justification révisée.',
   sourceReferenceId: 'src_1',
+  claimId: 'WN-CL-2026-001',
+  versionClaim: 'v1.0',
 };
 
 function requete(body: unknown): Request {
@@ -84,6 +91,10 @@ describe('/api/praticien/regles/revision', () => {
     prisma.clinicalRule.aggregate.mockResolvedValue({ _max: { versionRegle: 2 } });
     prisma.clinicalRule.create.mockResolvedValue(CREEE);
     prisma.supplementSourceReference.findUnique.mockResolvedValue({ id: 'src_1', actif: true });
+    // Le claim du corps de révision est VALIDE au corpus, sauf mention contraire.
+    prisma.$queryRaw.mockResolvedValue([
+      { claim_id: 'WN-CL-2026-001', version_claim: 'v1.0' },
+    ]);
   });
 
   it('exige une session et le drapeau C4', async () => {
@@ -146,7 +157,32 @@ describe('/api/praticien/regles/revision', () => {
     expect((await POST(requete({ ...CORPS, gradePreuveScientifique: 'A' }))).status).toBe(400);
     expect((await POST(requete({ ...CORPS, justification: '' }))).status).toBe(400);
     expect((await POST(requete({ ...CORPS, sourceReferenceId: '' }))).status).toBe(400);
+    // Le claim fondateur en fait partie ([[D-140]]) : une révision est une
+    // réécriture COMPLÈTE, elle ne peut pas perdre en route ce que la base
+    // exige — et perdre le claim ferait naître une règle sans fondement.
+    expect((await POST(requete({ ...CORPS, claimId: '' }))).status).toBe(400);
+    expect((await POST(requete({ ...CORPS, versionClaim: '' }))).status).toBe(400);
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+  });
+
+  // Le claim se vérifie AVANT la transaction : rien ne s'ouvre pour une
+  // révision qui ne peut pas aboutir.
+  it('refuse un claim que le corpus ne valide pas, sans ouvrir de transaction', async () => {
+    prisma.$queryRaw.mockResolvedValue([]);
+    const reponse = await POST(requete(CORPS));
+    expect(reponse.status).toBe(422);
+    expect((await reponse.json()).reason).toBe('claim_non_valide');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+  });
+
+  it('écrit le claim sur la version révisée', async () => {
+    await POST(requete({ ...CORPS, claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' }));
+    expect(prisma.clinicalRule.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' }),
+      }),
+    );
   });
 
   it('refuse une forme préférée hors de l’ingrédient de la lignée', async () => {

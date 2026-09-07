@@ -7,7 +7,7 @@
 ### D-140 — Une règle clinique nomme le claim qui la fonde, ou elle ne s'applique pas
 
 - Date : 2026-09-07
-- Statut : accepté (arbitrage praticien explicite en session : « un claim, comme les plages biologiques »). Migration d'expand livrée ; le code et le resserrement en NOT NULL suivent en PR séparée (`D-087`).
+- Statut : accepté (arbitrage praticien explicite en session : « un claim, comme les plages biologiques »). Expand appliqué en production le 2026-09-07 (`release-db` 34152867339, constaté par conteneur one-off-1884) ; code et resserrement livrés ensuite (§7).
 - Domaine : moteur d'intention clinique C4, corpus, schéma
 
 **§1 — Le défaut.** `deciderIntentionAvantBiologie` vérifie `claimsValides` en
@@ -55,17 +55,51 @@ renommé ». Le resserrement est la migration
 `20260907210000_regle_claim_obligatoire`, livrée **avec** le code qui les
 remplit, et appliquée après lui.
 
-**L'oubli du contract ne peut pas passer inaperçu** : le contrat SQL affirme que
-les deux colonnes sont ENCORE nullables. Le jour où ce terme rougira, c'est que
-le resserrement a eu lieu — et il faudra retirer ce terme, pas le contourner.
-Sans lui, une règle sans claim resterait possible en base, ce que l'invariant
-interdit. La leçon du 2026-09-07, sept fois : ce qui n'est gardé que par de la
-prose ne tient pas.
+**L'oubli du contract ne pouvait pas passer inaperçu** : le contrat SQL affirmait
+que les deux colonnes étaient ENCORE nullables. Ce terme a rougi au resserrement,
+comme prévu, et il a été **retiré et retourné** — le contrat affirme désormais
+l'inverse, et éprouve qu'une règle sans claim est refusée par la base (23502).
+La leçon du 2026-09-07, sept fois : ce qui n'est gardé que par de la prose ne
+tient pas.
 
-**§6 — Ce que cette PR ne fait pas.** Elle ne livre que le schéma, la migration
-et le contrat. La route qui exigera le claim et vérifiera son statut `VALIDE`, le
-lecteur de catalogue qui remplira `claimsValidesParRegle`, et le resserrement en
-NOT NULL suivent en PR séparée, après application **constatée** par conteneur.
+**§6 — Ce que la première PR ne faisait pas.** Elle ne livrait que le schéma, la
+migration d'expand et le contrat. Le reste est au §7.
+
+**§7 — Le code, et le resserrement (`20260907210000_regle_claim_obligatoire`).**
+
+- **À l'écriture.** `validerContenuRegle` exige `claimId` + `versionClaim` et
+  vérifie leur FORMAT (regex recopiées des CHECK de `rag_corpus_claims`) ; les
+  routes de création et de révision vérifient ensuite au corpus que le claim est
+  `VALIDE`, au même titre que la source ou le critère. Le formulaire de l'atelier
+  porte les deux champs — saisie libre, le corpus comptant des milliers de
+  claims —, et la révision **reprend** celui de la version en place.
+- **À la lecture.** `lireCatalogueDecision` reçoit les règles SERVIES avec leur
+  claim et remplit `claimsValidesParRegle` — passées par l'appelant, jamais
+  relues : une seconde lecture pourrait rendre autre chose, et le verdict
+  porterait alors sur des règles qui ne sont pas celles servies.
+- **Le module `lib/rag/claims/validite.ts`** reprend **mot pour mot les cinq
+  prédicats** de `match_wellneuro_rag_claims` (actif, `VALIDE`, non patient,
+  compartiment `ACTIF`, adossé à ≥1 chunk source). Un claim que la voie de
+  récupération refuserait de servir ne peut pas fonder une règle : deux réponses
+  différentes sur le même claim seraient une incohérence clinique, pas une
+  nuance. **Aucun texte n'en sort** — la requête ne rend que l'identifiant déjà
+  fourni par l'appelant. L'appariement se fait par `unnest(a, b)`, position par
+  position : un `= ANY(...) AND = ANY(...)` ferait le produit croisé et
+  validerait une règle citant la version d'un AUTRE claim demandé.
+- **Deux causes de refus, pas une** (même motif qu'au §1 de [[D-138]]) :
+  `claim_absent` — la règle ne nomme aucun claim, c'est une lacune de la règle —
+  et `claims_non_valides` — le claim nommé n'est pas validé, c'est un état du
+  corpus. Le second **nomme désormais le claim** dans son motif ; il ne le
+  pouvait pas avant, faute de champ. Les confondre ferait chercher le défaut au
+  mauvais endroit.
+- **Le resserrement** pose NOT NULL sur les deux colonnes, précédé d'une garde
+  qui REFUSE en le disant s'il existe une règle sans claim — plutôt que de les
+  remplir d'un identifiant fabriqué (`DC-19`, `DC-20`). Sans reprise :
+  `clinical_rules` compte 0 ligne en production (one-off-442), et le code
+  déployé avant l'approbation n'écrit que des règles pourvues d'un claim.
+- **Ce que le resserrement ne garde toujours pas** : que le claim cité existe et
+  soit valide. Aucune FK n'est possible ; la base garde la FORME, le code garde
+  le LIEN.
 
 ### D-139 — Le React qui tourne n'est pas celui que `package.json` déclare
 
