@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-142 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
+### D-143 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
 
 - Date : 2026-09-07
 - Statut : **constat établi et consigné ; l'arbitrage appartient au responsable de traitement et n'est pas pris ici.**
@@ -24,8 +24,8 @@ posés en production : `WN_RECHERCHE_CORPUS_ENABLED` depuis le 2026-08-22
 **2. Ce qui rend le constat sévère, ce n'est pas le flux, c'est le silence.**
 Au 2026-09-07, « OpenAI » n'apparaît **dans aucune pièce de conformité** : ni
 `docs/DOSSIER_RGPD.md`, ni `docs/GATES_GO_NO_GO.md`, ni le module
-`web/src/lib/trust/`, ni **aucune des 141 décisions** du registre — compté, pas
-supposé. Un tiers reçoit des requêtes depuis la production, et le corpus
+`web/src/lib/trust/`, ni **aucune des 142 décisions** du registre — compté, pas
+supposé (recompté après l'arrivée de `D-142`, qui ne le nomme pas davantage). Un tiers reçoit des requêtes depuis la production, et le corpus
 documentaire qui prétend décrire les destinataires ne le connaît pas.
 
 **3. Le rapprochement avec Sentry, et la différence.** C'est le même écart que
@@ -58,6 +58,85 @@ se repose pas dans ces termes : `registre.dossier.test.ts` tient la rubrique 6 e
 le document patient sur les mêmes noms, et `gouvernance.ts` ne recopie plus la
 liste, il la dérive.
 
+**7. Note de numérotation.** Cette décision a d'abord porté le numéro `D-142`,
+pris entre-temps par une session parallèle (`#943`). Renumérotée à la fusion,
+sans autre changement. Le registre le vérifie (`decisions-numerotation.mjs`),
+et c'est précisément le cas qu'il attrape.
+
+### D-142 — Une condition séparée qui n'est écrite nulle part est une garde levée
+
+- Date : 2026-09-07
+- Statut : accepté (clôture du chantier « séparation de `condition_supplementaire` », ouvert par [[D-138]])
+- Domaine : moteur d'intention clinique C4, atelier de règles
+
+**§1 — Le défaut, et il est plus grave que le précédent.** [[D-138]] a séparé
+l'ancien champ à deux natures `condition_supplementaire` en deux colonnes —
+`condition_critere_id` (clé étrangère vers le vocabulaire gouverné) et
+`condition_biologie` — et a fait lire les NOUVELLES au moteur. Les deux routes
+d'écriture, elles, ont continué d'écrire l'ANCIENNE, et n'ont jamais rempli les
+nouvelles : `condition_critere_id` et `condition_biologie` n'avaient **aucun
+producteur dans tout le dépôt**.
+
+Conséquence exacte : une règle créée depuis l'atelier avec un critère
+conditionnel naissait **inconditionnelle aux yeux du moteur**. Le praticien
+choisissait « Sous ISRS » dans une liste, la règle s'enregistrait, l'écran ne
+montrait rien — et `deciderIntentionAvantBiologie` la traitait comme une règle
+sans condition. C'est le **fail-open** que `D-138` §3 disait fermer, resté
+grand ouvert de l'autre côté du champ.
+
+Étiquette (`D-125`) : **démontré dans le code, atteignable en production** —
+`WN_C4_ENABLED=true`. Aucune occurrence observée : `clinical_rules` compte 0
+ligne (one-off-7796, 2026-09-07), donc aucune règle n'a encore été écrite par
+cette porte. C'est le seul motif pour lequel ce défaut n'a rien produit.
+
+**§2 — Le second défaut, découvert en le corrigeant.** Le formulaire de
+**révision** n'envoyait **aucune** condition. Une révision étant une réécriture
+complète, réviser une règle conditionnée à un critère la rendait
+inconditionnelle — en silence, et sans qu'aucun écran n'affiche jamais la
+condition avant ou après. Le praticien croyait corriger une justification ; il
+levait une garde clinique. Le retrait délibéré d'une condition reste possible,
+mais il doit être un **choix**, pas un effet de bord.
+
+**§3 — La condition biologique n'avait jamais eu de producteur du tout.** Ce
+n'est pas `D-138` qui l'a cassée : `validerContenuRegle` n'a jamais accepté que
+`{ critereId }`. La nature « biologie » de l'ancien champ était donc lisible par
+le moteur — qui en fait naître une intention `conditionnelle_biologie` — et
+inaccessible à l'écriture depuis la première ligne. L'atelier porte désormais
+ses deux champs : une cible libre (un marqueur se nomme, il ne se choisit pas
+dans une liste que le dépôt n'a pas) et une échéance optionnelle.
+
+**§4 — Une seule validation, celle du moteur.** `lireConditionBiologique` est
+désormais **exporté**, et le chemin d'écriture s'en sert pour refuser à la
+saisie ce que ce lecteur appellerait `illisible`. Deux validations séparées
+divergent toujours, et la divergence produirait le pire cas : une règle acceptée
+par l'atelier que la décision refuse ensuite `condition_illisible`, sans que
+l'écran permette de la corriger.
+
+**§5 — Les conditions se voient.** Aucun écran n'affichait la condition d'une
+règle — ni le critère, ni la biologie. Une règle conditionnée était
+indiscernable d'une règle inconditionnelle, et c'est précisément ce qui a laissé
+passer des mois d'écriture au mauvais endroit. **Une garde clinique qui ne
+s'affiche pas ne se vérifie pas.** La fiche de règle les montre maintenant,
+y compris un avertissement pour une règle portant encore une condition à
+l'ancien format.
+
+**§6 — La sentinelle, et pourquoi elle vise les routes.**
+`conditionRegle.guard.test.ts` refuse toute mention de `conditionSupplementaire`
+dans une route servie, et vérifie en sens inverse que les deux routes posent
+bien les deux colonnes. Le périmètre est **les routes, pas `src` entier** : un
+balayage plus large confondrait l'écriture avec la sérialisation —
+`serialiserRegle` recopie légitimement l'ancien champ vers l'API pour que
+l'atelier puisse le MONTRER —, et une sentinelle qui punit la bonne conduite
+finit désactivée. Éprouvée par mutation : le retour à l'ancienne écriture la
+fait rougir de deux façons indépendantes.
+
+**§7 — Ce que cette décision ne fait pas.** Elle ne **supprime pas** la colonne
+`condition_supplementaire`. Le `DROP` est destructif, exige une confirmation
+humaine distincte, et ne peut pas voyager avec ce code : retirer le champ de
+`schema.prisma` sans migration ferait rougir la dérive schéma↔migrations de T3,
+et la migration qui lèverait cette divergence **est** le `DROP`. L'ordre reste
+celui de [[D-087]] : plus personne n'écrit (ici), puis plus personne ne lit,
+puis la colonne part — trois temps, deux approbations.
 ### D-141 — Sentry est câblé, et ce qui part tient à une variable
 
 - Date : 2026-09-07

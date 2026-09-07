@@ -63,7 +63,8 @@ type PostBody = {
   justification?: unknown;
   sourceReferenceId?: unknown;
   poids?: unknown;
-  conditionSupplementaire?: unknown;
+  conditionCritereId?: unknown;
+  conditionBiologie?: unknown;
   claimId?: unknown;
   versionClaim?: unknown;
 };
@@ -138,9 +139,9 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
               select: { id: true, actif: true, ingredientId: true },
             })
           : Promise.resolve(null),
-        contenu.conditionSupplementaire
+        contenu.conditionCritereId
           ? tx.clinicalCriterion.findUnique({
-              where: { id: contenu.conditionSupplementaire.critereId },
+              where: { id: contenu.conditionCritereId },
               select: { id: true, actif: true },
             })
           : Promise.resolve(null),
@@ -152,7 +153,7 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
       ) {
         return { ok: false, raison: 'forme_invalide' };
       }
-      if (contenu.conditionSupplementaire && !critere?.actif) {
+      if (contenu.conditionCritereId && !critere?.actif) {
         return { ok: false, raison: 'critere_introuvable' };
       }
 
@@ -167,7 +168,10 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
           versionRegle: (plafond._max.versionRegle ?? 0) + 1,
           poids: contenu.poids ?? origine.poids,
           justification: contenu.justification,
-          conditionSupplementaire: contenu.conditionSupplementaire ?? undefined,
+          // Les deux natures séparées, et écrites ([[D-142]]) — voir la route
+          // de création pour ce que l'écriture de l'ancien champ produisait.
+          conditionCritereId: contenu.conditionCritereId,
+          conditionBiologie: contenu.conditionBiologie ?? undefined,
           formePrefereeId: contenu.formePrefereeId,
           doseCibleBasse: contenu.doseCibleBasse,
           doseCibleHaute: contenu.doseCibleHaute,

@@ -141,7 +141,16 @@ function refus(
  * refus, jamais une règle inconditionnelle. Se tromper de sens ici ferait naître
  * « active » une intention que sa règle voulait suspendre.
  */
-function lireConditionBiologique(
+/**
+ * LE SEUL LECTEUR DE LA CONDITION BIOLOGIQUE, et il est EXPORTÉ ([[D-142]]).
+ *
+ * Le chemin d'écriture s'en sert pour refuser à la saisie ce que ce lecteur
+ * appellerait `illisible`. Deux validations séparées — une à l'écriture, une à
+ * la lecture — divergent toujours, et la divergence produirait exactement le
+ * pire cas : une règle acceptée par l'atelier que le moteur refuse ensuite
+ * `condition_illisible`, sans que personne puisse la corriger depuis l'écran.
+ */
+export function lireConditionBiologique(
   valeur: unknown,
 ): { forme: 'absente' } | { forme: 'biologie'; waitFor: WaitForBiologie } | { forme: 'illisible' } {
   if (valeur === null || valeur === undefined) return { forme: 'absente' };

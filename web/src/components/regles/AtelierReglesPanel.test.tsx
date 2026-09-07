@@ -40,6 +40,9 @@ const REGLE = {
   gradePreuve: 'modere',
   justification: 'Justification sourcée du magnésium.',
   conditionSupplementaire: null,
+  // Les deux natures séparées ([[D-138]]), servies par l'API ([[D-142]]).
+  conditionCritere: { id: 'crit_1', code: 'sous_isrs', labelFr: 'Sous ISRS' },
+  conditionBiologie: { type: 'biologie', cible: 'ferritine' },
   source: { id: 'src_1', citation: 'Revue Micronutrition, 2024', lienUrl: null },
   // La base l'exige depuis [[D-140]] : une règle servie porte son claim.
   claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' },
@@ -415,6 +418,11 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
         // retaper à la main ce que la règle porte déjà.
         claimId: 'WN-CL-2026-001',
         versionClaim: 'v1.0',
+        // [[D-142]] — LES CONDITIONS AUSSI, et c'est le correctif qui compte :
+        // le formulaire n'en envoyait AUCUNE. Réviser une règle conditionnée à
+        // un critère la rendait inconditionnelle, en silence.
+        conditionCritereId: 'crit_1',
+        conditionBiologie: { type: 'biologie', cible: 'ferritine' },
         formePrefereeId: 'forme_bisg',
         doseCibleBasse: 100,
         doseCibleHaute: 300,
@@ -469,6 +477,8 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
         versionClaim: 'v1.0',
         poids: 1,
       });
+      // L'ancien champ à deux natures n'est plus envoyé du tout ([[D-142]]).
+      expect(JSON.parse(posts[0][1].body)).not.toHaveProperty('conditionSupplementaire');
     });
     expect(await screen.findByText(/Brouillon créé/)).toBeTruthy();
   });

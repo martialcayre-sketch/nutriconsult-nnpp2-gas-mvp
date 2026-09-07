@@ -24,14 +24,14 @@
 
 ### Ajouté
 
-- **`D-142` — un destinataire vivant que le dossier n'avait jamais nommé.**
+- **`D-143` — un destinataire vivant que le dossier n'avait jamais nommé.**
   L'inventaire des tiers a été refait **depuis le code** plutôt que depuis les
   documents, et il rend OpenAI : `web/src/lib/rag/embeddings.ts:20-34` envoie à
   `api.openai.com` le texte libre saisi par le praticien dans la recherche de
   corpus. Les deux drapeaux qui commandent ce chemin sont posés en production
   (`WN_RECHERCHE_CORPUS_ENABLED` le 2026-08-22, `RAG_PGVECTOR_ENABLED` relue
   `true` le 2026-09-07). « OpenAI » n'apparaissait dans **aucune** pièce de
-  conformité, ni dans aucune des 141 décisions du registre.
+  conformité, ni dans aucune des 142 décisions du registre.
 - C'est l'écart de Sentry, avec une différence qui joue dans le mauvais sens :
   Sentry n'émettait rien, celui-ci émet. **L'arbitrage n'est pas pris** — soit
   ce flux ne porte aucune donnée personnelle et cela s'écrit, soit la liste
