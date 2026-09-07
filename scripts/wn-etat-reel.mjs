@@ -373,6 +373,46 @@ export function comparerEtat(etatMachine, reel) {
     });
   }
 
+  // GARDE 4 — la TÊTE de `next_action` contre la campagne active. Les trois
+  // gardes ci-dessus confrontent des dates et des ordinaux ; aucune ne lit ce
+  // que l'état RACONTE. Or `next_action` est le premier texte qu'un agent lit
+  // en reprise, et le 2026-09-07 sa tête annonçait encore
+  // `2026-08-18-doctrine-executable`, lot courant LOT-01, sous un
+  // `active_campaign` valant `2026-08-23-alliance-objectif-trois-voix` LOT-06 —
+  // la campagne active n'était nommée dans AUCUNE des 31 entrées. Un
+  // `updated_at` du jour au-dessus d'un contenu vieux de trois semaines : les
+  // 24 gardes d'alors le laissaient passer (A11 de l'audit du 2026-09-06).
+  //
+  // Le champ est une PILE, et il porte déjà sa convention de réparation :
+  // l'entrée 0 est la tête vive, les précédentes sont démotées avec un préfixe
+  // `[trace … — ancienne tête remplacée]`. Le garde ne lit donc QUE l'entrée 0
+  // et n'a rien à dire des archives — les relire rendrait rouge toute campagne
+  // close correctement citée, et le champ n'existe que pour les garder.
+  //
+  // L'identifiant se cherche par INCLUSION, le lot par simple mention : la tête
+  // est de la prose, elle nomme la campagne au fil d'une phrase, elle ne
+  // l'égale pas. Exiger une position rendrait le garde rouge sur une tête juste
+  // mais tournée autrement — un garde qui punit la forme cesse d'être lu.
+  //
+  // Déterministe comme les gardes 2 et 3 : deux champs du MÊME fichier, aucune
+  // horloge. Réparation : pousser une tête neuve en tête de `next_action` et
+  // préfixer l'ancienne de sa trace. Surtout pas réécrire les 31 entrées.
+  const teteReprise = Array.isArray(etatMachine?.next_action)
+    ? etatMachine.next_action[0]
+    : etatMachine?.next_action;
+  if (etatMachine?.active_campaign && typeof teteReprise === 'string') {
+    const nommeCampagne = teteReprise.includes(etatMachine.active_campaign);
+    const nommeLot = lotStocke === null || teteReprise.includes(lotStocke);
+    if (!nommeCampagne || !nommeLot) {
+      ecarts.push({
+        champ: 'next_action[0]',
+        valeurStockee: `${teteReprise.slice(0, 120)}${teteReprise.length > 120 ? '…' : ''}`,
+        valeurReelle: [etatMachine.active_campaign, etatMachine.active_lot].filter(Boolean).join(' '),
+        verdict: 'tête de reprise divergente de la campagne active',
+      });
+    }
+  }
+
   return ecarts;
 }
 

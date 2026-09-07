@@ -6,7 +6,7 @@
 
 Application de consultation en neuronutrition clinique, à deux portails :
 - **Portail praticien** (`/dashboard/*`) : gestion patients, assignation de questionnaires, packs, génération de synthèse IA, envoi de booklets.
-- **Portail patient permanent** (`/portail/[token]`) : espace patient unifié, accès par token révocable (non prédictible), vérification email une seule fois + cookie signé `wn_portail`, onboarding (consentement, fiche signalétique, anamnèse) puis hub « Mes questionnaires ». **Flux patient principal.**
+- **Portail patient permanent** (`/portail/[token]`) : espace patient unifié, accès par cookie signé `wn_portail`, posé à l'atterrissage par le lien magique à usage unique ou par Google, onboarding (consentement, fiche signalétique, anamnèse) puis hub « Mes questionnaires ». **Flux patient principal.**
 - **Flux patient legacy** (`/patient/[idAssignation]`) : **retiré le 2026-08-08** (dette 5). Il n'en reste qu'une redirection 307 vers `/portail/connexion`, pour les liens e-mail déjà partis chez des patients.
 
 Production : `https://app.wellneuro.fr` (Scalingo `osc-fr1`, app
@@ -17,7 +17,7 @@ Production : `https://app.wellneuro.fr` (Scalingo `osc-fr1`, app
 
 | Couche | Techno |
 |---|---|
-| Framework web | Next.js 14 (App Router), TypeScript, Tailwind CSS |
+| Framework web | Next.js 15 (App Router), TypeScript, Tailwind CSS |
 | Auth praticien | NextAuth 4, provider Google, restreint au domaine `@wellneuro.fr` |
 | Base de données | PostgreSQL (add-on Scalingo `postgresql-business-512`, HDS), via Prisma 7 + Driver Adapter (`@prisma/adapter-pg`) |
 | IA clinique | Anthropic SDK (`ANTHROPIC_API_KEY`), prompt caching activé — voir `docs/claude/PROMPT_CACHING.md` |
@@ -30,8 +30,8 @@ Production : `https://app.wellneuro.fr` (Scalingo `osc-fr1`, app
 - `web/src/app/portail/[token]` — portail patient permanent (onboarding + hub « Mes questionnaires » + pages autonomes par questionnaire)
 - `web/src/app/api/praticien/*` — routes serveur praticien (patients, assignations, questionnaires, reponses, synthèse, booklet, metrics, packs, consultations, token)
 - `web/src/app/api/portail/*` — routes serveur portail patient (session, consentement, fiche, assignations, valider)
-- `web/src/app/api/patient/*` — routes serveur patient legacy (questionnaire, submit, assignations, consentement, reponses)
-- `web/src/lib/questions.ts` — catalogue des questionnaires (67, portés depuis `Questions.gs`) et moteur de scoring
+- `web/src/app/api/patient/*` — back-end **vivant** du portail (questionnaire, submit, assignations, consentement, reponses) ; session `wn_portail` obligatoire, le repli e-mail est retiré. Seul le parcours de PAGE `patient/*` a disparu le 2026-08-08.
+- `web/src/lib/questions.ts` — catalogue des questionnaires (65, portés depuis `Questions.gs`) et moteur de scoring
 - `web/src/lib/auth.ts` — configuration NextAuth
 - `web/src/lib/prisma.ts` — client Prisma
 - `web/prisma/schema.prisma` — schéma de données (40 modèles au 2026-07-21 ; `grep -c '^model ' web/prisma/schema.prisma` pour un compte à jour plutôt qu'une énumération qui périme à chaque migration)
@@ -59,8 +59,13 @@ La dépendance à l'API Google Sheets a été **entièrement retirée du runtime
 
 ## Portail patient permanent (état actuel)
 
-- Token d'accès **révocable** porté par `Patient`, route `/portail/[token]`.
-- Vérification email **une seule fois**, puis session via cookie signé `wn_portail` (pas d'email en URL, pas de ressaisie).
+- Le segment de `/portail/[token]` est l'**`idPatient`**, pas un secret
+  (`portail/lien/[jeton]/route.ts:168`). Les colonnes de valeur du jeton
+  (`access_token`, `access_token_created_at`) ont été purgées le 2026-08-22
+  (`D-085` §5) ; seul subsiste le drapeau `accessTokenRevoked`.
+- Unique credential : le cookie signé `wn_portail`, posé par deux portes — le
+  **lien magique** à usage unique (empreinte HMAC seule en base) et **Google
+  patient**. Pas d'e-mail en URL, pas de ressaisie.
 - Onboarding : consentement groupé tracé → fiche signalétique → anamnèse resserrée (repères, motif & attentes, histoire, signaux d'alerte, antécédents, traitements/compléments).
 - Hub **« Mes questionnaires »** : navigation libre entre questionnaires, pages autonomes, brouillon local (avec reset limité au non-transmis), transmission au praticien puis verrouillage.
 - Consultation permanente des réponses verrouillées + **demande de correction enrichie** (commentaire patient), déverrouillage manuel côté praticien.
@@ -91,7 +96,7 @@ Les paramètres cliniques non sourcés restent bloqués. Voir
 ## Sécurité, RGPD, clinique — invariants
 
 - Patients fictifs autorisés dans le dépôt : **Sophie Nicola, Jennifer Martin, Michel Dogné**. Aucun autre nom, aucune donnée patient réelle.
-- Secrets et configuration sensible (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `SMTP_URL`) uniquement via variables d'environnement (`web/.env.local` en dev, variables Vercel en prod) — jamais en dur, jamais commitées. `SHEET_ID` n'est plus requis (décommission Sheets, voir plus haut).
+- Secrets et configuration sensible (`DATABASE_URL`, `ANTHROPIC_API_KEY`, `GOOGLE_CLIENT_SECRET`, `NEXTAUTH_SECRET`, `SMTP_URL`) uniquement via variables d'environnement (`web/.env.local` en dev, variables Scalingo en prod) — jamais en dur, jamais commitées. `SHEET_ID` n'est plus requis (décommission Sheets, voir plus haut).
 - Ne pas modifier la logique clinique ou les seuils de scoring sans demande explicite documentée dans `CHANGELOG.md`.
 - Vérification avant tout commit : `bash scripts/check_no_secrets.sh` et `cd web && npm run type-check`.
 - Détail complet : `docs/securite_rgpd.md`, `docs/claude/REGLES_CRITIQUES.md`.
@@ -111,8 +116,8 @@ tâche, avec des rôles disjoints :
   directement depuis leurs sources — flags `WN_*` référencés dans `web/src`
   (jamais une valeur d'environnement lue, donc jamais présentés comme
   « actifs »), noms de migrations sur disque (jamais une connexion à la base :
-  cette lecture reste réservée à l'outil MCP Supabase, en session — voir
-  « Lire la base de production » dans `CLAUDE.md`), registre de certification
+  cette lecture passe par un conteneur `scalingo run -d` — voir
+  « Lire la base de production » dans `.claude/rules/db-prisma.md`), registre de certification
   (`docs/claude/corpus/instrument_registry.json`, 65 instruments — pas
   `source_registry.json`, qui est un registre disjoint de 507 sources
   bibliographiques du corpus clinique), PR ouvertes via `gh`, worktrees et
@@ -189,13 +194,12 @@ biologie fonctionnelle** — 987 actes NABM en base depuis le 2026-07-26 et
 - Calendrier de décommission de `packs.qids` : statut « surveillance », pas de date fixée (R10).
 - Curation de `QuestionnaireDefinition.niveau` / `.publicCible` : statut « surveillance », pas d'usage applicatif à ce jour (R10).
 - Pagination patients/assignations si le volume dépasse ~100 lignes.
-- Hébergement HDS certifié (nécessaire uniquement si données de santé réelles en production).
 - RAG SIIN complet (le prompt système utilise un mini-corpus non validé, pas
   le corpus plein). Le registre sanitaire des 391 notices n'est pas
   activable ; gates G0–G6 obligatoires.
 - Génération PDF native (actuellement HTML + impression navigateur), signature électronique du booklet.
 - Coaching patient autonome, SSO praticien multi-établissement.
-- Séquencement complet : voir la roadmap de reprise **R0 → R6** dans `docs/HISTORIQUE_CHANTIERS_TECHNIQUES.md`.
+- Séquencement : la roadmap de reprise **R0 → R10 est intégralement soldée** (`docs/HISTORIQUE_CHANTIERS_TECHNIQUES.md`) — elle ne séquence plus rien, elle s'archive.
 
 ## Où regarder pour aller plus loin
 
