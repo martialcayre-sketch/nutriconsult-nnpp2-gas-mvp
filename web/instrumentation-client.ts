@@ -5,6 +5,7 @@ import {
   nettoyerSpan,
   nettoyerTransaction,
 } from './src/lib/observability/sentryNettoyage';
+import { dsnRegionUe } from './src/lib/observability/sentryRegion';
 
 // CE FICHIER REMPLACE `sentry.client.config.ts`, ET CE N'EST PAS COSMÉTIQUE.
 // `@sentry/nextjs` 10 le dit lui-même à la compilation
@@ -18,7 +19,10 @@ import {
 // transmission, pas ce commit.
 
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  // Second verrou, redondant avec `instrumentation.ts` et délibéré : ce
+  // fichier peut être chargé autrement demain, la promesse ne doit pas en
+  // dépendre.
+  dsn: dsnRegionUe(process.env.NEXT_PUBLIC_SENTRY_DSN) ?? undefined,
   environment: clientDeploymentEnvLabel(),
   release: clientReleaseSha(),
   sendDefaultPii: false,

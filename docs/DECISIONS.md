@@ -62,20 +62,45 @@ ce qui déclenche un envoi vers un tiers doit se lire dans le dépôt en une lig
 pas se déduire du comportement d'une dépendance. Conséquence assumée : ce
 commit **n'active rien**. Il rend l'activation possible, et la rend sûre.
 
-**5. Ce qui reste dû, et à qui.** Trois pièces, toutes au responsable de
-traitement, aucune à l'outil :
+**4 bis. La résidence UE ne pouvait pas s'écrire, alors elle est devenue un
+invariant.** Le document d'information nomme chaque prestataire et dit où il
+traite. Pour Sentry, cette phrase était invérifiable : la région dépend du DSN,
+et un DSN se pose dans une console d'hébergeur, hors de toute revue de code. Or
+`D-137` a précisément puni une affirmation fausse dans ce document.
 
-- poser `SENTRY_DSN` et `NEXT_PUBLIC_SENTRY_DSN` dans l'environnement Scalingo ;
-- **déclarer Sentry aux personnes.** `docs/DOSSIER_RGPD.md:194` pose l'écart
-  depuis le 2026-08-07 — « soit il ne traite aucune donnée personnelle et cela
-  s'écrit, soit la liste patient est incomplète et se corrige ». L'activation
-  tranche dans le second sens : la liste des prestataires de
-  `donnees_confidentialite` ne cite pas Sentry. `D-137` est le précédent, et il
-  dit ce que coûte un document normatif qui nie un flux réel ;
-- le DPA et la vérification de résidence UE, déjà au registre d'actions
-  (`docs/DOSSIER_RGPD.md:614`, échéance 2026-10-21).
+Le problème est donc renversé plutôt que contourné : `sentryRegion.ts` refuse
+tout DSN dont l'hôte ne finit pas par `.ingest.de.sentry.io`, aux quatre points
+d'entrée. Un DSN américain posé par erreur laisse l'observabilité **éteinte** —
+ce qui se voit, et qui est dit dans les logs — au lieu d'ouvrir un transfert
+hors UE, qui ne se verrait pas. La phrase du document devient vraie par
+construction, et un banc la tient à la place d'une déclaration.
 
-**6. Ce que cette décision ne tranche pas.** Elle ne dit pas que le masquage
+**5. L'information précède le traitement — `donnees_confidentialite@v5`.**
+Publiée avant que le DSN ne soit posé, et non après : c'est l'ordre qu'exige
+l'information des personnes. Elle nomme Sentry, dit ce qu'il reçoit (type
+d'erreur, navigateur, adresse de page anonymisée) et ce qu'il ne reçoit jamais
+(réponses, documents, identité, enregistrement d'écran). `requiresAcknowledgement`
+reste `false`, même régime que les v3 et v4 : l'ajout d'un prestataire est une
+information substantielle, pas une autorisation à recueillir.
+
+Un piège a été trouvé en la publiant, et il valait pour toutes les futures :
+`getDocumentCourant` comparait les dates avec `>=` et gardait donc la **plus
+ancienne** à égalité. Les v4 et v5 portant toutes deux le 2026-09-07, le patient
+serait resté sur le document périmé, sans aucun signal. Deux versions le même
+jour n'ont rien d'exceptionnel ; le `>=` était une bombe à retardement dans le
+seul endroit du dépôt où un document fait foi.
+
+**6. Ce qui reste dû, et à qui.** Deux pièces, toutes deux au responsable de
+traitement :
+
+- créer le projet Sentry **dans la région européenne** et en poser les DSN —
+  une autre région serait refusée par le code, et l'observabilité resterait
+  éteinte ;
+- le DPA Sentry, avec ceux des autres sous-traitants (`docs/DOSSIER_RGPD.md`,
+  rubrique 6, échéance 2026-10-21). La part déclarative de la ligne « Sentry non
+  déclaré au patient » est soldée par la v5.
+
+**7. Ce que cette décision ne tranche pas.** Elle ne dit pas que le masquage
 suffit. Un identifiant interpolé dans un `throw new Error()` reste invisible au
 nettoyage : le caviardage attrape les e-mails et les suites opaques de 24
 caractères ou plus, pas un prénom ni un motif de consultation. La discipline des

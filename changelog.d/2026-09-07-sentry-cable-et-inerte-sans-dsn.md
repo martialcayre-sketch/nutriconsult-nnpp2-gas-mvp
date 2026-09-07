@@ -86,15 +86,32 @@
   d'`instrumentation.ts` ». Les trois sont faux depuis ce commit — corrigés dans
   le même, plutôt que laissés à un futur `A11`.
 
+### Information des personnes
+
+- **`donnees_confidentialite@v5`** nomme Sentry dans la liste des prestataires
+  et dit ce qu'il reçoit — type d'erreur, navigateur, adresse de page
+  anonymisée — comme ce qu'il ne reçoit jamais : réponses, documents, identité.
+  `docs/DOSSIER_RGPD.md:194` posait l'écart depuis le 2026-08-07 (« soit il ne
+  traite aucune donnée personnelle et cela s'écrit, soit la liste patient est
+  incomplète et se corrige ») ; il est tranché dans le second sens, et la ligne
+  du registre d'actions est soldée pour sa part déclarative.
+- **La résidence européenne cesse d'être une déclaration.** Elle n'était pas
+  vérifiable — la région dépend du DSN, et un DSN se pose dans une console
+  d'hébergeur, loin de toute revue. `sentryRegion.ts` refuse donc tout DSN hors
+  `.ingest.de.sentry.io` : un DSN américain laisse l'observabilité éteinte, ce
+  qui se voit, plutôt qu'il n'ouvre un transfert silencieux. La phrase du
+  document est vraie par construction, et un banc la tient.
+- **`getDocumentCourant` gardait la version la plus ANCIENNE à date égale**
+  (`>=`). Les v4 et v5 portant toutes deux le 2026-09-07, le patient serait
+  resté sur le document périmé sans qu'aucun signal ne l'indique. Corrigé, et
+  verrouillé par un cas qui compare les deux dates avant d'exiger la v5.
+
 ### Reste dû — au responsable de traitement, pas à l'outil
 
 - Poser `SENTRY_DSN` (et `NEXT_PUBLIC_SENTRY_DSN` pour le client) dans
   l'environnement Scalingo. Tant qu'ils sont absents, rien ne part.
-- **Déclarer Sentry aux personnes.** `docs/DOSSIER_RGPD.md:194` pose l'écart
-  depuis le 2026-08-07 : « soit il ne traite aucune donnée personnelle et cela
-  s'écrit, soit la liste patient est incomplète et se corrige ». L'activation
-  tranche dans le second sens — la liste des prestataires de
-  `donnees_confidentialite` ne cite pas Sentry, et `D-137` est le précédent de
-  ce que coûte un document qui nie un flux réel.
-- Le DPA et la vérification de résidence UE, portés au registre d'actions
-  (`docs/DOSSIER_RGPD.md:614`, échéance 2026-10-21).
+- **Créer le projet Sentry dans la région européenne.** Ce n'est pas une
+  préférence : un DSN d'une autre région est refusé par le code, et
+  l'observabilité resterait éteinte.
+- Le DPA Sentry, avec ceux des autres sous-traitants
+  (`docs/DOSSIER_RGPD.md`, rubrique 6, échéance 2026-10-21).

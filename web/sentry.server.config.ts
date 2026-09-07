@@ -5,6 +5,7 @@ import {
   nettoyerSpan,
   nettoyerTransaction,
 } from './src/lib/observability/sentryNettoyage';
+import { dsnRegionUe } from './src/lib/observability/sentryRegion';
 
 // Chargé depuis `register()` de `src/instrumentation.ts`, et SEULEMENT si
 // `SENTRY_DSN` est posé — c'est la convention de `@sentry/nextjs` 10 sous Next
@@ -16,7 +17,10 @@ import {
 // objets d'événement plutôt que lu comme du texte.
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN,
+  // Second verrou, redondant avec `instrumentation.ts` et délibéré : ce
+  // fichier peut être chargé autrement demain, la promesse ne doit pas en
+  // dépendre.
+  dsn: dsnRegionUe(process.env.SENTRY_DSN) ?? undefined,
   environment: deploymentEnvLabel(),
   release: releaseSha(),
   sendDefaultPii: false,

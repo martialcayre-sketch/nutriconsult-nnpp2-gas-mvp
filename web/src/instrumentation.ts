@@ -2,6 +2,7 @@ import * as Sentry from '@sentry/nextjs';
 import { logger } from '@/lib/observability/logger';
 import { EVENT_CODES } from '@/lib/observability/eventCodes';
 import { deploymentEnv, releaseSha } from '@/lib/observability/deploymentEnv';
+import { dsnRegionUe } from '@/lib/observability/sentryRegion';
 
 export async function register(): Promise<void> {
   // SENTRY S'INITIALISE ICI, PAR RUNTIME — c'est la convention de
@@ -16,7 +17,7 @@ export async function register(): Promise<void> {
   // tiers doit se lire dans le dépôt, pas se déduire du comportement d'un SDK.
   // Tant que la variable n'est pas posée en production, ce code n'émet rien.
   if (process.env.NEXT_RUNTIME === 'edge') {
-    if (process.env.SENTRY_DSN) await import('../sentry.edge.config');
+    if (dsnRegionUe(process.env.SENTRY_DSN)) await import('../sentry.edge.config');
     // On sort ici : la suite pose des handlers de process, et le bac à sable
     // edge les refuse (voir juste en dessous).
     return;
@@ -34,7 +35,22 @@ export async function register(): Promise<void> {
   // trop tard pour l'apprendre autrement qu'en production.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
-  if (process.env.SENTRY_DSN) await import('../sentry.server.config');
+  // LA RÉGION EST UNE CONDITION, PAS UN RÉGLAGE : le document d'information
+  // promet au patient un traitement dans l'Union européenne, et
+  // `dsnRegionUe` rend cette phrase vraie par construction. Un DSN américain
+  // posé par erreur laisse l'observabilité éteinte — ce qui se voit — plutôt
+  // qu'il n'ouvre un transfert hors UE, qui ne se verrait pas.
+  if (dsnRegionUe(process.env.SENTRY_DSN)) {
+    await import('../sentry.server.config');
+  } else if (process.env.SENTRY_DSN) {
+    logger.error({
+      event: EVENT_CODES.SYSTEM_UNHANDLED_ERROR,
+      domain: 'SYSTEM',
+      message: 'SENTRY_DSN posé hors région UE : Sentry reste éteint',
+      context: { environment: deploymentEnv(), release: releaseSha(), runtime: 'nodejs' },
+      metadata: { retryable: false },
+    });
+  }
 
   const context = {
     environment: deploymentEnv(),

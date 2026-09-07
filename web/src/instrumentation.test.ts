@@ -129,8 +129,22 @@ describe('instrumentation — une exception fatale doit rendre la main à Node',
     expect(initEdge).not.toHaveBeenCalled();
   });
 
+  it("REFUSE un DSN hors région UE — le document promet l'Union européenne", async () => {
+    // Le patient lit « Sentry — Union européenne » dans le document
+    // d'information. Cette phrase n'est pas une déclaration d'intention : elle
+    // est vraie parce que ce chemin-ci refuse.
+    process.env.SENTRY_DSN = 'https://cle@o4507.ingest.us.sentry.io/1';
+    capterHandlers();
+
+    await register();
+
+    expect(initServeur, 'un DSN américain a initialisé Sentry').not.toHaveBeenCalled();
+    // Et le refus est DIT, sinon il serait indistinguable d'un DSN absent.
+    expect(erreur).toHaveBeenCalledTimes(1);
+  });
+
   it('charge la configuration SERVEUR en runtime Node quand le DSN est posé', async () => {
-    process.env.SENTRY_DSN = 'https://cle@exemple.invalid/1';
+    process.env.SENTRY_DSN = 'https://cle@o4507.ingest.de.sentry.io/1';
     const handlers = capterHandlers();
 
     await register();
@@ -145,7 +159,7 @@ describe('instrumentation — une exception fatale doit rendre la main à Node',
 
   it("charge la configuration EDGE en runtime edge, et n'y pose toujours aucun handler", async () => {
     process.env.NEXT_RUNTIME = 'edge';
-    process.env.SENTRY_DSN = 'https://cle@exemple.invalid/1';
+    process.env.SENTRY_DSN = 'https://cle@o4507.ingest.de.sentry.io/1';
     const handlers = capterHandlers();
 
     await register();

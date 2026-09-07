@@ -35,7 +35,7 @@ const CONFIGURATIONS = [
 ] as const;
 
 async function chargerOptions(chemin: string, variable: string): Promise<Options> {
-  process.env[variable] = 'https://cle@exemple.invalid/1';
+  process.env[variable] = 'https://cle@o4507.ingest.de.sentry.io/1';
   vi.resetModules();
   init.mockClear();
   await import(chemin);
@@ -52,7 +52,7 @@ describe.each(CONFIGURATIONS)('configuration $nom', ({ chemin, variable }) => {
 
   it('lit son DSN dans la variable attendue', async () => {
     const options = await chargerOptions(chemin, variable);
-    expect(options.dsn).toBe('https://cle@exemple.invalid/1');
+    expect(options.dsn).toBe('https://cle@o4507.ingest.de.sentry.io/1');
   });
 
   it("n'envoie pas les données personnelles par défaut", async () => {
