@@ -15,6 +15,18 @@
 // |---|---|---|---|
 // | Synthèse (génération) | `verifierRestitutionOrientation` / `Complements` / `Discordances` (`api/praticien/synthese/route.ts`) | journalisant (`SYNTHESE_ORIENTATION_RESTITUTION_INFIDELE`) | `api/praticien/synthese/orientation.restitution.test.ts` |
 // | Booklet (envoi au patient) | `termeAnxiogene` (ci-dessous) sur `narratif_patient` (`api/praticien/booklet/route.ts`) | refus CONFIRMABLE (`REGISTRE_ANXIOGENE`) | `api/praticien/booklet/route.test.ts` |
+//
+// LE BOOKLET SORT PAR E-MAIL, ET CETTE CARTE NE LE DISAIT PAS ([[D-136]]).
+// Elle inscrit chaque chemin pour sa GARDE de vocabulaire ; celui-ci a la
+// sienne. Mais il a aussi un CANAL que les autres n'ont pas : `sendMail` reçoit
+// le booklet rendu en corps `html` — le narratif patient et la note praticien —
+// à l'adresse du patient, hors de l'hébergement HDS. Aucun des sept autres
+// chemins ne quitte l'application par un tiers de messagerie.
+//
+// Ce n'était déclaré nulle part : ni ici, ni au registre des gabarits (dont la
+// déclaration `donneesSante` porte sur le corps TEXTE, qui est bien exempt),
+// ni par une décision. Ce n'était pas un mensonge — c'était un non-dit, et un
+// non-dit ne se relit pas.
 // | Rendu médecin (courrier biologie, aperçus) | `assertRenduMedecinNonPrescriptif` (ci-dessous) au chokepoint `documents/rendu.ts` | refus dur (lève) | `documents/rendu.test.ts` |
 // | Bilan portail (service) | `termeAnxiogene` sur narratif + note servis (`api/portail/bilan/route.ts`) | journalisant (`PORTAIL_BILAN_REGISTRE_ANXIOGENE`) | `api/portail/bilan/route.test.ts` |
 // | Synthèse de compréhension (publication) | `termeAnxiogene` sur `texte` (`api/praticien/comprehension/route.ts`) | refus CONFIRMABLE (`REGISTRE_ANXIOGENE`) | `api/praticien/comprehension/route.test.ts` |

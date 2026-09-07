@@ -4,6 +4,58 @@
 
 ## Décisions actives
 
+### D-136 — Le bilan complet voyage par e-mail : ce n'était pas un mensonge, c'était un non-dit
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session, option « le déclarer où il vit, et l'assumer par décision ») et exécuté.
+- Domaine : correspondance patient, RGPD, chemins sortants
+
+- Contexte : `api/praticien/booklet` construit le bilan par `buildBookletHTML`
+  et le passe en corps `html` à `sendMail`, à côté d'un corps `text` de trois
+  lignes. Le même contenu est déjà servi au portail par `api/portail/bilan`.
+
+**1. La déclaration du registre n'était pas fausse.** Le champ `donneesSante`
+d'`envoi_bilan@1` porte sur le `corps` du gabarit — ce texte-là est bien exempt
+de donnée de santé. Le passer à `ecart` aurait déclaré un écart sur un texte qui
+n'en a pas, et envoyé un lecteur futur chercher une donnée de santé absente.
+
+**2. Ce qui manquait est ailleurs : le SECOND CORPS n'était déclaré nulle part.**
+Ni au registre des gabarits, qui ne le contient pas ; ni à la carte des chemins
+sortants, qui inscrit le booklet pour sa garde `termeAnxiogene` et non pour son
+canal ; ni par une décision. La question « le bilan complet a-t-il le droit de
+circuler par e-mail ? » n'avait jamais été posée par écrit.
+
+**3. Ce chemin est le seul des huit à quitter l'application par un tiers.** Les
+sept autres textes sortants sont servis par l'application elle-même, sur
+l'hébergement HDS. Celui-ci passe par un service de messagerie. C'est la
+différence que la carte ne disait pas, et elle y est désormais.
+
+**4. La donnée reste dans le canal, et c'est l'arbitrage rendu.** Le retirer
+était possible — l'e-mail serait devenu une notification pointant « Mon bilan ».
+Ce n'est pas retenu : le perdant serait le patient qui n'entre jamais au
+portail, et le seul chiffre du dépôt va dans ce sens (cinq dossiers ouverts
+entre le 2026-08-20 et le 2026-09-04 ont reçu l'ancien message d'accès, aucun
+n'a ouvert son espace). Ce chiffre porte sur l'accès, pas sur le bilan, et ne
+prouve rien seul — mais c'est le seul dont on dispose.
+
+**5. Ce que cette décision engage, et qui reste dû.** Elle assume l'envoi de
+données d'article 9 par un sous-traitant dont la couverture n'est pas close :
+`docs/DOSSIER_RGPD.md` rubrique 6 identifie Google Workspace le 2026-08-22 et
+laisse dus « la localisation du traitement et la couverture DPA », échéance
+**2026-10-21** ; la rubrique 13 note qu'aucune AIPD n'existe. Cette décision ne
+lève ni l'un ni l'autre : elle rend l'écart visible et daté plutôt que tacite.
+
+**6. Deux défauts voisins nommés, non traités ici.** Le POST ne lit pas
+`accessTokenRevoked` : révoquer puis envoyer laisse le document au patient dans
+sa boîte, alors que les trois entrées du portail le refusent — sans importance
+tant que le contenu part par e-mail, décisif le jour où il n'y sera plus. Et
+l'échec SMTP n'est journalisé nulle part : trois chemins de la route
+(exception, 409 dossier clos, échec d'envoi) n'écrivent aucune ligne, et
+`whereEnvoiVisible` exige `statut: 'Envoye'` — le cockpit reste donc vide sans
+qu'on sache pourquoi. Le remède touche `D-026` : lot distinct.
+
+Aucune migration, aucun seuil de scoring, aucun code de production modifié.
+
 ### D-135 — L'inbox dit ce qu'elle sait, et n'affirme plus qu'un patient a été lu
 
 - Date : 2026-09-07

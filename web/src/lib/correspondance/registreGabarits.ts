@@ -238,6 +238,13 @@ export const REGISTRE_GABARITS_PATIENT: readonly VersionGabaritPatient[] = Objec
     // Seul gabarit à double corps : ce texte est le corps `text`, le corps
     // `html` est le booklet rendu (`buildBookletHTML`), gardé ailleurs
     // (carte des chemins sortants, `documents/vocabulaire.ts`).
+    //
+    // LA DÉCLARATION `donneesSante` CI-DESSOUS NE COUVRE PAS LE `html`, et il
+    // faut le lire ainsi. Elle porte sur le `corps` — ce texte-ci, qui est bien
+    // exempt de donnée de santé. Le second corps, lui, transporte le narratif
+    // patient et la note praticien hors de l'hébergement HDS : il est assumé
+    // par [[D-136]], daté, et décrit à la carte des chemins sortants. Passer ce
+    // champ à `ecart` serait déclarer un écart sur un texte qui n'en a pas.
     corps:
       'Bonjour,\n\n' +
       'Votre praticien vous transmet votre bilan neuronutritionnel Wellneuro.\n' +
