@@ -5,6 +5,14 @@
 // « activation avec données réelles = décision distincte ». Sans drapeau,
 // merger la PR **serait** activer.
 //
+// CE PARAGRAPHE DÉCRIT LA CRÉATION DU DRAPEAU, PAS SON ÉTAT. Il a été POSÉ en
+// Production le 2026-07-21 (`docs/FEATURE_FLAGS.md` § B, `CHANGELOG.md`
+// « Gate G4 — activé en production »), et RELU sur Scalingo le 2026-09-07 par
+// `env-get` : la porte est ouverte. Le NO-GO du registre est LEVÉ dans ce
+// périmètre par décision datée du responsable — et jusqu'au 2026-10-21
+// seulement (`docs/claude/REGISTRE_FRONTIERES.md`, section IDP). Lire le
+// tableau, pas ce commentaire, pour savoir quelle porte est ouverte.
+//
 // Éteint (défaut) : la route d'entrée et le canal de redemande répondent
 // `notFound()`, l'action d'émission praticien est refusée — le comportement du
 // portail est strictement celui d'avant le gate.

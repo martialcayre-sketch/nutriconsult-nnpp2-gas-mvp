@@ -33,7 +33,7 @@ describe('registre des gabarits patient — intégrité', () => {
     }
   });
 
-  it('expose les neuf versions attendues, dans cet ordre', () => {
+  it('expose les dix versions attendues, dans cet ordre', () => {
     expect(REGISTRE_GABARITS_PATIENT.map(g => `${g.key}@${g.version}`)).toEqual([
       'lien_magique@1',
       'acces_portail@1',
@@ -45,6 +45,10 @@ describe('registre des gabarits patient — intégrité', () => {
       'envoi_bilan@1',
       // Append-only : la v2 s'ajoute en fin de liste, la v1 garde sa place.
       'acces_portail@2',
+      // CLÉ DISTINCTE, ET NON UNE v3 : `getGabarit` rend la version la plus
+      // haute d'une clé. Une v3 d'`acces_portail` serait servie AUSSI au chemin
+      // sans lien, où le rendu lèverait sur `{{lien}}` manquant.
+      'acces_portail_lien@1',
     ]);
   });
 
@@ -53,12 +57,17 @@ describe('registre des gabarits patient — intégrité', () => {
     expect(REGISTRE_GABARITS_PATIENT.filter(g => g.key === 'acces_portail')).toHaveLength(2);
   });
 
-  it('la validation formelle de la v2 est datée — le reste du registre ne l’est pas', () => {
+  it('les deux validations formelles sont datées — le reste du registre ne l’est pas', () => {
     // `valideLe` a existé huit versions durant sans jamais être renseigné. Ce
     // banc échoue si une validation est posée ailleurs sans décision.
     const valides = REGISTRE_GABARITS_PATIENT.filter(g => g.valideLe !== null);
-    expect(valides.map(g => `${g.key}@${g.version}`)).toEqual(['acces_portail@2']);
-    expect(valides[0].valideLe).toBe('2026-09-04');
+    expect(valides.map(g => `${g.key}@${g.version}`)).toEqual([
+      'acces_portail@2',
+      // Validé par le praticien le 2026-09-07, sur lecture de la seule prose
+      // neuve : le reste est le texte de la v2 au caractère près.
+      'acces_portail_lien@1',
+    ]);
+    expect(valides.map(g => g.valideLe)).toEqual(['2026-09-04', '2026-09-07']);
   });
 
   it('les segments partagés sont figés', () => {

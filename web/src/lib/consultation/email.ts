@@ -153,6 +153,11 @@ export async function sendPortailLinkEmail(
   /** Adresse du praticien du dossier (`patients.praticien_email`), posée en
    * `Reply-To`. Facultative : sans elle, l'en-tête est simplement absent. */
   praticienEmail?: string,
+  /** Lien à usage unique (gate G4), quand l'appelant a pu en émettre un.
+   * ABSENT = comportement d'avant ce lot, au caractère près : même gabarit,
+   * même sujet, même type journalisé. C'est ce qui rend le lot inerte drapeau
+   * éteint — le seul état où le lien mènerait à un 404 nu. */
+  lienMagique?: string,
 ): Promise<StatutEnvoiAcces> {
   const smtpUrl = process.env.SMTP_URL;
   const connexion = buildGoogleConnexionUrl();
@@ -164,7 +169,12 @@ export async function sendPortailLinkEmail(
       if (!smtpUrl) return;
       const transport = creerTransportSmtp(smtpUrl);
       // Texte au registre des gabarits (Socle LOT-03, DC-26).
-      const gabarit = rendreGabarit(getGabarit('acces_portail'), { prenom, connexion });
+      // Le TYPE journalisé ne bouge pas (`accesPortail`, plus haut) : c'est lui
+      // que `api/praticien/nouveaux-patients` interroge pour la porte « e-mail
+      // d'accès ». Seul le GABARIT change.
+      const gabarit = lienMagique
+        ? rendreGabarit(getGabarit('acces_portail_lien'), { prenom, connexion, lien: lienMagique })
+        : rendreGabarit(getGabarit('acces_portail'), { prenom, connexion });
       await transport.sendMail({
         from: '"Wellneuro" <noreply@wellneuro.fr>',
         to: patientEmail,

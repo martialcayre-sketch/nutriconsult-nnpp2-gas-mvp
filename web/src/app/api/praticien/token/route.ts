@@ -6,6 +6,7 @@ import { buildGoogleConnexionUrl, buildMagicLinkUrl, sendMagicLinkEmail, sendPor
 import { emailPraticien, verifierAppartenancePatient } from '@/lib/praticien/appartenance';
 import { isG4LienMagiqueEnabled } from '@/lib/portail/featureFlag';
 import { creerJeton, empreinteJeton, expirationDepuis, originePraticien } from '@/lib/portail/lienMagique';
+import { emettreLienMagiquePourPraticien } from '@/lib/portail/emissionLienMagique';
 
 export type TokenActionResponse = {
   success: boolean;
@@ -171,11 +172,30 @@ export async function POST(req: Request): Promise<NextResponse<TokenActionRespon
     // e-mail est parti là où rien n'a jamais été envoyé.
     let envoi: EnvoiAcces | undefined;
     if (action !== 'lien') {
+      // MÊME GESTE QU'À LA CRÉATION DE CONSULTATION : « Renvoyer le lien »
+      // porte désormais une porte qui s'ouvre, pas seulement l'adresse d'une
+      // page de connexion. `null` drapeau éteint, et l'e-mail redevient celui
+      // d'avant.
+      const lienMagique = await emettreLienMagiquePourPraticien(
+        patient.idPatient,
+        emailPraticien(session) ?? '',
+      ).catch(() => null);
+      // Le `.catch` n'est pas décoratif : l'appelant a DÉJÀ créé sa consultation
+      // quand il arrive ici. Laisser remonter un rejet ferait rendre
+      // `success: false` sur un dossier bel et bien créé, et le praticien
+      // recommencerait. Le module ne rejette pas aujourd'hui — ceci le tient s'il
+      // régressait.
       envoi = 'envoye';
       try {
         // En serverless, on attend explicitement la promesse pour eviter que
         // l'envoi best-effort soit interrompu juste apres la reponse HTTP.
-        const statut = await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+        const statut = await sendPortailLinkEmail(
+          patient.email,
+          patient.prenom,
+          patient.idPatient,
+          patient.praticienEmail,
+          lienMagique ?? undefined,
+        );
         if (statut === 'Non_envoye') envoi = 'non_configure';
       } catch (e) {
         envoi = 'echoue';
