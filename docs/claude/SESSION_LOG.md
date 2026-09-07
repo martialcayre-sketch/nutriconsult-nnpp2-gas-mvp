@@ -5146,3 +5146,25 @@ Prochaine action — régénérer les 8 baselines visuelles (workflow manuel,
 Ubuntu), regarder chaque image, les committer dans la PR. `fiche-cockpit` et
 `fiche-tiroir-besoins` changent : 19 → 18 px sur un nom de patient et un titre
 de tiroir.
+
+## 2026-09-07 — Les avis npm tombent de 24 à 9, et Next passe en 15.5
+
+Décidé — `next` 14.2.35 → **15.5.25** (tag `backport`), pas Next 16 : les 21 avis
+avaient tous une borne `<15.5.21`, et la ligne 15.5 tient sur React 18. Aussi :
+`nodemailer` → 10, `next-auth` → 4.24.15 (ferme le critique), Prisma aligné en
+7.10.0. `npm audit fix --force` refusé — il rétrograde Prisma d'un majeur.
+
+Corrigé après coup — deux fragments que j'avais publiés portaient des plages
+fausses ; et « React reste en 18 » était faux du runtime : Next embarque son
+React et l'App Router passe en **19.2-canary** (`D-139`, sentinelle posée).
+
+Écarté — rejouer un CI rouge : le refus a révélé trois courses réelles
+(`confirmerEpisodeT0`, saisie de mesure, garde edge de `instrumentation.ts`).
+
+Non résolu — `fiche-trajectoire-peuplee` a échoué une fois puis passé ; la
+géométrie est hors de cause (mesurée, et sondée par #924). Dépendant de la
+charge.
+
+Prochaine action — fenêtre de surveillance du déploiement : connexion praticien
+réelle, entrée par lien magique (drapeau ouvert), charge Postgres
+(`staleTimes` 30 s → 0), premier `process.exit(1)`.
