@@ -717,6 +717,22 @@ model ClinicalRule {
   doseCibleHaute          Float?  @map("dose_cible_haute")
   gradePreuveScientifique String  @map("grade_preuve_scientifique")
   sourceReferenceId       String  @map("source_reference_id")
+  // LE CLAIM QUI FONDE LA RÈGLE ([[D-139]]). Miroir exact de l'invariant déjà
+  // énoncé pour `BiologyFunctionalRange` et pour les règles d'orientation :
+  // « une plage fonctionnelle sans claim validé n'existe pas ». Référence
+  // (`claim_id`, `version_claim`) vers `rag_corpus_claims`, dont le couple est
+  // UNIQUE — mais SANS clé étrangère : cette table est SQL-brut, hors
+  // `schema.prisma` (`prisma.config.ts`, `tables.external`). Le lien se vérifie
+  // donc à la LECTURE, comme partout ailleurs, et à l'écriture par la route.
+  //
+  // NULLABLES DANS CETTE ÉTAPE, et c'est délibéré : une colonne NOT NULL posée
+  // avant que le code ne la remplisse ferait échouer toute création de règle
+  // pendant la fenêtre entre l'application de la migration et le déploiement du
+  // code ([[D-087]] : « le code déployé tolère une base en avance À CONDITION
+  // que la migration soit additive — colonnes nullables »). Le resserrement en
+  // NOT NULL est la seconde migration, livrée AVEC le code qui les remplit.
+  claimId                 String? @map("claim_id")
+  versionClaim            String? @map("version_claim")
 
   versionRegle Int       @default(1) @map("version_regle")
   actif        Boolean   @default(true) @map("actif")
@@ -748,6 +764,10 @@ model ClinicalRule {
   @@index([intentTagId])
   @@index([ingredientId])
   @@index([conditionCritereId])
+  // « Quelles règles reposent sur ce claim ? » — la question de toute révision
+  // de corpus. Déclaré ici ET dans la migration : sans la déclaration, la
+  // dérive schéma↔migrations de T3 voit un index que le schéma ignore.
+  @@index([claimId, versionClaim], map: "clinical_rules_claim_idx")
   @@map("clinical_rules")
 }
 

@@ -4,6 +4,69 @@
 
 ## Décisions actives
 
+### D-139 — Une règle clinique nomme le claim qui la fonde, ou elle ne s'applique pas
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session : « un claim, comme les plages biologiques »). Migration d'expand livrée ; le code et le resserrement en NOT NULL suivent en PR séparée (`D-087`).
+- Domaine : moteur d'intention clinique C4, corpus, schéma
+
+**§1 — Le défaut.** `deciderIntentionAvantBiologie` vérifie `claimsValides` en
+**premier** — avant la sécurité, le déclencheur, le critère ([[D-138]]) et la
+biologie. `lireCatalogueDecision` rend `claimsValidesParRegle: new Map()`, donc
+`false` pour chaque règle. La prévisualisation de l'atelier, **seul appelant du
+moteur**, refuse donc TOUTE règle avec `claims_non_valides`, toujours.
+
+Et le motif de ce refus dit quelque chose de faux : « les claims cités par la
+règle ne sont pas valides au corpus ». **Aucun claim n'est cité** —
+`clinical_rules` n'avait aucun champ pour en nommer un. Le refus était du bon
+côté ; sa raison désignait un problème de corpus là où il n'y avait qu'un champ
+manquant. C'est la même erreur de motif que [[D-138]] §1, et c'est la septième
+occurrence du défaut de la journée : un garde dont l'entrée n'a pas de
+producteur.
+
+Étiquette (`D-125`) : **démontré dans le code, atteignable en production** —
+`WN_C4_ENABLED=true` (lecture du 2026-09-07), l'atelier est en service.
+
+**§2 — Le corpus n'était pas le problème.** La production compte **8 224 claims
+`VALIDE`** (one-off-1163, 2026-09-07). La matière existe ; seul le lien manquait.
+
+**§3 — L'invariant n'est pas inventé, il est recopié.**
+`biology_functional_ranges` porte `claim_id` + `version_claim` **NOT NULL**, avec
+cette phrase au schéma : « une plage fonctionnelle sans claim validé n'existe
+pas, donc n'est jamais servie ». Les règles d'orientation suivent la même règle.
+`clinical_rules` était la seule à y échapper. L'arbitrage a écarté une table de
+jonction : elle ajouterait une structure que le dépôt n'utilise nulle part
+ailleurs pour les claims.
+
+**§4 — Pas de clé étrangère, et ce n'est pas un oubli.** `rag_corpus_claims` est
+une table SQL-brut hors `schema.prisma` (`prisma.config.ts`, `tables.external`).
+Le lien se vérifie donc à la **lecture** — comme pour `biology_functional_ranges`
+— et à l'**écriture** par la route. Ce que la base garde seule : les CHECK de
+format, recopiés de `rag_corpus_claims`, et l'appariement des deux colonnes — le
+couple `(claim_id, version_claim)` est ce qui est UNIQUE là-bas, un membre seul
+ne désigne rien.
+
+**§5 — Expand/contract, et pourquoi les colonnes naissent NULLABLES.** Poser
+NOT NULL d'emblée ferait échouer toute création de règle pendant la fenêtre
+entre l'application de la migration et le déploiement du code qui remplit les
+colonnes. [[D-087]] l'écrit : « le code déployé tolère une base en avance À
+CONDITION que la migration soit additive — colonnes nullables, rien de retiré ni
+renommé ». Le resserrement est la migration
+`20260907210000_regle_claim_obligatoire`, livrée **avec** le code qui les
+remplit, et appliquée après lui.
+
+**L'oubli du contract ne peut pas passer inaperçu** : le contrat SQL affirme que
+les deux colonnes sont ENCORE nullables. Le jour où ce terme rougira, c'est que
+le resserrement a eu lieu — et il faudra retirer ce terme, pas le contourner.
+Sans lui, une règle sans claim resterait possible en base, ce que l'invariant
+interdit. La leçon du 2026-09-07, sept fois : ce qui n'est gardé que par de la
+prose ne tient pas.
+
+**§6 — Ce que cette PR ne fait pas.** Elle ne livre que le schéma, la migration
+et le contrat. La route qui exigera le claim et vérifiera son statut `VALIDE`, le
+lecteur de catalogue qui remplira `claimsValidesParRegle`, et le resserrement en
+NOT NULL suivent en PR séparée, après application **constatée** par conteneur.
+
 ### D-138 — Un critère n'est pas calculé, il est constaté — et la condition de règle cesse de porter deux natures
 
 - Date : 2026-09-07
