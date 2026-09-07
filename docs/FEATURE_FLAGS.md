@@ -31,7 +31,7 @@ datée **par feature**.
 | `WN_SYNTHESE_STREAM` | `true` | synthèse IA en SSE (routeur 30 s Scalingo) | réponse JSON |
 | `WN_CLAIMS_QUESTIONNAIRE_STREAM` | `true` | claims questionnaire en SSE | réponse JSON |
 | `RAG_PGVECTOR_ENABLED` | `true` | RAG de production — exige aussi `RAG_INTERNAL_SECRET` + clés OpenAI | throw / fermé |
-| `WN_ENABLE_VALIDITE_PASSATIONS` | `1` | filtre de validité des passations (LOT-00 chaîne T0) : `INVALID`/`SUPERSEDED`/`HISTORICAL_ONLY` sortent du raisonnement, et la route d'invalidation praticien répond (sinon **503**) | filtre **inerte** — la colonne `statut_validite` existe et vaut `VALID` par défaut de migration sur **toutes** les lignes ; ce `VALID` n'est donc pas un jugement clinique ([[D-052]]) — état **antérieur** au 2026-08-19. **POSÉ (`1`) en Production le 2026-08-19** ([[D-077]], arbitrage praticien en session, redéploiement porteur) : la route d'invalidation s'ouvre, aucun calcul ne change (111 passations, toutes `VALID`). ⚠️ [[D-050]] et [[D-052]] disent encore « éteint » : elles décrivent la vérification du 2026-08-12 et n'ont pas été révisées. **Non relu sur Scalingo depuis** — `scalingo --app wellneuro --region osc-fr1 env-get` |
+| `WN_ENABLE_VALIDITE_PASSATIONS` | `1` | filtre de validité des passations (LOT-00 chaîne T0) : `INVALID`/`SUPERSEDED`/`HISTORICAL_ONLY` sortent du raisonnement, et la route d'invalidation praticien répond (sinon **503**) | filtre **inerte** — la colonne `statut_validite` existe et vaut `VALID` par défaut de migration sur **toutes** les lignes ; ce `VALID` n'est donc pas un jugement clinique ([[D-052]]) — état **antérieur** au 2026-08-19. **POSÉ (`1`) en Production le 2026-08-19** ([[D-077]], arbitrage praticien en session, redéploiement porteur) : la route d'invalidation s'ouvre, aucun calcul ne change (111 passations, toutes `VALID`). ⚠️ [[D-050]] et [[D-052]] disent encore « éteint » : elles décrivent la vérification du 2026-08-12 et n'ont pas été révisées. **RELU SUR SCALINGO LE 2026-09-07** (`env-get`) : la variable y est bien posée. |
 
 ## B. Chemins d'accès patient — `'true'`, défaut OFF
 
@@ -43,14 +43,16 @@ datée, avec ses dépendances.
 > une activation non consignée dans ce tableau rend illisible tout classement de
 > constat portant sur le portail (un défaut derrière un drapeau éteint et un
 > défaut servi à des patients ne se traitent pas au même rang). Les dates
-> ci-dessous sont **antérieures à la migration Scalingo** : les reconfirmer par
-> `env-get` est un geste hors dépôt de deux minutes, à consigner ici.
+> ci-dessous datent d'AVANT la migration Scalingo — mais les quatre valeurs ont
+> été **relues sur Scalingo le 2026-09-07** (`env-get`) : les quatre portes sont
+> ouvertes en production. Toute extinction ou activation ultérieure se consigne
+> ici, datée, comme au § A.
 
 | Flag | Valeur ON | Ouvre | Dépendance / note |
 |---|---|---|---|
-| `WN_G4_LIEN_MAGIQUE` | `true` | entrée portail par lien magique | **POSÉ en Production le 2026-07-21** (`campagnes/2026-07-19-idp-identite-patient-durable/ACTIVATION_RUNBOOK_G4.md`, constaté à `CHECKLIST_ACTIVATION_G_TRUST_04.md:167`) — plateforme Vercel d'alors ; valeur reprise au dossier de migration le 2026-08-21 (`CHECKLIST_FINALISATION.md:25`, recopie prod → staging). **Non relu sur Scalingo depuis** — `scalingo --app wellneuro --region osc-fr1 env-get` |
-| `WN_G4_REDEMANDE_PATIENT` | `true` | canal public de redemande de lien | **surface publique non authentifiée**. **POSÉ en Production**, constaté actif le 2026-08-05 (`handoffs/2026-08-05-1634-parcours-patient-unique-revocation-fermee.md:18`, lecture des logs runtime) ; valeur reprise au dossier de migration le 2026-08-21 (`CHECKLIST_FINALISATION.md:25`). **Non relu sur Scalingo depuis** — `scalingo --app wellneuro --region osc-fr1 env-get` |
-| `WN_G5_GOOGLE_PATIENT` | `true` | entrée patient par Google | exige `WN_GOOGLE_PATIENT_CLIENT_ID` / `_SECRET` (client OAuth dédié). **POSÉ en Production le 2026-07-22** (`propositions/2026-07-25-audit-identites-google/AUDIT_IDENTITES_GOOGLE.md:50`) — une connexion patient réelle tracée le jour même (`SESSION_LOG.md:122`), donc une porte qui a effectivement servi. **Non relu sur Scalingo depuis** — `scalingo --app wellneuro --region osc-fr1 env-get` |
+| `WN_G4_LIEN_MAGIQUE` | `true` | entrée portail par lien magique | **POSÉ en Production le 2026-07-21** (`campagnes/2026-07-19-idp-identite-patient-durable/ACTIVATION_RUNBOOK_G4.md`, constaté à `CHECKLIST_ACTIVATION_G_TRUST_04.md:167`) — plateforme Vercel d'alors ; valeur reprise au dossier de migration le 2026-08-21 (`CHECKLIST_FINALISATION.md:25`, recopie prod → staging). **RELU SUR SCALINGO LE 2026-09-07** (`env-get`) : la variable y est bien posée. |
+| `WN_G4_REDEMANDE_PATIENT` | `true` | canal public de redemande de lien | **surface publique non authentifiée**. **POSÉ en Production**, constaté actif le 2026-08-05 (`handoffs/2026-08-05-1634-parcours-patient-unique-revocation-fermee.md:18`, lecture des logs runtime) ; valeur reprise au dossier de migration le 2026-08-21 (`CHECKLIST_FINALISATION.md:25`). **RELU SUR SCALINGO LE 2026-09-07** (`env-get`) : la variable y est bien posée. |
+| `WN_G5_GOOGLE_PATIENT` | `true` | entrée patient par Google | exige `WN_GOOGLE_PATIENT_CLIENT_ID` / `_SECRET` (client OAuth dédié). **POSÉ en Production le 2026-07-22** (`propositions/2026-07-25-audit-identites-google/AUDIT_IDENTITES_GOOGLE.md:50`) — une connexion patient réelle tracée le jour même (`SESSION_LOG.md:122`), donc une porte qui a effectivement servi. **RELU SUR SCALINGO LE 2026-09-07** (`env-get`) : la variable y est bien posée. |
 
 ## C. Double verrou clinique — `'1'` **ET** validation en code
 
