@@ -1,3 +1,5 @@
+import { withSentryConfig } from '@sentry/nextjs';
+
 /** @type {import('next').NextConfig} */
 
 // En-têtes appliqués à toutes les réponses. `Referrer-Policy: no-referrer` est
@@ -120,4 +122,34 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+// L'ENVELOPPE SENTRY MANQUAIT, ET SON ABSENCE NE SE VOYAIT PAS. Sans elle, le
+// plugin ne s'installe pas : ni instrumentation du build, ni cartes de source,
+// ni `onRequestError` correctement relié. Trois fichiers de configuration
+// existaient dans ce dépôt et n'étaient chargés par personne.
+//
+// LES CARTES DE SOURCE NE PARTENT QUE SI LES TROIS VARIABLES SONT POSÉES.
+// Sinon `sourcemaps.disable` coupe l'envoi : le build reste vert et local, et
+// aucune source de l'application ne part chez un tiers par accident.
+const televersementCartes = Boolean(
+  process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT,
+);
+
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  // Le plugin remonte des statistiques de build à Sentry par défaut. Sur une
+  // application de santé, rien ne part qui n'ait été décidé.
+  telemetry: false,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  // `disableLogger` est déprécié en 10.x — le build le dit lui-même. Le
+  // remplaçant vit sous `webpack.treeshake`.
+  webpack: { treeshake: { removeDebugLogging: true } },
+  sourcemaps: {
+    disable: !televersementCartes,
+    // Une carte de source téléversée ne doit pas rester servie publiquement :
+    // elle rendrait le code source de l'application téléchargeable.
+    deleteSourcemapsAfterUpload: televersementCartes,
+  },
+});

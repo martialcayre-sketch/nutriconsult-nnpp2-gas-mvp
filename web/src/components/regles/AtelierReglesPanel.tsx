@@ -87,7 +87,7 @@ function BadgeGrade({ grade }: { grade: GradePreuveScientifique }) {
 
 /**
  * La condition biologique servie par l'API, rendue affichable et ré-éditable
- * ([[D-138]], [[D-141]]).
+ * ([[D-138]], [[D-142]]).
  *
  * LECTURE DÉLIBÉRÉMENT PERMISSIVE, et c'est l'inverse du serveur : ici on rend
  * ce qu'on peut MONTRER. Une condition que le moteur jugerait illisible doit
@@ -453,7 +453,7 @@ function FormulaireCreation({
           ...(doseHaute.trim() ? { doseCibleHaute: Number(doseHaute) } : {}),
           ...(poids.trim() ? { poids: Number(poids) } : {}),
           // Les deux natures séparées ([[D-138]], producteurs posés par
-          // [[D-141]]). L'ancien `conditionSupplementaire` n'est plus envoyé :
+          // [[D-142]]). L'ancien `conditionSupplementaire` n'est plus envoyé :
           // le moteur ne le lisait plus, et la règle naissait inconditionnelle.
           ...(critereId ? { conditionCritereId: critereId } : {}),
           ...(cibleBio.trim()
@@ -716,7 +716,7 @@ function FormulaireRevision({
   const [formePrefereeId, setFormePrefereeId] = useState(regle.formePreferee?.id ?? '');
   const [doseBasse, setDoseBasse] = useState(regle.doseCibleBasse?.toString() ?? '');
   const [doseHaute, setDoseHaute] = useState(regle.doseCibleHaute?.toString() ?? '');
-  // LES CONDITIONS SONT REPRISES, ET C'EST UN CORRECTIF ([[D-141]]). Le
+  // LES CONDITIONS SONT REPRISES, ET C'EST UN CORRECTIF ([[D-142]]). Le
   // formulaire de révision n'envoyait AUCUNE condition : une révision étant une
   // réécriture complète, réviser une règle conditionnée à un critère la rendait
   // INCONDITIONNELLE, en silence et sans que rien ne l'affiche. Le praticien
@@ -798,7 +798,7 @@ function FormulaireRevision({
           sourceReferenceId,
           claimId: claimId.trim(),
           versionClaim: versionClaim.trim(),
-          // [[D-141]] — les conditions VOYAGENT avec la révision. Sans elles,
+          // [[D-142]] — les conditions VOYAGENT avec la révision. Sans elles,
           // une réécriture complète retirait la condition de la règle en
           // silence : le praticien croyait corriger une justification, il
           // levait une garde clinique.
@@ -1797,7 +1797,7 @@ export function AtelierReglesPanel() {
                         {regle.justification}
                       </blockquote>
 
-                      {/* LES CONDITIONS SE VOIENT ([[D-141]]). Aucun écran ne
+                      {/* LES CONDITIONS SE VOIENT ([[D-142]]). Aucun écran ne
                           les montrait : une règle conditionnée était
                           indiscernable d'une règle inconditionnelle, et c'est
                           ce qui a laissé passer des mois d'écriture au mauvais

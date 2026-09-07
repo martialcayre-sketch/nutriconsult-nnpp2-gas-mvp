@@ -109,7 +109,7 @@ export const SELECTION_REGLE = {
   poids: true,
   justification: true,
   // L'ANCIEN champ, encore lu pour que l'atelier puisse MONTRER ce qu'une règle
-  // d'avant [[D-138]] porte encore. Plus personne ne l'écrit ([[D-141]]) ; il
+  // d'avant [[D-138]] porte encore. Plus personne ne l'écrit ([[D-142]]) ; il
   // part avec le `DROP`, qui est un geste distinct.
   conditionSupplementaire: true,
   // Les deux natures séparées. Le critère est JOINT — un écran doit pouvoir le
@@ -222,7 +222,7 @@ export type RegleAtelier = {
   /**
    * ANCIEN champ à deux natures, servi tel quel pour qu'un écran puisse montrer
    * ce qu'une règle d'avant [[D-138]] porte encore. Ne rien en déduire : le
-   * moteur ne le lit plus, et plus personne ne l'écrit ([[D-141]]).
+   * moteur ne le lit plus, et plus personne ne l'écrit ([[D-142]]).
    */
   conditionSupplementaire: unknown;
   /** Le critère gouverné auquel la règle est conditionnée, NOMMÉ ([[D-138]]). */
@@ -311,7 +311,7 @@ export type ContenuRegle = {
   sourceReferenceId: string;
   poids: number | null;
   /**
-   * LES DEUX NATURES SÉPARÉES ([[D-138]]), et écrites — c'est ce que [[D-141]]
+   * LES DEUX NATURES SÉPARÉES ([[D-138]]), et écrites — c'est ce que [[D-142]]
    * ferme. L'ancien champ `conditionSupplementaire` mêlait les deux ; le moteur
    * ne le lit plus depuis `D-138`, et les routes l'écrivaient encore : une règle
    * créée avec un critère était donc INCONDITIONNELLE aux yeux du moteur.
@@ -450,7 +450,7 @@ export function validerContenuRegle(body: {
     poids = nombre;
   }
 
-  // ── Les DEUX conditions, séparées ([[D-138]]) et enfin écrites ([[D-141]]) ──
+  // ── Les DEUX conditions, séparées ([[D-138]]) et enfin écrites ([[D-142]]) ──
   //
   // Décision actée n°4 : la condition de critère référence un mot du vocabulaire
   // gouverné (`clinical_criteria`), jamais une chaîne libre. L'existence et

@@ -21,7 +21,7 @@ describe('registre des documents TRUST', () => {
     }
   });
 
-  it('expose les neuf documents attendus', () => {
+  it('expose les dix documents attendus', () => {
     const cles = REGISTRE_DOCUMENTS_TRUST.map(d => `${d.key}@${d.version}`);
     expect(cles).toEqual([
       'cadre_accompagnement@v1',
@@ -31,6 +31,7 @@ describe('registre des documents TRUST', () => {
       'donnees_confidentialite@v3',
       // Append-only : la v4 s'ajoute derrière la v3, qui garde sa place.
       'donnees_confidentialite@v4',
+      'donnees_confidentialite@v5',
       'usage_ia@v1',
       'droits_patient@v1',
       'consentement_suivi@v2',
@@ -70,19 +71,46 @@ describe('registre des documents TRUST', () => {
     }
   });
 
-  it('la v4 est servie, et elle ne nie plus la connexion patient par Google', () => {
+  it('la v5 est servie, et elle ne nie plus la connexion patient par Google', () => {
     // LE DÉFAUT : la v3 écrivait « Google — connexion sécurisée du praticien
     // uniquement (jamais des patients) ». C'est une négation explicite, et elle
     // était fausse depuis le 2026-07-22 — la porte Google patient est ouverte
     // en production, relue par `env-get` le 2026-09-07.
     const courant = getDocumentCourant('donnees_confidentialite');
-    expect(courant.version).toBe('v4');
+    expect(courant.version).toBe('v5');
     const points = courant.sections.flatMap(sec => sec.points ?? []);
     expect(points.some(p => p.includes('jamais des patients'))).toBe(false);
     expect(points.some(p => p.includes('si vous le choisissez, votre propre connexion'))).toBe(true);
   });
 
-  it('la v4 nomme le prestataire d’envoi et dit ce que les emails transportent', () => {
+  it('la v5 nomme Sentry, dit ce qu’il reçoit ET ce qu’il ne reçoit jamais', () => {
+    // NOMMER UN PRESTATAIRE SANS DIRE CE QU'IL REÇOIT laisserait le patient
+    // supposer le pire — ou le meilleur. Le dépôt refuse les deux :
+    // `DOSSIER_RGPD.md:194` posait l'écart depuis le 2026-08-07, « soit il ne
+    // traite aucune donnée personnelle et cela s'écrit, soit la liste patient
+    // est incomplète et se corrige ». Elle se corrige.
+    const courant = getDocumentCourant('donnees_confidentialite');
+    const sentry = courant.sections.flatMap(s => s.points ?? []).find(p => p.startsWith('Sentry'));
+    expect(sentry, 'Sentry absent de la liste des prestataires').toBeTruthy();
+    expect(sentry).toContain('Union européenne');
+    expect(sentry).toContain('jamais vos réponses');
+
+    // Et la localisation est dite, pas seulement le nom.
+    const hebergement = courant.sections.find(s => s.titre === 'Où sont hébergées vos données');
+    expect(hebergement?.paragraphes.some(p => p.includes('région européenne'))).toBe(true);
+  });
+
+  it('la v5 est servie BIEN QU’ELLE PARTAGE SA DATE avec la v4', () => {
+    // Le piège que ce cas ferme : `getDocumentCourant` comparait avec `>=` et
+    // gardait donc la PLUS ANCIENNE à date égale. Deux versions publiées le
+    // même jour laissaient le patient sur le document périmé, sans signal.
+    const v4 = getVersion('donnees_confidentialite', 'v4');
+    const v5 = getVersion('donnees_confidentialite', 'v5');
+    expect(v4?.publieLe).toBe(v5?.publieLe);
+    expect(getDocumentCourant('donnees_confidentialite').version).toBe('v5');
+  });
+
+  it('la v5 nomme le prestataire d’envoi et dit ce que les emails transportent', () => {
     // NOMMER LE PRESTATAIRE SANS DIRE CE QUE LES E-MAILS PORTENT aurait
     // fabriqué une nouvelle fausseté : `/portail/connexion` affirme « seule
     // votre adresse email est transmise — aucune donnée de santé », vrai de la

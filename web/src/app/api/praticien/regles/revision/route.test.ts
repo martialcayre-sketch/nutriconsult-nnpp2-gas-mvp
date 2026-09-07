@@ -176,7 +176,7 @@ describe('/api/praticien/regles/revision', () => {
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
   });
 
-  // ── Les conditions, sur le chemin de RÉVISION ([[D-141]]) ─────────────────
+  // ── Les conditions, sur le chemin de RÉVISION ([[D-142]]) ─────────────────
   // Le formulaire n'envoyait aucune condition et la route écrivait l'ancien
   // champ : réviser une règle conditionnée à un critère la rendait
   // INCONDITIONNELLE, en silence. Le praticien croyait corriger une

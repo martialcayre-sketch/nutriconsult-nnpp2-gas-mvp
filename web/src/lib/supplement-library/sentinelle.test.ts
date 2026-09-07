@@ -110,7 +110,10 @@ describe('detecterCumulSubstance', () => {
     expect(candidat).toMatchObject({
       typeFlag: 'cumul_substance',
       statutPropose: 'ouvert',
-      niveauAlerte: 'orange',
+      // AUCUN NIVEAU ([[D-143]]) : ce champ portait `'orange'` en dur, une
+      // gradation clinique que rien ne source. Un cumul est un FAIT constaté ;
+      // sa gravité est un jugement que personne n'a rendu.
+      niveauAlerte: null,
       ingredientsConcernes: ['magnesium'],
       seuil: null,
       alerteSecurite: null,
@@ -170,13 +173,16 @@ describe('detecterCumulSubstance', () => {
 });
 
 describe('detecterDepassementsSeuils', () => {
-  it('signale un dépassement individuel du seuil haut, sans bascule : niveau orange, pas d\'alerte', () => {
+  it('signale un dépassement individuel du seuil haut, sans bascule : aucun niveau, pas d\'alerte', () => {
     const candidats = detecterDepassementsSeuils(resolutionCumul(), [seuil()]);
     expect(candidats).toHaveLength(1);
     const [candidat] = candidats;
     expect(candidat).toMatchObject({
       typeFlag: 'depassement_seuil',
-      niveauAlerte: 'orange',
+      // Sans alerte jointe, il n'y a pas de niveau — et `'orange'` n'était pas
+      // un défaut, c'était une invention ([[D-143]]). Le dépassement alerte par
+      // lui-même ; il n'a pas besoin d'une couleur pour exister.
+      niveauAlerte: null,
       alerteSecurite: null,
     });
     // Seule la règle à 310 dépasse 250 — celle à 220 n'est pas concernée :

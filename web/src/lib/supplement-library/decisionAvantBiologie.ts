@@ -142,7 +142,7 @@ function refus(
  * « active » une intention que sa règle voulait suspendre.
  */
 /**
- * LE SEUL LECTEUR DE LA CONDITION BIOLOGIQUE, et il est EXPORTÉ ([[D-141]]).
+ * LE SEUL LECTEUR DE LA CONDITION BIOLOGIQUE, et il est EXPORTÉ ([[D-142]]).
  *
  * Le chemin d'écriture s'en sert pour refuser à la saisie ce que ce lecteur
  * appellerait `illisible`. Deux validations séparées — une à l'écriture, une à

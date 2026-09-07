@@ -6,7 +6,7 @@ sous-système vivent dans `.claude/rules/` (chargées par chemin, nativement).
 
 ## Stack
 
-- Next.js 14 (App Router) — code dans `web/`
+- Next.js 15 (App Router) — code dans `web/`
 - Prisma + PostgreSQL (add-on Scalingo, HDS)
 - NextAuth — OAuth Google restreint au domaine `@wellneuro.fr`
 - Déploiement Scalingo `osc-fr1` (`app.wellneuro.fr`, cutover 2026-08-22) —
@@ -37,8 +37,9 @@ technologique sans demande explicite. État courant :
   depuis un conteneur `scalingo run -d`, écriture uniquement par migration
   relue puis release-db approuvée (`D-087`, qui supplante `D-086` §1-2 — le
   one-off applique APRÈS approbation humaine, le `postdeploy` ne migre plus
-  sous drapeau)**. La base Supabase gelée et son MCP n'existent plus
-  (`D-120`). Détail : `.claude/rules/db-prisma.md`.
+  sous drapeau)**. La base Supabase gelée n'existe plus (`D-120`) ; son
+  outil MCP, lui, reste branché et n'est neutralisé que par les refus de
+  `.claude/settings.json`. Détail : `.claude/rules/db-prisma.md`.
 
 ## Données patients
 
@@ -53,7 +54,7 @@ depuis un conteneur `scalingo run -d` — c'est la façon normale de vérifier u
 comportement sur un vrai dossier. Deux interdits demeurent, et ils ne sont pas de forme :
 
 - **jamais désignés par leur nom ou leur e-mail dans le dépôt** — l'historique
-  Git, les logs CI et les builds Vercel ne s'effacent pas ;
+  Git et les logs CI ne s'effacent pas ;
 - **jamais visés par un seed ou un E2E** : `web/prisma/seed.ts` écrit des
   réponses de questionnaire, et une réponse fabriquée déposée dans un dossier
   réel est une donnée que personne n'a produite — elle alimenterait ensuite
@@ -130,8 +131,10 @@ docs, tests, CRUD, corrections, Git/GitHub.
 
 ## Garde-fous d'écriture (hooks)
 
-Trois verdicts — **refus**, **demande**, **silence** — appliqués par les hooks
-quoi qu'il arrive ; aucune variable d'environnement ne les désactive. Détail :
+Trois verdicts — **refus**, **demande**, **silence**. Leur portée n'est pas
+absolue, et la croire absolue est le risque : le crochet d'écriture n'arme que
+`Edit|Write` — une écriture par `Bash` n'y passe pas — et le crochet Bash sort
+sans rien lire si `WN_ALLOW_RISKY_COMMAND=1`. Détail :
 `.claude/rules/hooks-garde-fous.md`.
 
 ## Validation

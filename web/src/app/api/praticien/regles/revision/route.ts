@@ -168,7 +168,7 @@ export async function POST(req: Request): Promise<NextResponse<RegleRevisionApiR
           versionRegle: (plafond._max.versionRegle ?? 0) + 1,
           poids: contenu.poids ?? origine.poids,
           justification: contenu.justification,
-          // Les deux natures séparées, et écrites ([[D-141]]) — voir la route
+          // Les deux natures séparées, et écrites ([[D-142]]) — voir la route
           // de création pour ce que l'écriture de l'ancien champ produisait.
           conditionCritereId: contenu.conditionCritereId,
           conditionBiologie: contenu.conditionBiologie ?? undefined,

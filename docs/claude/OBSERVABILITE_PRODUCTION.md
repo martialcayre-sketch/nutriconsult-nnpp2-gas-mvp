@@ -100,25 +100,43 @@ Le correlationId permet de retrouver la séquence complète d un incident dans l
 - P3: anomalie fonctionnelle isolée.
 - P4: bruit de logs ou dette d instrumentation.
 
-## Sentry — présent mais INERTE (dette ouverte au 2026-09-04)
+## Sentry — CÂBLÉ le 2026-09-07, et inerte tant que le DSN n'est pas posé
 
-État réel, constaté par revue adversariale : `@sentry/nextjs` est en dépendance
-et `web/sentry.{client,server,edge}.config.ts` existent, mais **rien ne les
-branche** — `web/next.config.mjs` n'appelle pas `withSentryConfig`, il n'y a pas
-d'`instrumentation.ts`, et aucun `Sentry.captureException` dans `src`. Aucune
-erreur ne part donc nulle part.
+`D-141`. Le câblage qui manquait est en place : `withSentryConfig` dans
+`web/next.config.mjs`, initialisation par runtime depuis `register()` de
+`web/src/instrumentation.ts`, `onRequestError` exporté (sans lui, une erreur de
+composant serveur n'atteint jamais Sentry), et `Sentry.captureException` dans
+`web/src/app/global-error.tsx` — c'est cette dernière ligne qui ferme le maillon
+manquant décrit ci-dessous.
 
-Ce que cela coûte concrètement, depuis les écrans d'échec livrés le 2026-09-03 :
-l'écran d'erreur du portail peut s'afficher pour une personne suivie **sans que
-personne ne l'apprenne**. Et le `digest` que cet écran propose comme référence
-n'est posé que par le rendu SERVEUR : une erreur survenue dans le navigateur —
-le cas dominant, la plupart des pages du portail étant clientes — n'en porte
-pas, donc la ligne « Référence » ne s'affiche pas **et** aucune trace ne
-subsiste. La boucle de support a un maillon manquant, pas un maillon faible.
+**Rien ne part tant que `SENTRY_DSN` (serveur, edge) et
+`NEXT_PUBLIC_SENTRY_DSN` (client) ne sont pas posés dans l'environnement
+Scalingo**, et la condition est écrite dans `instrumentation.ts`, pas seulement
+héritée du SDK : sur une application de santé, ce qui déclenche un envoi vers un
+tiers se lit dans le dépôt.
 
-Au câblage, conserver le cadrage privacy-first prévu : pas de Session Replay au
-départ, source maps actives, tags release/deployment/branch, corrélation avec
-les event codes et le correlationId.
+Ce que le câblage a coûté de corriger, et qu'il ne faut pas défaire :
+
+- le `beforeSend` recopié dans les trois runtimes coupait la query string et
+  **gardait le chemin** — or `/portail/lien/<jeton>` est le lien magique
+  lui-même. `masquageChemin.ts` réduit tout chemin à un gabarit par liste
+  d'autorisation, et `masquageChemin.routes.test.ts` parcourt `web/src/app` pour
+  rougir dès qu'une route nouvelle n'y figure pas ;
+- `beforeSend` ne voit que les ERREURS. `beforeSendTransaction` et
+  `beforeSendSpan` sont posés parce qu'à `tracesSampleRate` 0,1 une requête sur
+  dix produit une transaction en régime normal, route comprise ;
+- les fils d'Ariane `console` sont supprimés et les fils `ui.*` perdent leur
+  message : le sélecteur DOM porte des `aria-label` écrits pour être lus par un
+  patient ;
+- pas de Session Replay — les deux taux sont à zéro, délibérément : il filmerait
+  l'écran du patient ;
+- les cartes de source ne partent que si les trois variables `SENTRY_*` du build
+  sont posées, et sont supprimées après envoi.
+
+**Reste dû au responsable de traitement** : poser les DSN, déclarer Sentry aux
+personnes (`docs/DOSSIER_RGPD.md:194` — la liste des prestataires de
+`donnees_confidentialite` ne le cite pas), signer le DPA et vérifier la
+résidence UE (`docs/DOSSIER_RGPD.md:614`, échéance 2026-10-21).
 
 ## Surveillance de disponibilité
 

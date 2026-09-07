@@ -283,7 +283,7 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
         typeRegle,
         poids: contenu.poids ?? 1,
         justification: contenu.justification,
-        // LES DEUX NATURES SÉPARÉES, ET ÉCRITES ([[D-141]]). L'ancien champ
+        // LES DEUX NATURES SÉPARÉES, ET ÉCRITES ([[D-142]]). L'ancien champ
         // `conditionSupplementaire` n'est plus écrit du tout : le moteur ne le
         // lit plus depuis [[D-138]], et continuer à l'écrire produisait une
         // règle INCONDITIONNELLE à ses yeux — le critère saisi par le praticien

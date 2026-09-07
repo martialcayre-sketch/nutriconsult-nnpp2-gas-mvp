@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-141]].
+// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-142]].
 //
 // `D-138` a séparé l'ancien champ à deux natures `condition_supplementaire` en
 // deux colonnes — `condition_critere_id` et `condition_biologie` — et a fait
@@ -40,7 +40,7 @@ function routesServies(dossier: string, trouves: string[] = []): string[] {
   return trouves;
 }
 
-describe('condition de règle — le champ retiré n’est plus écrit ([[D-141]])', () => {
+describe('condition de règle — le champ retiré n’est plus écrit ([[D-142]])', () => {
   const fichiers = routesServies(ROUTES);
 
   it('lit un corpus de routes non vide (sinon le banc passerait par vacuité)', () => {
@@ -51,7 +51,7 @@ describe('condition de règle — le champ retiré n’est plus écrit ([[D-141]
   // stricte que « ne pas l'écrire », et c'est délibéré : une route n'a aucune
   // raison légitime de le lire non plus — le moteur ne le lit plus, et l'atelier
   // le reçoit par `serialiserRegle`. La mention dans une route ne peut donc être
-  // qu'un retour au défaut que `D-141` ferme.
+  // qu'un retour au défaut que `D-142` ferme.
   it('aucune route ne mentionne `conditionSupplementaire`', () => {
     const coupables: string[] = [];
     for (const fichier of fichiers) {
@@ -67,7 +67,7 @@ describe('condition de règle — le champ retiré n’est plus écrit ([[D-141]
 
   // Le pendant POSITIF : sans lui, retirer les deux écritures neuves ferait
   // passer ce banc au vert alors que la condition ne serait écrite nulle part —
-  // exactement le défaut que `D-141` ferme, retourné.
+  // exactement le défaut que `D-142` ferme, retourné.
   it('les deux routes d’écriture posent bien les DEUX colonnes séparées', () => {
     for (const route of [
       join(RACINE, 'app', 'api', 'praticien', 'regles', 'route.ts'),

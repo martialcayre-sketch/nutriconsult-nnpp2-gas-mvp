@@ -602,6 +602,50 @@ const CONSENTEMENT_SUIVI_V2: VersionDocumentTrust = {
   hash: 'b1e4a215ec692632354ad2563467b1d7228c5c05ea67c0468f4778b24960b414',
 };
 
+const DONNEES_CONFIDENTIALITE_V5: VersionDocumentTrust = {
+  key: 'donnees_confidentialite',
+  type: 'privacy',
+  version: 'v5',
+  titre: 'Vos données personnelles et leur confidentialité',
+  resume:
+    'Quelles données sont recueillies, pourquoi, qui peut y accéder, où elles sont hébergées, et comment exercer vos droits.',
+  sections: [
+    ...DONNEES_CONFIDENTIALITE_V4.sections.map(section => {
+      if (section.titre === 'Quels prestataires techniques interviennent ?') {
+        return {
+          ...section,
+          points: [
+            ...(section.points ?? []),
+            'Sentry — détection des erreurs techniques de l’application, dans l’Union européenne : ce service reçoit le signalement d’un incident (le type d’erreur, la page concernée sous une forme anonymisée, votre navigateur), jamais vos réponses, vos documents, ni votre identité',
+          ],
+        };
+      }
+      if (section.titre === 'Où sont hébergées vos données') {
+        return {
+          ...section,
+          paragraphes: [
+            ...section.paragraphes,
+            'Un service tiers, Sentry, reçoit le signalement des erreurs techniques pour qu’elles puissent être corrigées. Il est configuré sur sa région européenne ; si une autre région était renseignée par erreur, l’application n’enverrait rien du tout plutôt que d’envoyer ailleurs.',
+            'Ce que ce service reçoit est volontairement limité : le type d’erreur, votre navigateur, et l’adresse de la page concernée — dont votre identifiant a été retiré avant l’envoi, de sorte qu’elle désigne la page et non vous. Il ne reçoit ni vos réponses, ni vos documents, ni votre adresse email, et aucun enregistrement de votre écran n’est réalisé.',
+          ],
+        };
+      }
+      return section;
+    }),
+  ],
+  changeLevel: 'information_substantielle',
+  changeSummary:
+    'Un prestataire technique est ajouté à la liste : Sentry, qui reçoit le signalement des erreurs de l’application afin qu’elles soient corrigées. Ce document le nomme avant que ce service ne soit mis en route, et précise ce qu’il reçoit — le type d’erreur, votre navigateur, la page concernée sous une forme d’où votre identifiant a été retiré — comme ce qu’il ne reçoit jamais : vos réponses, vos documents, votre adresse email.',
+  publieLe: '2026-09-07',
+  // MÊME RÉGIME QUE LES v3 ET v4. L'ajout d'un prestataire est une information
+  // substantielle, pas une nouvelle autorisation à recueillir : ce service ne
+  // traite aucune donnée que le patient nous confie, et exiger un accusé
+  // dresserait un mur d'écran devant un espace de soin pour une information
+  // qui se lit.
+  requiresAcknowledgement: false,
+  hash: '465d5422f8ec0c453570aaae5c35d3afccf3f25138456902078075df027f9479',
+};
+
 /** Toutes les versions, les plus récentes en premier par clé. */
 export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.freeze([
   CADRE_ACCOMPAGNEMENT_V1,
@@ -610,6 +654,7 @@ export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.
   DONNEES_CONFIDENTIALITE_V2,
   DONNEES_CONFIDENTIALITE_V3,
   DONNEES_CONFIDENTIALITE_V4,
+  DONNEES_CONFIDENTIALITE_V5,
   USAGE_IA_V1,
   DROITS_PATIENT_V1,
   CONSENTEMENT_SUIVI_V2,
@@ -618,7 +663,12 @@ export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.
 export function getDocumentCourant(key: TrustDocumentKey): VersionDocumentTrust {
   const versions = REGISTRE_DOCUMENTS_TRUST.filter(d => d.key === key);
   if (versions.length === 0) throw new Error(`Document TRUST inconnu : ${key}`);
-  return versions.reduce((a, b) => (a.publieLe >= b.publieLe ? a : b));
+  // `>` ET NON `>=` : à date ÉGALE, c'est la dernière déclarée qui gagne.
+  // Avec `>=`, deux versions publiées le MÊME JOUR laissaient la plus ancienne
+  // courante — et le patient continuait de lire le document périmé sans que
+  // rien ne le signale. Le cas n'était pas théorique : les v4 et v5 de
+  // `donnees_confidentialite` portent toutes deux le 2026-09-07.
+  return versions.reduce((a, b) => (a.publieLe > b.publieLe ? a : b));
 }
 
 export function getVersion(key: TrustDocumentKey, version: string): VersionDocumentTrust | null {

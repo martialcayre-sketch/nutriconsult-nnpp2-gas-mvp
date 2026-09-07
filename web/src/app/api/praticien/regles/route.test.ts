@@ -235,7 +235,7 @@ describe('/api/praticien/regles', () => {
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
   });
 
-  // ── Les deux conditions séparées, et ÉCRITES ([[D-141]]) ──────────────────
+  // ── Les deux conditions séparées, et ÉCRITES ([[D-142]]) ──────────────────
   // Le défaut que ces bancs ferment : les routes écrivaient l'ancien champ
   // `conditionSupplementaire`, que le moteur ne lit plus depuis `D-138`. Une
   // règle créée avec un critère naissait donc INCONDITIONNELLE à ses yeux.

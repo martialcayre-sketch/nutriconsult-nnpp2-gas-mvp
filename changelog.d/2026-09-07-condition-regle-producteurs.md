@@ -1,6 +1,6 @@
 ### Corrigé
 
-- **Une règle conditionnée à un critère l'est enfin vraiment** (`D-141`).
+- **Une règle conditionnée à un critère l'est enfin vraiment** (`D-142`).
   `D-138` avait séparé la condition en deux colonnes et fait lire les nouvelles
   au moteur ; les routes d'écriture continuaient d'écrire l'ancienne. Une règle
   créée depuis l'atelier avec un critère naissait donc **inconditionnelle** aux

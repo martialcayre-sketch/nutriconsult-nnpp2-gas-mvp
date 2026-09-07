@@ -189,7 +189,23 @@ export type CandidatProtocolReviewFlag = {
   contractVersion: typeof C4B_SENTINELLE_VERSION;
   typeFlag: 'cumul_substance' | 'depassement_seuil';
   statutPropose: 'ouvert';
-  niveauAlerte: string;
+  /**
+   * Le niveau de l'alerte de sécurité JOINTE, quand il y en a une — `null`
+   * sinon, et `null` est la réponse juste ([[D-143]]).
+   *
+   * Ce champ portait `'orange'` en dur : inconditionnellement pour un cumul de
+   * substance, et en repli pour un dépassement sans alerte jointe. Aucune
+   * échelle de gradation n'est fondée dans le dépôt — `niveau_alerte` est un
+   * `TEXT` sans `CHECK`, saisi librement à l'atelier, et aucune décision
+   * clinique ne le lit. Écrire une couleur par défaut, c'était inventer la
+   * gradation que [[D-132]] refuse justement d'inventer.
+   *
+   * L'ABSENCE N'AFFAIBLIT RIEN : ce qui alerte est le FAIT — un cumul constaté,
+   * un seuil dépassé —, jamais l'étiquette posée dessus. Le jour où une échelle
+   * sera fondée, elle remplira ce champ ; d'ici là il dit la vérité, qui est
+   * qu'on ne sait pas.
+   */
+  niveauAlerte: string | null;
   ingredient: IngredientResolu;
   ingredientsConcernes: string[];
   dosesEnPresence: DoseEnPresence[];

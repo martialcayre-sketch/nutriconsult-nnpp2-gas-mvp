@@ -53,7 +53,12 @@ export function detecterCumulSubstance(
       contractVersion: C4B_SENTINELLE_VERSION,
       typeFlag: 'cumul_substance' as const,
       statutPropose: 'ouvert' as const,
-      niveauAlerte: 'orange',
+      // AUCUN NIVEAU, parce qu'aucun ne serait fondé ([[D-143]]). Ce champ
+      // portait `'orange'` en dur pour TOUT candidat de cumul : une gradation
+      // clinique que rien ne source, écrite dans du code servi. Un cumul de
+      // substance est un fait constaté ; sa gravité est un jugement, et
+      // personne ne l'a rendu (`DC-19`, `DC-20`).
+      niveauAlerte: null,
       ingredient,
       ingredientsConcernes: [ingredient.code],
       dosesEnPresence: occurrences,
@@ -99,8 +104,12 @@ export function detecterDepassementsSeuils(
       typeFlag: 'depassement_seuil',
       statutPropose: 'ouvert',
       // Le niveau vient de l'alerte jointe quand la bascule de risque est
-      // active — jamais d'un niveau recopié côté seuil (décision actée n°6).
-      niveauAlerte: alerteSecurite ? alerteSecurite.niveauAlerte : 'orange',
+      // active — jamais d'un niveau recopié côté seuil (décision actée n°6),
+      // et JAMAIS d'un repli fabriqué ([[D-143]]) : sans alerte jointe, il n'y
+      // a pas de niveau, et `'orange'` n'était pas une valeur par défaut mais
+      // une invention. Un dépassement de seuil sans alerte reste un
+      // dépassement — c'est le fait qui alerte, pas une couleur.
+      niveauAlerte: alerteSecurite ? alerteSecurite.niveauAlerte : null,
       ingredient: entree.ingredient,
       ingredientsConcernes: [entree.ingredient.code],
       dosesEnPresence: depassements,
