@@ -4,6 +4,84 @@
 
 ## Décisions actives
 
+### D-141 — Sentry est câblé, et ce qui part tient à une variable
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage utilisateur explicite en session, « go A08 et active sentry ») — **câblage exécuté, activation non faite**.
+- Domaine : observabilité, RGPD, sécurité
+
+- Contexte : `A08` de l'audit du 2026-09-06. `@sentry/nextjs` est une
+  dépendance depuis juillet, trois fichiers `sentry.*.config.ts` existent, et un
+  test passait au vert à leur sujet. Le SDK n'était **initialisé nulle part** :
+  `withSentryConfig` absent de `next.config.mjs`, aucun import dans
+  `instrumentation.ts`. Le constat n'est devenu actionnable que le 2026-09-07,
+  la marche en Next 15 ayant rendu `instrumentation.ts` exécutable — il n'était
+  pas compilé sous Next 14.
+
+**1. Le chemin d'URL est une donnée, et il ne l'était pour personne.** Le
+`beforeSend` recopié dans les trois runtimes coupait la query string et
+conservait le chemin. Or `/portail/<idPatient>` et
+`/dashboard/patients/<idPatient>` portent un identifiant, et
+`/portail/lien/<jeton>` porte **le lien magique lui-même**. Un jeton de lien
+magique déposé chez un tiers n'est pas une fuite de donnée : c'est l'entrée du
+portail donnée à qui lit l'événement. Le même dépôt pose
+`Referrer-Policy: no-referrer` pour cette raison exacte
+(`next.config.mjs`) — l'observabilité contredisait l'en-tête.
+
+**2. Liste d'autorisation, jamais liste d'interdiction.** Le masquage
+(`masquageChemin.ts`) reconnaît les routes déclarées et rend leur gabarit ;
+tout le reste est réduit — `/portail/…`, ou `/…` si même la racine est
+inconnue. Une liste des segments « sensibles » aurait été fausse le jour où
+quelqu'un ajoute une route, et son échec aurait été silencieux : du bon côté
+pour le développeur, du mauvais pour le patient. Le repli fermé dégrade le
+diagnostic ; il ne laisse pas sortir.
+
+**3. Un test qui lit un fichier comme du texte ne prouve rien.**
+`sentryConfig.test.ts` cherchait la sous-chaîne `split('?')[0]` dans le source
+des configurations. Il était vert sur des fichiers que personne ne chargeait, et
+serait resté vert sur un masquage faux. Il est remplacé par des bancs qui font
+passer de vrais objets d'événement — 24 cas sur le masquage, 3 sur le câblage,
+trois mutants constatés rouges.
+
+**3 bis. `beforeSend` ne voit que les erreurs, et c'est la contre-épreuve qui
+l'a dit.** Le premier jet ne posait que ce crochet. Or `tracesSampleRate` vaut
+0,1 : une requête sur dix produit une transaction **en régime normal**, portant
+`transaction` et `request.url`. Un nettoyage limité aux erreurs aurait donc
+laissé sortir, quand tout va bien, ce qu'il interdisait pendant un incident —
+et l'inversion est le contraire de ce qu'on croit acheter en instrumentant.
+`beforeSendTransaction` et `beforeSendSpan` ferment ce canal. Deux autres
+trous sont venus de la même passe : les fils `ui.*`, dont le message est un
+sélecteur DOM porteur d'`aria-label` en français, et huit routes absentes de la
+liste d'autorisation le jour de son écriture — d'où le banc qui parcourt
+`web/src/app` et rougit à la prochaine.
+
+**4. La transmission tient à `SENTRY_DSN`, et la condition est écrite chez
+nous.** `Sentry.init` sans DSN est déjà inerte : le test explicite dans
+`instrumentation.ts` est un doublon **délibéré**. Sur une application de santé,
+ce qui déclenche un envoi vers un tiers doit se lire dans le dépôt en une ligne,
+pas se déduire du comportement d'une dépendance. Conséquence assumée : ce
+commit **n'active rien**. Il rend l'activation possible, et la rend sûre.
+
+**5. Ce qui reste dû, et à qui.** Trois pièces, toutes au responsable de
+traitement, aucune à l'outil :
+
+- poser `SENTRY_DSN` et `NEXT_PUBLIC_SENTRY_DSN` dans l'environnement Scalingo ;
+- **déclarer Sentry aux personnes.** `docs/DOSSIER_RGPD.md:194` pose l'écart
+  depuis le 2026-08-07 — « soit il ne traite aucune donnée personnelle et cela
+  s'écrit, soit la liste patient est incomplète et se corrige ». L'activation
+  tranche dans le second sens : la liste des prestataires de
+  `donnees_confidentialite` ne cite pas Sentry. `D-137` est le précédent, et il
+  dit ce que coûte un document normatif qui nie un flux réel ;
+- le DPA et la vérification de résidence UE, déjà au registre d'actions
+  (`docs/DOSSIER_RGPD.md:614`, échéance 2026-10-21).
+
+**6. Ce que cette décision ne tranche pas.** Elle ne dit pas que le masquage
+suffit. Un identifiant interpolé dans un `throw new Error()` reste invisible au
+nettoyage : le caviardage attrape les e-mails et les suites opaques de 24
+caractères ou plus, pas un prénom ni un motif de consultation. La discipline des
+messages d'erreur reste la première barrière ; le nettoyage est la seconde, pas
+la seule.
+
 ### D-140 — Une règle clinique nomme le claim qui la fonde, ou elle ne s'applique pas
 
 - Date : 2026-09-07

@@ -10,6 +10,21 @@ vi.mock('@/lib/observability/logger', () => ({
   },
 }));
 
+// Les deux configurations Sentry sont moquées : les importer pour de vrai
+// lancerait `Sentry.init` dans le worker Vitest. Ce qu'on veut prouver n'est
+// pas ce que fait Sentry, c'est QUE le fichier est atteint — il ne l'était par
+// personne avant ce câblage.
+const initServeur = vi.fn();
+const initEdge = vi.fn();
+vi.mock('../sentry.server.config', () => {
+  initServeur();
+  return {};
+});
+vi.mock('../sentry.edge.config', () => {
+  initEdge();
+  return {};
+});
+
 import { register } from './instrumentation';
 
 /**
@@ -30,6 +45,7 @@ const tourDeBoucle = () => new Promise<void>(resoudre => setImmediate(resoudre))
 
 describe('instrumentation — une exception fatale doit rendre la main à Node', () => {
   const runtimeInitial = process.env.NEXT_RUNTIME;
+  const dsnInitial = process.env.SENTRY_DSN;
 
   beforeEach(() => {
     fatal.mockClear();
@@ -37,12 +53,17 @@ describe('instrumentation — une exception fatale doit rendre la main à Node',
     // Les cas ci-dessous portent sur le runtime Node : on le pose explicitement
     // plutôt que d'hériter de la machine (Vitest laisse NEXT_RUNTIME absent).
     process.env.NEXT_RUNTIME = 'nodejs';
+    initServeur.mockClear();
+    initEdge.mockClear();
+    delete process.env.SENTRY_DSN;
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     if (runtimeInitial === undefined) delete process.env.NEXT_RUNTIME;
     else process.env.NEXT_RUNTIME = runtimeInitial;
+    if (dsnInitial === undefined) delete process.env.SENTRY_DSN;
+    else process.env.SENTRY_DSN = dsnInitial;
   });
 
   it('journalise puis sort en 1 — sans la sortie, le conteneur servirait un état indéfini', async () => {
@@ -97,4 +118,41 @@ describe('instrumentation — une exception fatale doit rendre la main à Node',
       expect(erreur).not.toHaveBeenCalled();
     },
   );
+
+  // ── Sentry : le câblage qui manquait ────────────────────────────────────
+
+  it("n'initialise RIEN sans SENTRY_DSN — la variable est ce qui autorise la transmission", async () => {
+    capterHandlers();
+    await register();
+
+    expect(initServeur, 'la configuration serveur a été chargée sans DSN').not.toHaveBeenCalled();
+    expect(initEdge).not.toHaveBeenCalled();
+  });
+
+  it('charge la configuration SERVEUR en runtime Node quand le DSN est posé', async () => {
+    process.env.SENTRY_DSN = 'https://cle@exemple.invalid/1';
+    const handlers = capterHandlers();
+
+    await register();
+
+    expect(initServeur).toHaveBeenCalledTimes(1);
+    expect(initEdge).not.toHaveBeenCalled();
+    // Le câblage Sentry ne doit pas avoir désarmé les handlers de process :
+    // c'est la régression qu'un `return` mal placé produirait.
+    expect(handlers.get('uncaughtException')).toBeDefined();
+    expect(handlers.get('unhandledRejection')).toBeDefined();
+  });
+
+  it("charge la configuration EDGE en runtime edge, et n'y pose toujours aucun handler", async () => {
+    process.env.NEXT_RUNTIME = 'edge';
+    process.env.SENTRY_DSN = 'https://cle@exemple.invalid/1';
+    const handlers = capterHandlers();
+
+    await register();
+
+    expect(initEdge).toHaveBeenCalledTimes(1);
+    expect(initServeur, 'la configuration serveur n\'a rien à faire en edge').not.toHaveBeenCalled();
+    // Le contrat du bac à sable edge tient malgré la branche neuve.
+    expect(handlers.size, `handlers posés en edge : ${[...handlers.keys()].join(', ')}`).toBe(0);
+  });
 });
