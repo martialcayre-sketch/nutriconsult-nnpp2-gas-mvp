@@ -43,7 +43,17 @@ test.describe('Fiche-trajectoire peuplée (Spirale navigable)', () => {
     // Cliquer l'arc sélectionne le repère : le bouton texte reflète le même
     // état (une seule sélection, pas deux navigations) et la relecture datée
     // se monte (mécanique asOf, lecture seule).
-    await arc.click();
+    //
+    // Position explicite, comme pour l'arc « Aujourd'hui » plus bas. Le clic
+    // automatisé vise le centre de la boîte de l'arc, c'est-à-dire le centre
+    // de la Spirale — or `epaisseurCible = max(épaisseur, espacement)` ne fait
+    // atteindre ce centre à la bande intérieure QUE lorsqu'il y a exactement
+    // un repère (espacement 32, bande [0, 32]). Dès deux repères la bande
+    // devient [8, 24] ou plus étroite et le centre ne touche plus aucun arc :
+    // le test tomberait pour la seule raison que la fixture a grandi.
+    // Vérifié au navigateur (Chromium et WebKit iPhone 13) sur 1 à 4 repères.
+    // On vise donc le haut du trait T0 : x = 86 (milieu), y = (60−16)×172/120.
+    await spirale.click({ position: { x: 86, y: 63 } });
     await expect(panneau.getByRole('button', { name: 'T0 · 01/06/2026' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByText(/Vous lisez l’état du 01\/06\/2026/)).toBeVisible();
 
@@ -76,9 +86,13 @@ test.describe('Fiche-trajectoire peuplée (Spirale navigable)', () => {
     // or le centre du cercle « Aujourd'hui » (anneau extérieur, r=48 dans un
     // viewBox 120 rendu à 172 px) tombe dans la bande de l'anneau intérieur.
     // On vise le haut de son trait : x = 86 (milieu), y ≈ (60−48)×172/120.
-    await spirale
-      .getByRole('button', { name: 'Aujourd’hui — revenir au présent' })
-      .click({ position: { x: 86, y: 17 } });
+    //
+    // Le repère est celui du SVG, pas celui du bouton : la boîte d'un cercle
+    // exclut son trait, donc la même coordonnée rapportée au bouton glisse
+    // vers l'intérieur et touche un arc PASSÉ dès le deuxième repère —
+    // l'inverse de ce que ce test affirme. Vérifié au navigateur (Chromium et
+    // WebKit iPhone 13) sur 1 à 4 repères.
+    await spirale.click({ position: { x: 86, y: 17 } });
     await expect(page.getByText(/Vous lisez l’état du/)).toHaveCount(0);
   });
 });
