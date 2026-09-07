@@ -45,6 +45,20 @@ export async function confirmerEpisodeT0(page: Page): Promise<void> {
       + 'à la fixture (rideau, anamnèse ou synthèse) — la checklist à l’écran dit laquelle',
   ).toBeEnabled();
   await confirmerT0.click();
+
+  // LA CONFIRMATION EST ATTENDUE, PAS SEULEMENT DÉCLENCHÉE. Le clic poste la
+  // confirmation et rend la main aussitôt ; les appelants lisent ensuite le
+  // cockpit par un `APIRequestContext` DISTINCT de la page, qui ne partage pas
+  // son en-vol. Sans ce point d'attente, la lecture peut précéder l'écriture —
+  // le cockpit répond alors `proposal_required` alors que TOUTES ses
+  // préconditions dures sont satisfaites, et l'échec accuse le code au lieu de
+  // la course. Observé en CI (Linux) le 2026-09-07.
+  //
+  // Le rail est le bon signal, et le seul : son libellé « renseignée » dérive
+  // de `etatRuntime.episodeConfirme` (`FichePatientPanel.tsx`), c'est-à-dire du
+  // MÊME runtime que les appelants interrogeront. Le voir posé, c'est savoir
+  // que la lecture suivante répondra `ready`.
+  await expect(railRenseigne).toBeVisible();
 }
 
 /**
