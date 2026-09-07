@@ -53,7 +53,15 @@ export async function momentumJalonsParPatient(
   const reponsesParPatient = new Map<string, ReponseBrute[]>();
   for (const r of reponses) {
     const liste = reponsesParPatient.get(r.idPatient) ?? [];
-    liste.push({ idQuestionnaire: r.idQuestionnaire, dateReponse: r.dateReponse, scoresJson: r.scoresJson });
+    liste.push({
+      idQuestionnaire: r.idQuestionnaire,
+      dateReponse: r.dateReponse,
+      scoresJson: r.scoresJson,
+      // LE STATUT ÉTAIT SÉLECTIONNÉ PLUS HAUT PUIS PERDU ICI (`A03`).
+      // Le moteur porte le filtre ; cet adaptateur l'affamait, et le
+      // champ optionnel faisait passer l'oubli pour un « VALID ».
+      statutValidite: r.statutValidite,
+    });
     reponsesParPatient.set(r.idPatient, liste);
   }
 

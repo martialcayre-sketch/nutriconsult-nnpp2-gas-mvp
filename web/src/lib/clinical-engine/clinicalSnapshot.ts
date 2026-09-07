@@ -149,6 +149,18 @@ export function buildClinicalSnapshot(input: {
     idQuestionnaire: response.questionnaireId,
     dateReponse: new Date(response.observedAt),
     scoresJson: response.scoresJson,
+    // `null` EST UNE AFFIRMATION, PAS UN OUBLI — et c'est la différence que le
+    // type obligatoire achète. Les entrées de ce moteur sont filtrées EN AMONT,
+    // avant d'atteindre la chaîne C1 : `api/praticien/cockpit/route.ts:250` et
+    // `verifierChaineC1.ts:80` appliquent tous deux
+    // `filtrerPassationsExploitables`. Le type de `response` ne transporte pas
+    // le statut, il n'y a donc rien à relayer.
+    //
+    // CE QUE CETTE LIGNE ENGAGE : que tout futur appelant de
+    // `buildClinicalSnapshot` filtre lui aussi. Le jour où l'un ne le fera pas,
+    // c'est ici qu'il faudra faire descendre le champ jusqu'à `response` plutôt
+    // que d'élargir ce `null`.
+    statutValidite: null,
   }));
   const reponsesParQuestionnaire = construireReponsesParQuestionnaire(rawResponses);
   const equilibre = calculerEquilibre(reponsesParQuestionnaire);

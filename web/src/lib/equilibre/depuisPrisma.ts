@@ -9,15 +9,25 @@ const JOUR_MS = 24 * 60 * 60 * 1000;
 // dépendance directe au client Prisma pour garder ce module testable avec des
 // fixtures synthétiques, comme le reste de web/src/lib/equilibre.
 //
-// `statutValidite` (LOT-00, chaîne T0) est optionnel : les appelants qui le
-// sélectionnent permettent au filtre de validité de s'appliquer (drapeau
-// WN_ENABLE_VALIDITE_PASSATIONS) ; absent, la passation vaut VALID — les
-// fixtures existantes restent valides telles quelles.
+// `statutValidite` (LOT-00, chaîne T0) était OPTIONNEL, et c'est ce qui a
+// produit le défaut `A03` : « absent, la passation vaut VALID ». Un champ
+// facultatif dont le défaut est « valide » rend l'OUBLI indiscernable d'une
+// AFFIRMATION de validité — un fail-open par le type, que le compilateur
+// approuve en silence.
+//
+// Il est obligatoire depuis le 2026-09-08. Le rendre tel a immédiatement
+// désigné trois adaptateurs qui le perdaient, dont un
+// (`clinical-engine/clinicalSnapshot.ts`) que ni l'audit, ni la revue, ni la
+// contre-épreuve n'avaient trouvé. Passer `null` reste possible — mais c'est
+// alors un geste écrit, relisible, et non plus une omission.
+//
+// Coût assumé : les fixtures doivent porter le champ. C'est précisément le prix
+// qui achète l'impossibilité de l'oublier.
 export type ReponseBrute = {
   idQuestionnaire: string;
   dateReponse: Date;
   scoresJson: unknown;
-  statutValidite?: string | null;
+  statutValidite: string | null;
 };
 
 // Les réponses soumises via api/patient/submit portent les réponses brutes

@@ -19,6 +19,7 @@ function reponsesToutesA(valeur: number): Record<string, number> {
 
 function ligne(dateIso: string, rawAnswers: Record<string, number> | null): ReponseBrute {
   return {
+    statutValidite: null,
     idQuestionnaire: 'Q_MOD_01',
     dateReponse: new Date(dateIso),
     scoresJson: rawAnswers ? { rawAnswers } : { total: 12 },
