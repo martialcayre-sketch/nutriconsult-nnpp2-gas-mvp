@@ -1461,6 +1461,87 @@ describe('journalisation de /api/portail/agenda-alimentaire', () => {
     expect(ev400.event).toBe('PORTAIL_PATIENT.AGENDA_ALIMENTAIRE.FORME_REJETEE');
   });
 
+  // ── Le CODE de domaine atteint le journal ([[D-144]]) ─────────────────────
+  //
+  // Ce qui manquait : le message de toute erreur est MASQUÉ avant journalisation
+  // — un `PrismaClientValidationError` recopierait `data.reponses`, donc les
+  // horaires de prises du patient. Le prix était qu'un refus de domaine ne
+  // disait plus LEQUEL des onze contrôles avait mordu. Ces bancs éprouvent la
+  // restitution ET le fait qu'elle n'ait rien rouvert.
+  it.each([
+    ['heure hors pas de 15 min', { ...reponses, prises: [{ heure: '08:07', nature: 'repas' }] }, 'heure_invalide'],
+    ['nature inconnue', { ...reponses, prises: [{ heure: '08:00', nature: 'gouter_secret' }] }, 'nature_prise_invalide'],
+    ['aucune prise ni déclaration', { ...reponses, prises: [] }, 'aucune_prise_declaree'],
+    ['observation sur une journée sans prise', { aucunePrise: true, ultraTransformes: true }, 'sans_prise_observee'],
+    ['prises dans le désordre', {
+      ...reponses,
+      prises: [{ heure: '12:30', nature: 'repas' }, { heure: '08:00', nature: 'repas' }],
+    }, 'prises_desordonnees'],
+  ])('le refus de domaine « %s » journalise son code', async (_libelle, mauvaises, code) => {
+    const { POST } = await chargerRoute('true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await POST(req('POST', cookieFor(), { body: corpsPost({ reponses: mauvaises }) }));
+    const lignes = warn.mock.calls.map(appel => String(appel[0]));
+    warn.mockRestore();
+
+    expect(res.status).toBe(400);
+    expect(lignes).toHaveLength(1);
+    const evenement = JSON.parse(lignes[0]) as {
+      event: string;
+      error?: { type?: string; message?: string };
+      metadata?: { erreurCode?: string };
+    };
+    expect(evenement.event).toBe('PORTAIL_PATIENT.AGENDA_ALIMENTAIRE.JOUR_REJETE');
+    // LE CODE, qui est tout l'objet du lot.
+    expect(evenement.metadata?.erreurCode).toBe(code);
+    // LA CLASSE EST LE MARQUEUR : elle distingue au premier coup d'œil un refus
+    // de domaine d'une panne, là où tout sortait en « TypeError ».
+    expect(evenement.error?.type).toBe('ErreurJourAlimentaire');
+  });
+
+  // LE TERME QUI GARDE LA GARDE. Restituer le code ne doit RIEN démasquer : le
+  // message reste substitué, et la saisie du patient n'apparaît nulle part.
+  // Sans ce terme, un futur « puisque ces messages sont sûrs, servons-les »
+  // passerait vert.
+  it('le code est rendu SANS démasquer le message ni la saisie', async () => {
+    const { POST } = await chargerRoute('true');
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await POST(req('POST', cookieFor(), {
+      body: corpsPost({ reponses: { ...reponses, prises: [{ heure: '08:07', nature: 'repas' }] } }),
+    }));
+    const ligne = String(warn.mock.calls[0][0]);
+    warn.mockRestore();
+
+    expect(JSON.parse(ligne).error.message).toContain('non journalisé');
+    // Ni l'heure fautive, ni le nom du champ protégé, ni la nature de la prise.
+    expect(ligne).not.toContain('08:07');
+    expect(ligne).not.toContain('data.reponses');
+    expect(ligne).not.toContain('Heure invalide');
+  });
+
+  // Une `TypeError` venue d'AILLEURS dans la pile ne porte aucun code, et c'est
+  // exactement pourquoi la classe est le marqueur : aucun tri au cas par cas
+  // n'a à être écrit ni tenu à jour.
+  it('une TypeError hors domaine ne journalise aucun code', async () => {
+    const { POST } = await chargerRoute('true');
+    prisma.agendaAlimentaireJour.create.mockRejectedValueOnce(
+      new TypeError('panne interne citant une valeur quelconque'),
+    );
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const res = await POST(req('POST', cookieFor(), { body: corpsPost() }));
+    const lignes = warn.mock.calls.map(appel => String(appel[0]));
+    warn.mockRestore();
+
+    expect(res.status).toBe(400);
+    const evenement = JSON.parse(lignes[0]) as {
+      error?: { type?: string };
+      metadata?: { erreurCode?: string };
+    };
+    expect(evenement.metadata?.erreurCode).toBeUndefined();
+    expect(evenement.error?.type).toBe('TypeError');
+    expect(lignes[0]).not.toContain('panne interne');
+  });
+
   it('un refus d’accès déclare domain: SECURITY, jamais le préfixe de son code', async () => {
     // `EventCode` et `LogDomain` sont deux champs INDÉPENDANTS de `LogPayload`
     // (`observability/logger.ts:5-11`). Sur un `logger.security`, `domain` porte

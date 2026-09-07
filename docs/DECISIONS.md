@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-144 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
+### D-145 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
 
 - Date : 2026-09-07
 - Statut : **constat établi et consigné ; l'arbitrage appartient au responsable de traitement et n'est pas pris ici.**
@@ -24,7 +24,7 @@ posés en production : `WN_RECHERCHE_CORPUS_ENABLED` depuis le 2026-08-22
 **2. Ce qui rend le constat sévère, ce n'est pas le flux, c'est le silence.**
 Au 2026-09-07, « OpenAI » n'apparaît **dans aucune pièce de conformité** : ni
 `docs/DOSSIER_RGPD.md`, ni `docs/GATES_GO_NO_GO.md`, ni le module
-`web/src/lib/trust/`, ni **aucune des 143 décisions** du registre — compté, pas
+`web/src/lib/trust/`, ni **aucune des 144 décisions** du registre — compté, pas
 supposé, et recompté à chaque fusion concurrente (`D-142` et `D-143`, arrivées
 pendant l'attente du CI, ne le nomment pas davantage). Un tiers reçoit des requêtes depuis la production, et le corpus
 documentaire qui prétend décrire les destinataires ne le connaît pas.
@@ -59,10 +59,9 @@ se repose pas dans ces termes : `registre.dossier.test.ts` tient la rubrique 6 e
 le document patient sur les mêmes noms, et `gouvernance.ts` ne recopie plus la
 liste, il la dérive.
 
-**7. Note de numérotation.** Cette décision a porté successivement `D-142` puis
-`D-143`, tous deux pris entre-temps par des sessions parallèles (`#943`, `#945`)
-pendant que sa PR attendait son CI. Renumérotée deux fois à la fusion, sans autre
-changement de contenu.
+**7. Note de numérotation.** Cette décision a porté successivement `D-142`, `D-143` tous deux puis `D-144`, tous pris entre-temps par
+des sessions parallèles pendant que sa PR attendait son CI. Renumérotée TROIS
+fois à la fusion, sans aucun changement de contenu.
 
 Ce n'est pas un incident isolé mais la conséquence d'une règle : le numéro se
 choisit à l'ÉCRITURE, alors qu'il ne devient acquis qu'au MERGE. Trois sessions
@@ -71,6 +70,64 @@ ouvertes le même soir suffisent à le montrer. Le banc
 exactement son office — mais il l'attrape APRÈS, et le coût est une
 renumérotation manuelle par course perdue.
 
+### D-144 — Un refus qui ne dit pas lequel des onze contrôles a mordu ne se diagnostique pas
+
+- Date : 2026-09-07
+- Statut : accepté (piste consignée à [[D-015]], reprise et posée)
+- Domaine : agenda alimentaire, observabilité, protection des données
+
+**§1 — Le prix payé, et pourquoi il était juste.** La route d'écriture de
+l'agenda alimentaire **masque le message** de toute erreur avant de la
+journaliser. Le motif est solide : un `PrismaClientValidationError` recopie
+l'invocation fautive dans son message, `data.reponses` **comprise** — les
+horaires de prises du patient, c'est-à-dire de la donnée de santé, partiraient
+en clair dans les journaux. `sanitizeError` ne l'en empêcherait pas : il tronque
+et masque quelques motifs, il ne lit pas la structure d'un message.
+
+Le prix : un `400` de domaine ne disait plus **lequel** des onze contrôles de
+`jour.ts` avait mordu. Un refus sans motif ne se diagnostique pas ; il
+s'accumule.
+
+**§2 — Pourquoi un code, et non un démasquage.** `D-015` notait que ces
+`TypeError` sont sûres — aucune n'interpole une valeur du patient. **Vérifié à
+nouveau, et l'affirmation tient pour `jour.ts`** : les seules interpolations
+sont des libellés littéraux, un rang de prise et une constante de module.
+
+**Mais elle ne tient pas pour le `catch`.** Celui-ci attrape aussi les
+`TypeError` levées par la persistance et par la lecture de contrat, dont
+certains messages interpolent une valeur reçue ou relue. Démasquer les messages
+au motif que *ceux-ci* sont sûrs ouvrirait la porte à ceux qui ne le sont pas.
+Un code énuméré, lui, est sûr **par construction** : c'est une constante du
+fichier, jamais une donnée.
+
+**§3 — La classe est le marqueur, le code est la charge.** C'est la réponse à la
+question laissée ouverte. `ErreurJourAlimentaire extends TypeError` porte un
+`code` énuméré ; une `TypeError` nue venue d'ailleurs dans la pile n'en porte
+pas et **reste masquée**, sans qu'aucun tri au cas par cas ait à être écrit ni
+tenu à jour. L'héritage de `TypeError` n'est pas cosmétique : la route branche
+son `400` sur `err instanceof TypeError`, et changer de base changerait le
+statut rendu au patient.
+
+**§4 — La plomberie existait déjà, elle n'avait rien à transporter.**
+`traceErreur` lit `err.code` et le range dans `metadata.erreurCode` depuis sa
+première version — la fonction était écrite pour les codes Prisma (`P2002`).
+Poser un `code` sur la classe suffit donc : aucune modification de la route
+n'était nécessaire. `D-015` imaginait un lot ; c'était un champ.
+
+**§5 — Le défaut que le banc a trouvé, et qui rend la garde nécessaire.**
+`sanitizeString` remplace **tout mot de 24 caractères ou plus par `[id]`**.
+**Trois des onze codes la franchissaient** à la première écriture et sortaient
+`erreurCode: "[id]"` — soit exactement l'absence de diagnostic qu'ils existent
+pour combler. C'est le même piège qui avait déjà coûté la trace des quatre
+classes d'erreur Prisma. Il se referme par un banc paramétré sur la liste des
+codes, éprouvé par mutation, et non par une note de commentaire.
+
+**§6 — Ce que ce lot ne fait pas.** Il ne change **rien** à la réponse rendue au
+patient : message fixe, `reason: 'invalid'`, statut `400`. Le code va au
+journal, pas à l'écran. Et il ne touche à aucune des neuf autres routes qui
+rendent `err.message` verbatim : elles ne manipulent pas d'objet dont le message
+puisse citer une donnée de santé, et les aligner sans motif serait un
+refactoring non demandé.
 ### D-143 — Une couleur par défaut n'est pas un défaut, c'est une invention
 
 - Date : 2026-09-07
@@ -8097,6 +8154,61 @@ commente une synthèse, elle ne la re-valide pas.
 - Réversibilité : une ligne de `CLAUDE.md` et cette entrée.
 - Référence : `scripts/wn-diagnostic-e2e.mjs`, PR #662,
   `docs/claude/handoffs/2026-08-12-0546-diagnostic-blocage-navigateur-e2e.md`
+
+> **Note du 2026-09-07 — l'arbitre nommé ici n'est plus connu comme immunisé,
+> et une relance a été faite en son nom.** La ligne de contexte ci-dessus dit
+> « Jamais observé en CI (Linux) ». Elle est **fausse depuis le 2026-09-07** :
+> le CI de #943 a rougi sur `e2e/portail-bilan.spec.ts`, projet iPhone 13
+> (WebKit), sur `page.goto`, dans un spec que cette PR ne touchait pas.
+>
+> **Le symptôme n'est pourtant PAS le même, et rien ne permet de les
+> confondre.** Le blocage local décrit ici est une **expiration à 120 s avec
+> trace réseau vide** — aucune requête HTTP n'est jamais partie. Celui du CI
+> est un `WebKit encountered an internal error`, c'est-à-dire une erreur rendue
+> par le moteur, pas une attente qui s'épuise. Même moteur, même projet, même
+> appel ; symptômes distincts. Que ce soit le **même** blocage est **inconnu
+> faute de preuve** (`D-125`) — et le supposer serait précisément l'erreur que
+> le garde-fou de cette décision existe pour empêcher.
+>
+> **Ce que j'ai fait, et qui contredit cette décision.** Devant ce rouge, j'ai
+> **relancé le job échoué**, obtenu un vert, et déclaré la PR prête. Cette
+> décision écrit pourtant, mot pour mot, qu'elle « n'autorise pas à rejouer une
+> suite jusqu'au vert […] — un réessai transformerait ce blocage en succès
+> silencieux et emporterait avec lui les vrais échecs intermittents ». Le
+> raisonnement que je me suis tenu — « le spec n'est pas touché par la PR, donc
+> c'est `D-049` » — classe l'échec **avant** de l'avoir instruit, ce qui est la
+> forme même de l'erreur visée. Le code de #943 a par ailleurs passé le CI
+> complet sur la tête fusionnée ; rien n'est à défaire. C'est le **geste** qui
+> est consigné, pas un doute sur ce lot.
+>
+> **Ce que cela déplace.** Deux appuis de cette décision reposaient sur
+> l'immunité du CI :
+>
+> - le CI **tient lieu** de palier E2E — un rouge E2E du CI se lisait comme
+>   une régression réelle, et cette lecture n'est plus garantie ;
+> - la condition de sortie compte **deux séquences complètes consécutives**
+>   sans blocage. Ce compte porte sur la séquence **locale**, et ma relance a
+>   porté sur un job du CI : elle ne l'a donc pas faussé — la séquence complète
+>   locale du 2026-09-07 est verte, blocage compris, et compte pour une. Ce qui
+>   est atteint, c'est la **prémisse** du compte : deux séquences locales
+>   propres prouvaient la disparition tant que le phénomène était réputé
+>   local-seul. Il ne l'est plus de façon certaine, et elles ne prouveraient
+>   plus la même chose.
+>
+> **Pourquoi rien n'a alerté.** `wn-diagnostic-e2e.mjs` classe le symptôme
+> local (« `page.goto` expiré, et AUCUNE requête HTTP émise »). Il ne connaît
+> pas celui du CI : aucun classement n'est sorti, et rien n'a dit que je
+> sortais du cadre.
+>
+> **Écarté — apprendre le symptôme du CI au diagnostic.** Ce serait faire
+> classer automatiquement « blocage connu, bénin » un échec dont on ne sait pas
+> qu'il est celui-ci. L'outil automatiserait le mauvais raisonnement que cette
+> note vient de constater, au lieu de l'empêcher.
+>
+> **Reste à l'arbitrage** : si le CI n'est plus un arbitre connu comme sûr,
+> `D-049` a-t-elle encore un arbitre ? La question est posée, pas tranchée —
+> elle change le régime de validation des PR de classe
+> migration/scoring/clinique, ce qui n'est pas à la main du code.
 
 ### D-048 — Les trois arbitrages cliniques du LOT-01 (importance de C-STR, fenêtre temporelle, cohabitation à l'écran)
 
