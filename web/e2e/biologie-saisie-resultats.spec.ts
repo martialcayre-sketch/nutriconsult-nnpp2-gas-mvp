@@ -69,6 +69,21 @@ async function consigner(page: Page, panneau: ReturnType<Page['getByRole']>, sai
   valeur: string;
   preleveLe: string;
 }) {
+  // LE PANNEAU EST ATTENDU AU REPOS AVANT D'ÊTRE REMPLI. Après une consignation
+  // réussie, le composant enchaîne : réponse du POST, puis `chargerResultats()`
+  // — un SECOND aller-retour —, puis `envoiEnCours` relâché, et ENFIN
+  // `setValeur('')` (`EstimeMesurePanel.tsx`). Or l'attente ci-dessous ne porte
+  // que sur la réponse du POST : la saisie suivante commencerait avant ce reset,
+  // qui effacerait alors ce qu'on vient de taper. `prete` retombe à faux, le
+  // bouton reste `disabled`, et Playwright réessaie 120 s avant d'accuser la
+  // saisie d'un défaut qui n'est qu'un ordre d'arrivée.
+  //
+  // `setValeur('')` est la DERNIÈRE écriture d'état de la séquence : voir le
+  // champ vide, c'est savoir que tout le reste a atterri. Le champ est contrôlé
+  // (`value={valeur}`), l'assertion observe donc bien l'état, pas le DOM initial.
+  // Observé en CI le 2026-09-07 (#929), et déjà une fois auparavant (#918).
+  await expect(panneau.getByLabel(/^Valeur/)).toHaveValue('');
+
   await panneau.getByLabel('Analyte (unité du catalogue)').selectOption(ANALYTE_CODE);
   await panneau.getByLabel(/^Valeur/).fill(saisie.valeur);
   await panneau.getByLabel(/Prélevé le/).fill(saisie.preleveLe);
