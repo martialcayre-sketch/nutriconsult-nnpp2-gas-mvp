@@ -9,6 +9,9 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     supplementIngredientForme: { findUnique: vi.fn() },
     supplementSourceReference: { findUnique: vi.fn() },
     clinicalCriterion: { findUnique: vi.fn() },
+    // `rag_corpus_claims` est SQL-brut hors `schema.prisma` : la validité du
+    // claim fondateur se lit en requête brute ([[D-140]]).
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -29,6 +32,8 @@ const LIGNE = {
   doseCibleBasse: 100,
   doseCibleHaute: 300,
   gradePreuveScientifique: 'modere',
+  claimId: 'WN-CL-2026-001',
+  versionClaim: 'v1.0',
   versionRegle: 2,
   actif: true,
   creeLe: new Date('2026-07-20T10:00:00.000Z'),
@@ -67,6 +72,8 @@ const CORPS_CREATION = {
   gradePreuveScientifique: 'modere',
   justification: 'Justification sourcée.',
   sourceReferenceId: 'src_1',
+  claimId: 'WN-CL-2026-001',
+  versionClaim: 'v1.0',
 };
 
 function requetePost(body: unknown): Request {
@@ -92,6 +99,10 @@ describe('/api/praticien/regles', () => {
       ingredientId: 'ing_mag',
     });
     prisma.supplementSourceReference.findUnique.mockResolvedValue({ id: 'src_1', actif: true });
+    // Le claim du corps de création est VALIDE au corpus, sauf mention contraire.
+    prisma.$queryRaw.mockResolvedValue([
+      { claim_id: 'WN-CL-2026-001', version_claim: 'v1.0' },
+    ]);
     prisma.clinicalRule.create.mockResolvedValue(LIGNE);
   });
 
@@ -236,5 +247,54 @@ describe('/api/praticien/regles', () => {
     expect(reponse.status).toBe(409);
     expect((await reponse.json()).reason).toBe('lignee_existante');
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+  });
+
+  // ── Le claim fondateur ([[D-140]]) ────────────────────────────────────────
+  // « Une plage fonctionnelle sans claim validé n'existe pas, donc n'est jamais
+  // servie » : l'invariant des plages biologiques et des règles d'orientation,
+  // que `clinical_rules` était seule à ne pas porter.
+  describe('claim fondateur', () => {
+    it.each([
+      ['aucun des deux', {}],
+      ['identifiant seul', { claimId: 'WN-CL-2026-001' }],
+      ['version seule', { versionClaim: 'v1.0' }],
+    ])('refuse une règle sans claim complet (%s)', async (_libelle, partiel) => {
+      const { claimId: _c, versionClaim: _v, ...sansClaim } = CORPS_CREATION;
+      const reponse = await POST(requetePost({ ...sansClaim, ...partiel }));
+      expect(reponse.status).toBe(400);
+      expect((await reponse.json()).reason).toBe('claim_requis');
+      expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+    });
+
+    // Le FORMAT est refusé sans interroger le corpus : une saisie manifestement
+    // fausse ne mérite pas une requête, et le message dit quoi corriger.
+    it.each([
+      ['identifiant hors format', { claimId: 'CL-2026-001' }],
+      ['version hors format', { versionClaim: 'premiere' }],
+    ])('refuse un claim %s, sans interroger le corpus', async (_libelle, faux) => {
+      const reponse = await POST(requetePost({ ...CORPS_CREATION, ...faux }));
+      expect(reponse.status).toBe(400);
+      expect((await reponse.json()).reason).toBe('claim_format_invalide');
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+    });
+
+    // BIEN FORMÉ NE VEUT PAS DIRE VALIDÉ : le corpus est la seule autorité.
+    it('refuse un claim bien formé que le corpus ne valide pas', async () => {
+      prisma.$queryRaw.mockResolvedValue([]);
+      const reponse = await POST(requetePost(CORPS_CREATION));
+      expect(reponse.status).toBe(422);
+      expect((await reponse.json()).reason).toBe('claim_non_valide');
+      expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+    });
+
+    it('écrit le claim sur la règle créée', async () => {
+      await POST(requetePost(CORPS_CREATION));
+      expect(prisma.clinicalRule.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' }),
+        }),
+      );
+    });
   });
 });

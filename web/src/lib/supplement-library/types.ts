@@ -2,6 +2,9 @@
 // Doctrine (docs/claude/MOTEUR_INTENTION_CLINIQUE_CONTEXTE.md) : le LLM comprend
 // l'intention, le moteur déterministe SIGNALE, le praticien décide. Aucun score
 // agrégé, aucun tri « meilleur choix », aucune somme automatique de doses.
+import type { ReferenceClaim } from '@/lib/rag/claims/validite';
+
+export type { ReferenceClaim };
 
 export const C4B_RESOLUTION_VERSION = 'c4b-resolution-v1' as const;
 export const C4B_SENTINELLE_VERSION = 'c4b-sentinelle-v1' as const;
@@ -92,6 +95,18 @@ export type RegleResolue = {
    * un identifiant. `null` = règle non conditionnée à un critère.
    */
   conditionCritere: CritereResolu | null;
+  /**
+   * Le claim du corpus qui FONDE la règle ([[D-140]]) — la base l'exige
+   * (`claim_id`/`version_claim` NOT NULL depuis
+   * `20260907210000_regle_claim_obligatoire`).
+   *
+   * `null` RESTE POSSIBLE ICI, et ce n'est pas une contradiction : le code se
+   * déploie AVANT que la migration de resserrement soit approuvée ([[D-087]]),
+   * et une ligne lue dans cette fenêtre pourrait n'en porter aucun. Le moteur
+   * refuse alors — il ne suppose pas. Ce que le type dit, c'est exactement ce
+   * que la lecture peut rencontrer.
+   */
+  claim: ReferenceClaim | null;
   source: SourceResolue;
   creeLe: string;
   validePar: string | null;

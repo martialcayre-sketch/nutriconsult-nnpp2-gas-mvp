@@ -1,4 +1,5 @@
 import { prisma } from '../prisma';
+import { claimsValidesAuCorpus, cleClaim, type ReferenceClaim } from '@/lib/rag/claims/validite';
 import type {
   AlerteSecuriteJointe,
   SeuilFonctionnelSource,
@@ -120,17 +121,18 @@ async function lireSeuilsEtAlertes(ingredientIds: readonly string[]): Promise<{
 /**
  * Le contexte de décision d'une résolution, lu en base.
  *
- * DEUX ENTRANTS NE SE DÉRIVENT PAS, et ils sont rendus FERMÉS plutôt
- * qu'inventés — l'absence d'information ne vaut jamais autorisation (`DC-24`,
+ * `claimsValidesParRegle` SE DÉRIVE DÉSORMAIS, et c'est ce que [[D-140]] a
+ * ouvert. La carte restait vide faute de lien : `clinical_rules` n'avait aucun
+ * champ pour nommer un claim, et le refus `claims_non_valides` — vérifié EN
+ * PREMIER par le moteur — fermait donc toute règle, en donnant pour motif que
+ * « les claims cités » n'étaient pas valides alors qu'aucun n'était cité. La
+ * règle porte maintenant son claim fondateur, et cette lecture répond à la
+ * question réelle : ce claim-là est-il VALIDE au corpus ?
+ *
+ * UN ENTRANT NE SE DÉRIVE TOUJOURS PAS, et il est rendu FERMÉ plutôt
+ * qu'inventé — l'absence d'information ne vaut jamais autorisation (`DC-24`,
  * [[D-056]] arbitrage 2) :
  *
- *  - `claimsValidesParRegle` reste VIDE, donc `false` pour chaque règle. Le
- *    schéma ne relie `ClinicalRule` à AUCUN claim : `claim_id` existe côté
- *    biologie (`biology_functional_ranges`), jamais ici, et la source d'une
- *    règle est une citation bibliographique, pas un identifiant de corpus. Le
- *    refus `claims_non_valides` dit donc une chose vraie — rien n'établit la
- *    validité de ces claims — et il la dira tant que le lien n'existera pas.
- *    Dette nommée à [[D-133]].
  *  - `declencheur` reste VIDE hors dossier : le déclencheur est un tableau
  *    clinique (besoin dégradé + plainte + anamnèse) qui appartient à un
  *    patient. L'atelier n'en a pas. Le fabriquer donnerait à lire « tableau
@@ -152,20 +154,54 @@ export async function lireCatalogueDecision(
    * défaut d'appel.
    */
   dossier?: { idPatient: string; critereIds: readonly string[] },
+  /**
+   * Les règles que la résolution SERT, avec le claim que chacune nomme
+   * ([[D-140]]). Passées par l'appelant plutôt que relues ici : la résolution
+   * vient de lire ces lignes, et une seconde lecture pourrait rendre autre
+   * chose — le verdict porterait alors sur des règles qui ne sont pas celles
+   * servies.
+   */
+  regles: readonly { regleId: string; claim: ReferenceClaim | null }[] = [],
 ): Promise<CatalogueDecision> {
-  const [publie, { seuils, alertes }, constats] = await Promise.all([
+  const [publie, { seuils, alertes }, constats, claims] = await Promise.all([
     catalogueAlertesPublie(),
     lireSeuilsEtAlertes(ingredientIds),
     lireConstatsCriteres(dossier),
+    lireClaimsValides(regles),
   ]);
   return {
     catalogueAlertesPublie: publie,
     alertesParIngredient: alertes,
     seuilsParIngredient: seuils,
-    claimsValidesParRegle: new Map(),
+    claimsValidesParRegle: claims,
     declencheur: [],
     constatsParCritere: constats,
   };
+}
+
+/**
+ * `regleId` → son claim fondateur est-il VALIDE au corpus ? ([[D-140]])
+ *
+ * TOUTES LES RÈGLES SONT INSCRITES, y compris celles qui échouent : une clé
+ * absente et un `false` se liraient pareil au moteur (`… ?? false`), mais pas à
+ * la relecture. Une règle qui ne nomme aucun claim vaut `false` — sans que le
+ * moteur ait à le déduire d'un trou dans la carte.
+ */
+async function lireClaimsValides(
+  regles: readonly { regleId: string; claim: ReferenceClaim | null }[],
+): Promise<ReadonlyMap<string, boolean>> {
+  const carte = new Map<string, boolean>();
+  if (regles.length === 0) return carte;
+
+  const valides = await claimsValidesAuCorpus(
+    regles
+      .map((regle) => regle.claim)
+      .filter((claim): claim is ReferenceClaim => claim !== null),
+  );
+  for (const regle of regles) {
+    carte.set(regle.regleId, regle.claim !== null && valides.has(cleClaim(regle.claim)));
+  }
+  return carte;
 }
 
 /**

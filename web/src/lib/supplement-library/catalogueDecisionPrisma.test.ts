@@ -5,6 +5,9 @@ const { prisma } = vi.hoisted(() => ({
     supplementSafetyAlert: { count: vi.fn() },
     ingredientFunctionalThreshold: { findMany: vi.fn() },
     critereDossierConstate: { findMany: vi.fn() },
+    // `rag_corpus_claims` est SQL-brut hors `schema.prisma` : la validité d'un
+    // claim se lit en requête brute ([[D-140]]).
+    $queryRaw: vi.fn(),
   },
 }));
 
@@ -43,6 +46,7 @@ describe('lireCatalogueDecision', () => {
     prisma.supplementSafetyAlert.count.mockResolvedValue(0);
     prisma.ingredientFunctionalThreshold.findMany.mockResolvedValue([]);
     prisma.critereDossierConstate.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue([]);
   });
 
   // LA GARDE EST AU NIVEAU CATALOGUE, PAS INGRÉDIENT (`D-056` arbitrage 2) :
@@ -101,13 +105,58 @@ describe('lireCatalogueDecision', () => {
     expect(catalogue.seuilsParIngredient.get('ing_1')?.[0].safetyAlert).toBeNull();
   });
 
-  // LES DEUX ENTRANTS NON DÉRIVABLES SONT RENDUS FERMÉS, JAMAIS INVENTÉS.
-  // `claimsValides` : aucun lien règle ↔ claim n'existe au schéma. `declencheur`
-  // : le tableau clinique appartient à un dossier, et l'atelier n'en a pas.
-  it('rend les deux entrants non dérivables FERMÉS', async () => {
-    const catalogue = await lireCatalogueDecision(['ing_1']);
-    expect(catalogue.claimsValidesParRegle.size).toBe(0);
-    expect(catalogue.declencheur).toEqual([]);
+  // L'ENTRANT NON DÉRIVABLE QUI RESTE EST RENDU FERMÉ, JAMAIS INVENTÉ :
+  // `declencheur` est un tableau clinique, il appartient à un dossier, et
+  // l'atelier n'en a pas.
+  it('rend le déclencheur FERMÉ hors dossier', async () => {
+    expect((await lireCatalogueDecision(['ing_1'])).declencheur).toEqual([]);
+  });
+
+  // [[D-140]] — LA VALIDITÉ DES CLAIMS SE LIT AU CORPUS. La carte restait vide
+  // faute de lien : `clinical_rules` n'avait aucun champ pour nommer un claim,
+  // et le moteur — qui vérifie cet entrant EN PREMIER — refusait donc toute
+  // règle. Elle se remplit désormais, et sur ce que la base dit.
+  describe('claims fondateurs', () => {
+    it('ne pose AUCUNE question au corpus quand aucune règle n’est servie', async () => {
+      const catalogue = await lireCatalogueDecision(['ing_1']);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+      expect(catalogue.claimsValidesParRegle.size).toBe(0);
+    });
+
+    // Une règle sans claim vaut `false` EXPLICITEMENT. Le moteur lirait pareil
+    // une clé absente (`… ?? false`), mais pas un relecteur : un trou dans la
+    // carte se confondrait avec un oubli de lecture.
+    it('inscrit `false` pour une règle qui ne nomme aucun claim, sans interroger le corpus', async () => {
+      const catalogue = await lireCatalogueDecision(['ing_1'], undefined, [
+        { regleId: 'regle_a', claim: null },
+      ]);
+      expect(catalogue.claimsValidesParRegle.get('regle_a')).toBe(false);
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('inscrit `true` pour la seule règle dont le claim revient VALIDE', async () => {
+      prisma.$queryRaw.mockResolvedValue([
+        { claim_id: 'WN-CL-2026-001', version_claim: 'v1.0' },
+      ]);
+      const catalogue = await lireCatalogueDecision(['ing_1'], undefined, [
+        { regleId: 'regle_a', claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' } },
+        { regleId: 'regle_b', claim: { claimId: 'WN-CL-2026-002', versionClaim: 'v1.0' } },
+      ]);
+      expect(catalogue.claimsValidesParRegle.get('regle_a')).toBe(true);
+      // Absent de la réponse du corpus : refusé, sans qu'on cherche pourquoi.
+      expect(catalogue.claimsValidesParRegle.get('regle_b')).toBe(false);
+    });
+
+    // LE POINT QUI COMPTE : la VERSION fait partie de l'identité. Le corpus
+    // valide `v1.0` ; une règle qui repose sur `v2.0` du même claim ne repose
+    // pas sur ce que le praticien a signé.
+    it('ne valide pas une AUTRE version du même claim', async () => {
+      prisma.$queryRaw.mockResolvedValue([]);
+      const catalogue = await lireCatalogueDecision(['ing_1'], undefined, [
+        { regleId: 'regle_a', claim: { claimId: 'WN-CL-2026-001', versionClaim: 'v2.0' } },
+      ]);
+      expect(catalogue.claimsValidesParRegle.get('regle_a')).toBe(false);
+    });
   });
 
   // [[D-138]] — LES CONSTATS DE CRITÈRES : lus seulement s'il y a un DOSSIER.

@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { isC4Enabled } from '@/lib/supplement-library/featureFlag';
+import { claimValideAuCorpus } from '@/lib/rag/claims/validite';
 import {
   CODE_GOUVERNE_RE,
   FILTRE_PAR_STATUT,
@@ -167,6 +168,8 @@ type PostBody = {
   sourceReferenceId?: unknown;
   poids?: unknown;
   conditionSupplementaire?: unknown;
+  claimId?: unknown;
+  versionClaim?: unknown;
 };
 
 // POST /api/praticien/regles — création d'une règle en BROUILLON (lignée neuve,
@@ -202,7 +205,10 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
     const { contenu } = verdict;
 
     // Référentiels : tout ce que la règle cite doit exister ET être actif.
-    const [intention, ingredient, source, forme, critere] = await Promise.all([
+    // Le CLAIM est dans le même lot, et pour la même raison : citer une
+    // référence qui n'existe pas ou n'est pas validée n'est pas moins grave que
+    // citer une source inactive ([[D-140]]).
+    const [intention, ingredient, source, forme, critere, claimValide] = await Promise.all([
       prisma.clinicalIntentTag.findUnique({ where: { id: intentTagId }, select: { id: true, actif: true } }),
       prisma.supplementIngredient.findUnique({ where: { id: ingredientId }, select: { id: true, actif: true } }),
       prisma.supplementSourceReference.findUnique({
@@ -221,6 +227,7 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
             select: { id: true, actif: true },
           })
         : Promise.resolve(null),
+      claimValideAuCorpus(contenu.claim),
     ]);
 
     if (!intention?.actif) {
@@ -241,6 +248,19 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
     }
     if (contenu.conditionSupplementaire && !critere?.actif) {
       return echec('critere_introuvable', 'Critère clinique inconnu ou inactif.', 422);
+    }
+    // UN SEUL REFUS POUR PLUSIEURS CAUSES, et c'est délibéré : le claim peut
+    // n'exister nulle part, attendre validation, avoir été rejeté, désactivé,
+    // ou n'être adossé à aucun verbatim source. Les distinguer ici reviendrait
+    // à décrire l'état du corpus depuis l'atelier de règles — le poste de revue
+    // des claims est le lieu de cette réponse, pas celui-ci.
+    if (!claimValide) {
+      return echec(
+        'claim_non_valide',
+        'Ce claim n’est pas validé au corpus : vérifiez son identifiant et sa version au '
+        + 'poste de revue des claims. Une règle ne peut reposer que sur un claim signé.',
+        422,
+      );
     }
 
     // Une lignée existante ne se « recrée » pas : elle se révise (append-only).
@@ -268,6 +288,8 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
         doseCibleHaute: contenu.doseCibleHaute,
         gradePreuveScientifique: contenu.gradePreuveScientifique,
         sourceReferenceId: contenu.sourceReferenceId,
+        claimId: contenu.claim.claimId,
+        versionClaim: contenu.claim.versionClaim,
         versionRegle: 1,
         actif: true,
         // validePar / valideLe restent nuls : une règle NAÎT brouillon, la

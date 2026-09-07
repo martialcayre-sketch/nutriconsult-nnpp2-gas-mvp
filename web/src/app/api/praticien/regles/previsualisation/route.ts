@@ -39,11 +39,12 @@ export type ReglesPrevisualisationApiResponse =
        * et le seul lieu où il puisse l'être sans dossier — elle ne touche ni
        * protocole ni patient, la barrière de `D-003` reste entière.
        *
-       * LES VERDICTS SONT DES REFUS, ET C'EST LA VÉRITÉ D'AUJOURD'HUI : le
-       * catalogue de décision est vide, les claims ne sont reliés à rien, et le
-       * déclencheur clinique appartient à un dossier que l'atelier n'a pas. Ce
-       * que le champ apporte, c'est de nommer LEQUEL de ces obstacles mord en
-       * premier — invisible jusqu'ici.
+       * CE QUE LE CHAMP APPORTE : nommer LEQUEL des obstacles mord en premier.
+       * Le claim fondateur a cessé d'être le premier de tous ([[D-140]]) — une
+       * règle qui nomme un claim validé au corpus le franchit désormais, et le
+       * verdict porte enfin sur ce qui suit : catalogue d'alertes, seuils
+       * publiés, et le déclencheur clinique, qui appartient à un dossier que
+       * l'atelier n'a pas.
        */
       verdicts: VerdictAvantBiologie[];
     }
@@ -86,14 +87,17 @@ export async function POST(req: Request): Promise<NextResponse<ReglesPrevisualis
     const resolution = await resoudreIntentions(codes, { inclureNonValidees: true });
     // Les ingrédients que la résolution TOUCHE, et eux seuls : le contexte ne se
     // lit jamais sur le catalogue entier.
-    const ingredientIds = [
-      ...new Set(
-        resolution.intentions.flatMap(({ regles }) => regles.map((regle) => regle.ingredient.id)),
-      ),
-    ];
+    const reglesServies = resolution.intentions.flatMap(({ regles }) => regles);
+    const ingredientIds = [...new Set(reglesServies.map((regle) => regle.ingredient.id))];
+    // Les claims des règles SERVIES, pris sur la résolution qui vient de les
+    // lire ([[D-140]]) : la validité au corpus se constate sur ces règles-là.
     const verdicts = deciderIntentionsAvantBiologie(
       resolution,
-      await lireCatalogueDecision(ingredientIds),
+      await lireCatalogueDecision(
+        ingredientIds,
+        undefined,
+        reglesServies.map((regle) => ({ regleId: regle.regleId, claim: regle.claim })),
+      ),
     );
     return NextResponse.json({ ok: true, resolution, verdicts });
   } catch (err) {

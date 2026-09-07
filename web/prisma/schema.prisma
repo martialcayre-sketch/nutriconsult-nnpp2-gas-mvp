@@ -725,14 +725,14 @@ model ClinicalRule {
   // `schema.prisma` (`prisma.config.ts`, `tables.external`). Le lien se vérifie
   // donc à la LECTURE, comme partout ailleurs, et à l'écriture par la route.
   //
-  // NULLABLES DANS CETTE ÉTAPE, et c'est délibéré : une colonne NOT NULL posée
-  // avant que le code ne la remplisse ferait échouer toute création de règle
-  // pendant la fenêtre entre l'application de la migration et le déploiement du
-  // code ([[D-087]] : « le code déployé tolère une base en avance À CONDITION
-  // que la migration soit additive — colonnes nullables »). Le resserrement en
-  // NOT NULL est la seconde migration, livrée AVEC le code qui les remplit.
-  claimId                 String? @map("claim_id")
-  versionClaim            String? @map("version_claim")
+  // NOT NULL DEPUIS LE RESSERREMENT `20260907210000_regle_claim_obligatoire`,
+  // livré avec le code qui remplit ces colonnes. L'étape d'expand les avait
+  // faites nullables pour ne pas casser les créations pendant la fenêtre
+  // [[D-087]] ; la table étant restée VIDE en production (0 ligne, lecture du
+  // 2026-09-07), le resserrement n'a eu ni reprise ni valeur à inventer —
+  // aucun claim ne se fabrique (`DC-19`, `DC-20`).
+  claimId                 String  @map("claim_id")
+  versionClaim            String  @map("version_claim")
 
   versionRegle Int       @default(1) @map("version_regle")
   actif        Boolean   @default(true) @map("actif")

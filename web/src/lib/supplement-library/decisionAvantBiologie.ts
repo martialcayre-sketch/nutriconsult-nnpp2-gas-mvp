@@ -42,6 +42,12 @@ export type CauseRefus =
   | 'catalogue_decision_vide'
   | 'regle_non_validee'
   | 'source_absente'
+  // Les deux issues du CLAIM FONDATEUR ([[D-140]]), séparées pour la même
+  // raison que les trois du critère : une règle qui ne nomme AUCUN claim et une
+  // règle dont le claim n'est pas validé au corpus refusent toutes deux, mais
+  // la première est une lacune de la règle et la seconde un état du corpus. Les
+  // confondre ferait chercher le défaut au mauvais endroit.
+  | 'claim_absent'
   | 'claims_non_valides'
   | 'catalogue_alertes_non_publie'
   | 'alerte_securite_active'
@@ -194,10 +200,25 @@ export function deciderIntentionAvantBiologie(contexte: ContexteDecision): Verdi
       regle.regleId,
     );
   }
+  // Le claim FONDATEUR ([[D-140]]) : « une plage fonctionnelle sans claim validé
+  // n'existe pas, donc n'est jamais servie » — l'invariant des plages
+  // biologiques et des règles d'orientation, que `clinical_rules` était seule à
+  // ne pas porter.
+  const claim = regle.claim;
+  if (claim === null) {
+    return refus(
+      'claim_absent',
+      `La règle « ${regle.regleId} » ne nomme aucun claim fondateur : rien ne relie ce `
+        + `qu’elle affirme au corpus validé.`,
+      ingredient,
+      regle.regleId,
+    );
+  }
   if (!contexte.claimsValides) {
     return refus(
       'claims_non_valides',
-      `Les claims cités par la règle « ${regle.regleId} » ne sont pas valides au corpus.`,
+      `Le claim « ${claim.claimId} » (${claim.versionClaim}) qui fonde la règle `
+        + `« ${regle.regleId} » n’est pas validé au corpus.`,
       ingredient,
       regle.regleId,
     );

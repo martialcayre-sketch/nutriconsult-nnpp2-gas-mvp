@@ -390,13 +390,16 @@ function FormulaireCreation({
   const [justification, setJustification] = useState('');
   const [sourceReferenceId, setSourceReferenceId] = useState('');
   const [critereId, setCritereId] = useState('');
+  const [claimId, setClaimId] = useState('');
+  const [versionClaim, setVersionClaim] = useState('');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
   const [succes, setSucces] = useState('');
 
   const ingredientId = ingredient?.id ?? '';
   const pret =
-    intentTagId && ingredientId && typeRegle.trim() && grade && justification.trim() && sourceReferenceId;
+    intentTagId && ingredientId && typeRegle.trim() && grade && justification.trim()
+    && sourceReferenceId && claimId.trim() && versionClaim.trim();
 
   const soumettre = async () => {
     if (!pret || envoi) return;
@@ -414,6 +417,8 @@ function FormulaireCreation({
           gradePreuveScientifique: grade,
           justification: justification.trim(),
           sourceReferenceId,
+          claimId: claimId.trim(),
+          versionClaim: versionClaim.trim(),
           ...(formePrefereeId ? { formePrefereeId } : {}),
           ...(doseBasse.trim() ? { doseCibleBasse: Number(doseBasse) } : {}),
           ...(doseHaute.trim() ? { doseCibleHaute: Number(doseHaute) } : {}),
@@ -431,6 +436,10 @@ function FormulaireCreation({
       setDoseBasse('');
       setDoseHaute('');
       setCritereId('');
+      // Le claim est propre à CETTE règle : le laisser en place ferait fonder
+      // la règle suivante sur la précédente sans que personne l'ait voulu.
+      setClaimId('');
+      setVersionClaim('');
       onCree();
     } catch {
       setErreur('La règle n’a pas pu être créée.');
@@ -448,7 +457,9 @@ function FormulaireCreation({
       <div className="mt-3 flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">
           Une règle naît en brouillon, invisible de la résolution tant qu&apos;elle
-          n&apos;est pas validée. Justification et source sont obligatoires.
+          n&apos;est pas validée. Justification, source et claim fondateur sont
+          obligatoires : une règle ne peut reposer que sur un claim validé du
+          corpus.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <select
@@ -520,6 +531,29 @@ function FormulaireCreation({
               <option key={source.id} value={source.id}>{source.citation}</option>
             ))}
           </select>
+          {/* Saisie libre plutôt que liste : le corpus compte des milliers de
+              claims validés, et l'identifiant se recopie depuis le poste de
+              revue qui l'a signé. Le format est vérifié ici ET côté serveur ;
+              l'existence et le statut VALIDE, côté serveur seulement — ce que
+              le navigateur affirme ne fonde rien. */}
+          <input
+            type="text"
+            aria-label="Identifiant du claim fondateur"
+            value={claimId}
+            disabled={fige}
+            onChange={(event) => setClaimId(event.target.value)}
+            placeholder="claim fondateur (WN-CL-0000-000)"
+            className={classeChamp()}
+          />
+          <input
+            type="text"
+            aria-label="Version du claim fondateur"
+            value={versionClaim}
+            disabled={fige}
+            onChange={(event) => setVersionClaim(event.target.value)}
+            placeholder="version du claim (v1.0)"
+            className={classeChamp()}
+          />
           <input
             type="number"
             aria-label="Dose cible basse"
@@ -611,6 +645,13 @@ function FormulaireRevision({
   const [formePrefereeId, setFormePrefereeId] = useState(regle.formePreferee?.id ?? '');
   const [doseBasse, setDoseBasse] = useState(regle.doseCibleBasse?.toString() ?? '');
   const [doseHaute, setDoseHaute] = useState(regle.doseCibleHaute?.toString() ?? '');
+  // Le claim de la version révisée est REPRIS de la version en place — une
+  // révision est une réécriture complète, et repartir vide ferait ressaisir à
+  // la main ce que la règle porte déjà ([[D-140]]). Il reste modifiable :
+  // réviser une règle, c'est parfois précisément changer ce sur quoi elle
+  // repose.
+  const [claimId, setClaimId] = useState(regle.claim?.claimId ?? '');
+  const [versionClaim, setVersionClaim] = useState(regle.claim?.versionClaim ?? '');
   const [envoi, setEnvoi] = useState(false);
   const [erreur, setErreur] = useState('');
 
@@ -662,7 +703,8 @@ function FormulaireRevision({
   })();
 
   const soumettre = async () => {
-    if (envoi || !justification.trim() || !sourceReferenceId) return;
+    if (envoi || !justification.trim() || !sourceReferenceId
+      || !claimId.trim() || !versionClaim.trim()) return;
     setEnvoi(true);
     setErreur('');
     try {
@@ -674,6 +716,8 @@ function FormulaireRevision({
           gradePreuveScientifique: grade,
           justification: justification.trim(),
           sourceReferenceId,
+          claimId: claimId.trim(),
+          versionClaim: versionClaim.trim(),
           ...(formePrefereeId ? { formePrefereeId } : {}),
           ...(doseBasse.trim() ? { doseCibleBasse: Number(doseBasse) } : {}),
           ...(doseHaute.trim() ? { doseCibleHaute: Number(doseHaute) } : {}),
@@ -768,6 +812,24 @@ function FormulaireRevision({
             className={`${classeChamp()} w-full`}
           />
         </div>
+        <input
+          type="text"
+          aria-label="Identifiant du claim fondateur de la révision"
+          value={claimId}
+          disabled={fige}
+          onChange={(event) => setClaimId(event.target.value)}
+          placeholder="claim fondateur (WN-CL-0000-000)"
+          className={classeChamp()}
+        />
+        <input
+          type="text"
+          aria-label="Version du claim fondateur de la révision"
+          value={versionClaim}
+          disabled={fige}
+          onChange={(event) => setVersionClaim(event.target.value)}
+          placeholder="version du claim (v1.0)"
+          className={classeChamp()}
+        />
       </div>
       <textarea
         aria-label="Justification de la révision"
@@ -784,7 +846,10 @@ function FormulaireRevision({
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button disabled={fige || !justification.trim()} onClick={() => void soumettre()}>
+        <Button
+          disabled={fige || !justification.trim() || !claimId.trim() || !versionClaim.trim()}
+          onClick={() => void soumettre()}
+        >
           Créer la révision (brouillon)
         </Button>
         <Button variant="outline" disabled={fige} onClick={onAnnule}>
