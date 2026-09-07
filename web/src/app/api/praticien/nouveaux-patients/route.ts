@@ -68,10 +68,27 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     // Quatre lectures bornées par `ids`, jamais une par patient.
     const [correspondances, liensConsommes, connexionsGoogle, validees, assignations] =
       await Promise.all([
-        // L'e-mail d'accès au portail — le seul type qui ouvre le dossier.
-        // Les booklets et accusés partent APRÈS, ils ne prouvent rien ici.
+        // LES DEUX E-MAILS QUI OUVRENT LE DOSSIER, pas un seul. `acces_portail`
+        // pointe la page de connexion (`sendPortailLinkEmail` — création de
+        // consultation, et « Renvoyer l'accès ») ; `lien_magique` porte un lien
+        // à usage unique (`sendMagicLinkEmail` — action `lien_magique` de
+        // `api/praticien/token`, et redemande patient `api/portail/lien/demande`).
+        //
+        // NE COMPTER QUE LE PREMIER FAISAIT AFFICHER « Accès non envoyé » À DES
+        // DOSSIERS DÉJÀ ENTRÉS : l'entrée suit le lien magique bien plus souvent
+        // que l'accès portail. Le relevé chiffré et sa date vivent au fragment de
+        // changelog, pas ici — un nombre dans un commentaire ne se vérifie pas.
+        //
+        // LES DRAPEAUX. `sendMagicLinkEmail` n'est appelé que sous
+        // `WN_G4_LIEN_MAGIQUE` (et `WN_G4_REDEMANDE_PATIENT` pour le canal
+        // public), tous deux RELUS POSÉS sur Scalingo le 2026-09-07
+        // (`docs/FEATURE_FLAGS.md`). L'élargissement ne rend de toute façon rien
+        // de plus si personne n'écrit : il ne dépend pas de leur état.
+        //
+        // Les booklets, packs et accusés partent APRÈS et restent hors du
+        // filtre : ils ne prouvent rien de l'ouverture de l'accès.
         prisma.correspondancePatient.findMany({
-          where: { idPatient: { in: ids }, type: 'acces_portail' },
+          where: { idPatient: { in: ids }, type: { in: ['acces_portail', 'lien_magique'] } },
           select: { idPatient: true, statut: true, enregistreLe: true },
           orderBy: { enregistreLe: 'asc' },
         }),
@@ -175,7 +192,25 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         dossierDesactive: !p.actif,
         accesRevoque: p.accessTokenRevoked,
         accesEnvoyeLe: dernierEnvoi.get(p.idPatient)?.toISOString() ?? null,
-        accesEnEchec: dernierStatut.has(p.idPatient) && dernierStatut.get(p.idPatient) !== 'Envoye',
+        // UN ÉCHEC D'ENVOI NE PARLE QUE TANT QUE LA PORTE EST FERMÉE. Depuis que
+        // `lien_magique` compte, un e-mail d'ouverture peut échouer APRÈS
+        // l'entrée : la redemande patient (`api/portail/lien/demande`) est un
+        // canal public, rejouable, et sert précisément les patients déjà entrés.
+        //
+        // Sans cette garde, un dossier entré, validé et servi rebasculait en
+        // « Accès non envoyé » ET REMONTAIT EN TÊTE de l'encart :
+        // `etapeNouveauPatient` teste cette porte AVANT `connecteLe`, et
+        // `estEnAttente` compte `acces_non_envoye`. Cet ordre est délibéré et
+        // figé par `nouveauxPatients.test.ts` (cas « un envoi en échec ne vaut
+        // pas un envoi », posé sur une source COMPLÈTE) : on ne le déplace pas.
+        //
+        // C'est exactement le geste que ce correctif existe pour supprimer —
+        // renvoyer un accès à un patient déjà servi. La garde se pose donc à la
+        // SOURCE du signal, pas dans la fonction pure qui le lit.
+        accesEnEchec:
+          !premiereConnexion.has(p.idPatient) &&
+          dernierStatut.has(p.idPatient) &&
+          dernierStatut.get(p.idPatient) !== 'Envoye',
         connecteLe: premiereConnexion.get(p.idPatient)?.toISOString() ?? null,
         onboardingValide: idsValides.has(p.idPatient),
         nbAssignations: nbAssignations.get(p.idPatient) ?? 0,

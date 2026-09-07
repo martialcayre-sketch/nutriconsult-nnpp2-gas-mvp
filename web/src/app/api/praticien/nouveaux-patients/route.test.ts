@@ -103,6 +103,56 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     expect(ligne.etape).toBe('acces_non_envoye');
   });
 
+  it('compte les DEUX e-mails d’ouverture d’accès, et dans l’ordre chronologique', async () => {
+    // LE BANC QUI TIENT LE CORRECTIF, ET LE SEUL QUI PUISSE LE TENIR. Le double
+    // de `prisma` rend ce qu'on lui a posé sans regarder ni le `where` ni
+    // l'`orderBy` : aucun banc de SORTIE ne distingue ici un filtre juste d'un
+    // filtre faux. Les deux gardes portent donc sur l'APPEL, comme celle des
+    // liens consommés juste dessous.
+    await GET();
+    const appel = prisma.correspondancePatient.findMany.mock.calls[0][0];
+    expect(appel.where.type).toEqual({ in: ['acces_portail', 'lien_magique'] });
+    // L'ORDRE N'EST PAS DÉCORATIF : `dernierStatut` est écrasé à chaque ligne,
+    // c'est donc la base qui décide de « la dernière tentative ». Passer à
+    // `desc` inverserait la règle en production sans qu'aucune SORTIE de ce
+    // fichier ne rougisse — le double ne trie rien.
+    expect(appel.orderBy).toEqual({ enregistreLe: 'asc' });
+  });
+
+  it('un lien magique en échec, sur un dossier JAMAIS entré, rouvre la porte', async () => {
+    // L'EFFET DE BORD ASSUMÉ DE L'ÉLARGISSEMENT, borné à sa moitié juste. Les
+    // deux types partagent `dernierStatut` : tant que le patient n'est pas
+    // entré, la dernière tentative d'ouverture commande, quel que soit le canal.
+    prisma.correspondancePatient.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'Envoye', enregistreLe: new Date('2026-09-01T08:00:00.000Z') },
+      { idPatient: 'PAT_1', statut: 'Erreur', enregistreLe: new Date('2026-09-02T08:00:00.000Z') },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.accesEnEchec).toBe(true);
+    expect(ligne.etape).toBe('acces_non_envoye');
+  });
+
+  it('un échec d’envoi APRÈS l’entrée ne renvoie pas un patient déjà servi', async () => {
+    // L'AUTRE MOITIÉ, ET LA RAISON D'ÊTRE DE LA GARDE. Le canal de redemande
+    // (`api/portail/lien/demande`) est public et sert les patients DÉJÀ entrés :
+    // sans garde, un échec SMTP y suffisait à réafficher « Accès non envoyé » —
+    // en TÊTE de l'encart, puisque `estEnAttente` compte cette étape — sur un
+    // dossier entré, validé et servi. C'est le dommage même que ce correctif
+    // supprime ; l'élargissement du filtre le recréait ailleurs.
+    prisma.correspondancePatient.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'Envoye', enregistreLe: CREE_LE },
+      { idPatient: 'PAT_1', statut: 'Erreur', enregistreLe: new Date('2026-09-05T08:00:00.000Z') },
+    ]);
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
+    ]);
+    prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
+    prisma.assignation.groupBy.mockResolvedValue([{ idPatient: 'PAT_1', _count: { _all: 5 } }]);
+    const [ligne] = await lignes();
+    expect(ligne.accesEnEchec).toBe(false);
+    expect(ligne.etape).toBe('complet');
+  });
+
   it('ne lit que les liens magiques CONSOMMÉS et les connexions Google abouties', async () => {
     await GET();
     expect(prisma.portailMagicLink.findMany.mock.calls[0][0].where.consommeLe).toEqual({ not: null });
