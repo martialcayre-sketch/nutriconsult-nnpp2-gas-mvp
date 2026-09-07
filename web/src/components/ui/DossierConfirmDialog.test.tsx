@@ -213,3 +213,41 @@ describe('DossierConfirmDialog — révocation d’accès', () => {
     expect(screen.getByText(/ne rendra pas les sessions coupées/i)).toBeTruthy();
   });
 });
+
+// Le pendant de la révocation, et il ne naît PAS d'un geste dédié : il
+// s'interpose devant deux gestes qui levaient la révocation en passant.
+describe('DossierConfirmDialog — rétablissement d’accès', () => {
+  function rendreRetablissement(onConfirm = vi.fn()) {
+    render(
+      <DossierConfirmDialog
+        mode="retablissement"
+        nomPatient={PATIENT}
+        open
+        onOpenChange={() => {}}
+        onConfirm={onConfirm}
+      />,
+    );
+    return onConfirm;
+  }
+
+  it('nomme le dossier, dit ce que le geste ajoute, et n’exige aucune saisie', () => {
+    const onConfirm = rendreRetablissement();
+    expect(screen.getByRole('heading', { name: /rétablir l’accès de Michel Dogné/i })).toBeTruthy();
+    expect(screen.queryByLabelText(/saisissez/i)).toBeNull();
+    // ASSERTIONS PROPRES À CE MODE. « il devra se reconnecter » figure AUSSI
+    // dans le corps de la révocation : s'y appuyer laisserait passer le mutant
+    // qui recopie la description de l'autre mode.
+    expect(screen.getByText(/Poursuivre le rétablira/)).toBeTruthy();
+    expect(screen.getByText(/ni consultation ni e-mail/)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: /^rétablir l’accès$/i }));
+    expect(onConfirm).toHaveBeenCalledOnce();
+  });
+
+  it('dit ce que le rétablissement ne défait pas', () => {
+    // Le praticien doit pouvoir décider en connaissance : rétablir n'est pas
+    // annuler la révocation, c'est rouvrir la porte pour la suite.
+    rendreRetablissement();
+    expect(screen.getByText(/liens à usage unique fermés alors restent inutilisables/)).toBeTruthy();
+  });
+});

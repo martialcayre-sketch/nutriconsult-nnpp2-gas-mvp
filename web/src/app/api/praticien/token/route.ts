@@ -16,12 +16,27 @@ export type TokenActionResponse = {
    */
   envoi?: EnvoiAcces;
   error?: string;
-  reason?: 'unauthenticated' | 'invalid_payload' | 'patient_not_found' | 'forbidden' | 'portal_revoked' | 'exception';
+  // `portal_revoked` (refus SEC de `lien_magique`) et
+  // `retablissement_non_confirme` (levée possible, accord manquant) sont deux
+  // refus différents : les confondre priverait la surface du seul moyen de
+  // savoir si elle a une question à poser.
+  reason?:
+    | 'unauthenticated'
+    | 'invalid_payload'
+    | 'patient_not_found'
+    | 'forbidden'
+    | 'portal_revoked'
+    | 'retablissement_non_confirme'
+    | 'exception';
 };
 
 type TokenPayload = {
   idPatient?: string;
   action?: 'issue' | 'resend' | 'lien' | 'lien_magique';
+  /** Accord explicite du praticien pour lever la révocation d'accès du patient.
+   * Comparé à `true` STRICTEMENT. Sans objet pour `lien` (lecture seule) et
+   * pour `lien_magique` (qui refuse sans jamais rétablir). */
+  retablirAcces?: boolean;
 };
 
 // POST /api/praticien/token — envoie (ou renvoie) au patient l'accès à son
@@ -132,6 +147,21 @@ export async function POST(req: Request): Promise<NextResponse<TokenActionRespon
     // (copie) est en lecture seule : il renvoie l'URL de connexion sans rien
     // réactiver ni écrire.
     if (action !== 'lien' && patient.accessTokenRevoked) {
+      // PLUS EN SILENCE : même refus et même mot qu'`api/praticien/
+      // consultations`. Le praticien peut toujours lever sa révocation par ce
+      // chemin — il doit seulement le vouloir. La garde reste DERRIÈRE le test
+      // `action !== 'lien'` : la copie du lien ne rétablit rien, elle n'a rien
+      // à faire confirmer.
+      if (payload.retablirAcces !== true) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: 'retablissement_non_confirme',
+            error: 'Accès au portail révoqué : confirmez son rétablissement.',
+          },
+          { status: 409 }
+        );
+      }
       await prisma.patient.update({ where: { idPatient }, data: { accessTokenRevoked: false } });
     }
 

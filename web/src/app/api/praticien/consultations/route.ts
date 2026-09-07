@@ -41,12 +41,22 @@ export type CreateConsultationResponse = {
     // Distinct de `patient_not_found` : le dossier existe et vous est
     // accessible, c'est son suivi qui est clos.
     | 'dossier_cloture'
+    // Le dossier existe, vous est accessible, son suivi est ouvert — mais son
+    // accès au portail est révoqué, et créer la consultation le RÉTABLIRAIT.
+    // Distinct de `portal_revoked` d'`api/praticien/token`, qui est un refus SEC
+    // (le lien à usage unique ne rétablit rien) : ici le geste est possible, il
+    // lui manque d'être voulu.
+    | 'retablissement_non_confirme'
     | 'exception';
 };
 
 type CreateConsultationPayload = {
   idPatient?: string;
   motif?: string;
+  /** Accord explicite du praticien pour lever la révocation d'accès du patient.
+   * Comparé à `true` STRICTEMENT : une chaîne « false » ne doit pas rouvrir un
+   * portail que le praticien a fermé. */
+  retablirAcces?: boolean;
 };
 
 // Gabarit littéral pour le journal des accès (G-TRUST-04) — jamais l'URL reçue.
@@ -161,6 +171,25 @@ export async function POST(req: Request): Promise<NextResponse<CreateConsultatio
     // jeton à (re)créer, l'accès passe par le cookie de session ; seul le drapeau
     // de révocation est remis à zéro.
     if (patient.accessTokenRevoked) {
+      // PLUS EN SILENCE. La levée reste attachée à ce geste, et c'est juste —
+      // un praticien qui ouvre une consultation veut que son patient entre. Ce
+      // qui ne l'était pas : il défaisait sa propre révocation sans qu'on le
+      // lui dise, et sans qu'aucun écran ne porte l'état qu'il changeait. Le
+      // refus ci-dessous est ce qui rend la levée VOULUE et non seulement
+      // annoncée : une garde qui ne vivrait que dans l'UI se contournerait par
+      // un appel direct (#181, la leçon d'`accepteNouvelEnvoi`).
+      //
+      // RIEN N'A ÉTÉ ÉCRIT À CE POINT : ni levée, ni consultation, ni e-mail.
+      if (payload.retablirAcces !== true) {
+        return NextResponse.json(
+          {
+            success: false,
+            reason: 'retablissement_non_confirme',
+            error: 'Accès au portail révoqué : confirmez son rétablissement.',
+          },
+          { status: 409 }
+        );
+      }
       await prisma.patient.update({
         where: { idPatient },
         data: { accessTokenRevoked: false },

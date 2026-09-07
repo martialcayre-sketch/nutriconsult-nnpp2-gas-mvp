@@ -22,6 +22,9 @@ vi.mock('@/lib/praticien/appartenance', () => ({
 // L'action `issue` déclenche un envoi d'e-mail réel (best-effort, avalé par
 // un try/catch — lent et bruyant en test). Mock nécessaire depuis que le test
 // de réémission emprunte ce chemin, le seul qui atteigne la dé-révocation.
+// Le gate G4 est éteint par défaut : sans ce mock, `lien_magique` répond 404
+// et les cas qui le visent passeraient au vert sans rien atteindre.
+vi.mock('@/lib/portail/featureFlag', () => ({ isG4LienMagiqueEnabled: () => true }));
 vi.mock('@/lib/consultation/email', () => ({
   buildGoogleConnexionUrl: () => 'https://app.wellneuro.fr/portail/google',
   buildMagicLinkUrl: (jeton: string) => `https://app.wellneuro.fr/portail/lien/${jeton}`,
@@ -155,7 +158,9 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
       sessionsInvalidesAvant: new Date('2026-07-21T10:00:00.000Z'),
     });
 
-    await POST(postRequest({ idPatient: 'PAT_1', action: 'issue' }));
+    // L'accord de rétablissement est désormais requis : sans lui la route
+    // refuse en 409 et n'écrit rien — le banc mesurerait alors une absence.
+    await POST(postRequest({ idPatient: 'PAT_1', action: 'issue', retablirAcces: true }));
 
     // La contre-épreuve d'existence d'abord : sans elle, une route qui
     // n'écrirait rien rendrait la boucle vide et le test menteur.
@@ -266,5 +271,68 @@ describe('POST /api/praticien/token — ce que la réponse dit de l’envoi', ()
     expect(json.lien).toBeTruthy();
     expect('envoi' in json).toBe(false);
     expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+});
+
+// Les deux gardes serveur du rétablissement. Un `describe` à part : celui du
+// DELETE porte déjà deux cas POST, l'y grossir aggraverait son faux nom.
+describe('POST /api/praticien/token — rétablissement d’accès', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
+    verifierAppartenancePatient.mockResolvedValue('ok');
+    prisma.patient.findUnique.mockResolvedValue({
+      idPatient: 'PAT_1',
+      email: 'sophie.nicola@example.test',
+      prenom: 'Sophie',
+      praticienEmail: 'p@wellneuro.fr',
+      actif: true,
+      accessTokenRevoked: true,
+    });
+    prisma.patient.update.mockResolvedValue({});
+    vi.mocked(sendPortailLinkEmail).mockResolvedValue('Envoye');
+  });
+
+  it('renvoi sur accès révoqué sans accord : 409, aucune levée, aucun e-mail', async () => {
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'resend' }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe('retablissement_non_confirme');
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+    expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('accord non booléen : refusé comme s’il était absent', async () => {
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'resend', retablirAcces: 'oui' }));
+    expect(res.status).toBe(409);
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+  });
+
+  it('renvoi confirmé : lève et envoie', async () => {
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'resend', retablirAcces: true }));
+    expect(res.status).toBe(200);
+    expect(prisma.patient.update).toHaveBeenCalledWith({
+      where: { idPatient: 'PAT_1' },
+      data: { accessTokenRevoked: false },
+    });
+    expect(sendPortailLinkEmail).toHaveBeenCalledOnce();
+  });
+
+  it('la copie du lien reste en lecture seule sur un dossier révoqué', async () => {
+    // C'EST CE CAS QUI INTERDIT DE HISSER LA GARDE au-dessus du test
+    // `action !== 'lien'` : copier ne rétablit rien, donc n'a rien à faire
+    // confirmer, et un 409 y serait une régression pure.
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'lien' }));
+    expect(res.status).toBe(200);
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+    expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('le lien à usage unique refuse toujours en portal_revoked, jamais en retablissement_non_confirme', async () => {
+    // L'AUTRE HISSEMENT, ET C'EST UNE MUTATION DISTINCTE. Ce chemin ne
+    // rétablit RIEN : son refus est sec, et le confondre avec l'autre
+    // priverait l'écran du seul moyen de savoir s'il a une question à poser.
+    const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'lien_magique' }));
+    expect(res.status).toBe(409);
+    expect((await res.json()).reason).toBe('portal_revoked');
   });
 });

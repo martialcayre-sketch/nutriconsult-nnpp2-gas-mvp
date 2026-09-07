@@ -26,7 +26,8 @@ export type ModeConfirmation =
   | 'effacement'
   | 'desactivation'
   | 'reactivation'
-  | 'revocation';
+  | 'revocation'
+  | 'retablissement';
 
 const CONFIRMATION_EFFACEMENT = 'EFFACER';
 
@@ -97,6 +98,7 @@ export function DossierConfirmDialog({
     desactivation: `Désactiver le dossier de ${nomPatient} ?`,
     reactivation: `Réactiver le dossier de ${nomPatient} ?`,
     revocation: `Révoquer l’accès de ${nomPatient} au portail ?`,
+    retablissement: `Rétablir l’accès de ${nomPatient} au portail ?`,
   };
   const LIBELLES: Record<ModeConfirmation, string> = {
     effacement: 'Effacer définitivement',
@@ -105,6 +107,7 @@ export function DossierConfirmDialog({
     desactivation: 'Désactiver le dossier',
     reactivation: 'Réactiver le dossier',
     revocation: 'Révoquer l’accès',
+    retablissement: 'Rétablir l’accès',
   };
   const titre = TITRES[mode];
   const libelleConfirmer = LIBELLES[mode];
@@ -176,6 +179,31 @@ export function DossierConfirmDialog({
                 <p className="mt-2">
                   Vous pourrez lui rouvrir l’accès en lui renvoyant un lien. Cela ne rendra
                   pas les sessions coupées : il devra se reconnecter.
+                </p>
+              </div>
+            </Dialog.Description>
+          )}
+
+          {/*
+            Le pendant exact de la révocation ci-dessus, et il ne naît PAS d'un
+            geste dédié : il s'interpose devant deux gestes qui levaient la
+            révocation en passant — créer une consultation, renvoyer le lien.
+            Il doit donc dire ce que le praticien croyait faire ET ce qu'il
+            ferait en plus.
+          */}
+          {mode === 'retablissement' && (
+            <Dialog.Description asChild>
+              <div className="mt-4 text-sm leading-relaxed text-foreground">
+                <p>Son accès au portail est révoqué. Poursuivre le rétablira.</p>
+                <p className="mt-2">
+                  Il pourra de nouveau entrer dans son espace et y lire ses archives. Ce
+                  que le rétablissement ne défait pas : les sessions coupées par la
+                  révocation ne reviennent pas — il devra se reconnecter —, et les liens à
+                  usage unique fermés alors restent inutilisables.
+                </p>
+                <p className="mt-2">
+                  Pour garder l’accès fermé, annulez : ni consultation ni e-mail ne
+                  partiront.
                 </p>
               </div>
             </Dialog.Description>

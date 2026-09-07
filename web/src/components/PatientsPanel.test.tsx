@@ -25,6 +25,7 @@ const PATIENT = {
   telephone: '',
   actif: 'OUI',
   suiviClotureLe: null as string | null,
+  accesRevoque: false,
 };
 
 const AUTRE_PATIENT = {
@@ -35,6 +36,7 @@ const AUTRE_PATIENT = {
   telephone: '',
   actif: 'OUI',
   suiviClotureLe: null as string | null,
+  accesRevoque: false,
 };
 
 afterEach(() => {
@@ -1103,5 +1105,180 @@ describe('PatientsPanel — annulation d’une assignation (Fil A)', () => {
 
     const attendue = `/api/praticien/patients?statut=${encodeURIComponent('En attente')}`;
     await waitFor(() => expect(appels.slice(nbAvant).some(a => a.url === attendue)).toBe(true));
+  });
+});
+
+// Deux gestes de routine — créer une consultation, renvoyer le lien — levaient
+// la révocation d'accès EN SILENCE. Le praticien défaisait sa propre décision
+// de sécurité sans qu'on le lui dise, et sans qu'aucun écran ne porte l'état
+// qu'il changeait hors de la fenêtre de 30 jours de l'encart.
+describe('PatientsPanel — rétablissement d’un accès révoqué', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const REVOQUE = { patient: { ...PATIENT, accesRevoque: true } };
+  const titreDialogue = /rétablir l’accès de michel dogné/i;
+
+  it('un dossier révoqué porte sa pastille au dossier', async () => {
+    stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await waitFor(() => expect(screen.getByText('Accès révoqué')).toBeTruthy());
+  });
+
+  it('la pastille se CUMULE avec l’état du dossier, elle ne le remplace pas', async () => {
+    // Trois états indépendants : `D-126` §2 interdit de déduire la révocation
+    // d'une désactivation, et l'inverse est vrai aussi.
+    stubFetch({ patient: { ...PATIENT, actif: 'NON', accesRevoque: true } });
+    render(<PatientsPanel />);
+    await waitFor(() => expect(screen.getByText('Accès révoqué')).toBeTruthy());
+    expect(screen.getByText('Inactif')).toBeTruthy();
+  });
+
+  it('un dossier ouvert ne porte aucune pastille de révocation', async () => {
+    stubFetch();
+    render(<PatientsPanel />);
+    await screen.findAllByRole('button', { name: /gérer le dossier/i });
+    expect(screen.queryByText('Accès révoqué')).toBeNull();
+  });
+
+  it('renvoyer le lien à un dossier révoqué demande confirmation AVANT tout appel', async () => {
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+
+    await screen.findByRole('heading', { name: titreDialogue });
+    // RIEN N'A ÉTÉ POSTÉ : le dialogue s'interpose, il ne commente pas après coup.
+    expect(appels.some(a => a.url === '/api/praticien/token')).toBe(false);
+  });
+
+  it('confirmer poste l’accord explicite', async () => {
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+    await screen.findByRole('heading', { name: titreDialogue });
+    fireEvent.click(screen.getByRole('button', { name: /^rétablir l’accès$/i }));
+
+    await waitFor(() => {
+      const token = appels.filter(a => a.url === '/api/praticien/token');
+      expect(token.length).toBe(1);
+      expect(token[0].body).toMatchObject({
+        idPatient: 'PAT_SEED_03',
+        action: 'resend',
+        retablirAcces: true,
+      });
+    });
+  });
+
+  it('annuler n’appelle rien et laisse l’accès fermé', async () => {
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+    await screen.findByRole('heading', { name: titreDialogue });
+    fireEvent.click(screen.getByRole('button', { name: /^annuler$/i }));
+
+    await waitFor(() => expect(screen.queryByRole('heading', { name: titreDialogue })).toBeNull());
+    expect(appels.some(a => a.url === '/api/praticien/token')).toBe(false);
+  });
+
+  it('un dossier NON révoqué n’ouvre aucun dialogue et poste SANS drapeau', async () => {
+    // Une confirmation systématique userait la seule qui compte.
+    const appels = stubFetch();
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+
+    await waitFor(() => {
+      const token = appels.filter(a => a.url === '/api/praticien/token');
+      expect(token.length).toBe(1);
+      expect((token[0].body as { retablirAcces?: boolean }).retablirAcces).toBeUndefined();
+    });
+    expect(screen.queryByRole('heading', { name: titreDialogue })).toBeNull();
+  });
+
+  it('un refus du rétablissement s’affiche DANS le dialogue, qui reste ouvert', async () => {
+    // Derrière l'overlay, la ligne de statut de la page ne se lit pas.
+    stubFetch({
+      ...REVOQUE,
+      surToken: () => ({ success: false, reason: 'forbidden', error: 'Patient non accessible.' }),
+    });
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+    await screen.findByRole('heading', { name: titreDialogue });
+    fireEvent.click(screen.getByRole('button', { name: /^rétablir l’accès$/i }));
+
+    await screen.findByRole('alert');
+    expect(screen.getByRole('heading', { name: titreDialogue })).toBeTruthy();
+  });
+
+  it('le sélecteur de consultation signale déjà l’accès révoqué', async () => {
+    // Signalé À LA SÉLECTION, et pas seulement refusé après coup : le praticien
+    // voit ce qu'il s'apprête à rouvrir avant de composer sa consultation.
+    stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await screen.findAllByRole('button', { name: /gérer le dossier/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvelle consultation' }));
+    await screen.findByRole('dialog', { name: 'Nouvelle consultation' });
+    expect(screen.getByText(/Michel Dogné.*\(accès révoqué\)/)).toBeTruthy();
+  });
+
+  it('créer une consultation pour un dossier révoqué demande confirmation AVANT tout appel', async () => {
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await screen.findAllByRole('button', { name: /gérer le dossier/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvelle consultation' }));
+    await screen.findByRole('dialog', { name: 'Nouvelle consultation' });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'PAT_SEED_03' } });
+    fireEvent.click(screen.getByRole('button', { name: /Créer une consultation/ }));
+
+    await screen.findByRole('heading', { name: titreDialogue });
+    expect(appels.some(a => a.url === '/api/praticien/consultations')).toBe(false);
+  });
+
+  it('confirmer la consultation poste l’accord ET le motif saisi', async () => {
+    // Le motif est asserté parce qu'un remaniement qui reconstruirait le corps
+    // sur le chemin confirmé le perdrait en silence : le praticien aurait
+    // saisi son motif, la consultation partirait sans.
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await screen.findAllByRole('button', { name: /gérer le dossier/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvelle consultation' }));
+    await screen.findByRole('dialog', { name: 'Nouvelle consultation' });
+    const listes = screen.getAllByRole('combobox');
+    fireEvent.change(listes[0], { target: { value: 'PAT_SEED_03' } });
+    fireEvent.change(listes[1], { target: { value: 'Sommeil et récupération' } });
+    fireEvent.click(screen.getByRole('button', { name: /Créer une consultation/ }));
+
+    await screen.findByRole('heading', { name: titreDialogue });
+    fireEvent.click(screen.getByRole('button', { name: /^rétablir l’accès$/i }));
+
+    await waitFor(() => {
+      const posts = appels.filter(a => a.url === '/api/praticien/consultations');
+      expect(posts.length).toBe(1);
+      expect(posts[0].body).toMatchObject({
+        idPatient: 'PAT_SEED_03',
+        motif: 'Sommeil et récupération',
+        retablirAcces: true,
+      });
+    });
+  });
+
+  it('la table se recharge après un rétablissement confirmé', async () => {
+    // Sans quoi la pastille resterait allumée sur un accès rouvert, et le
+    // praticien recliquerait sur un dialogue qui n'a plus lieu d'être.
+    const appels = stubFetch(REVOQUE);
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+    await screen.findByRole('heading', { name: titreDialogue });
+    const avant = appels.filter(a => a.url.startsWith('/api/praticien/patients?page=')).length;
+    fireEvent.click(screen.getByRole('button', { name: /^rétablir l’accès$/i }));
+
+    await waitFor(() => {
+      const apres = appels.filter(a => a.url.startsWith('/api/praticien/patients?page=')).length;
+      expect(apres).toBeGreaterThan(avant);
+    });
   });
 });
