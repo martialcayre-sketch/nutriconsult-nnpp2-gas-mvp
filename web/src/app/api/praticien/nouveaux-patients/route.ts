@@ -130,8 +130,11 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
           where: { idPatient: { in: ids }, statut: 'validee' },
           select: { idPatient: true },
         }),
+        // Groupé par STATUT en plus du patient : la même lecture rend le total
+        // (pack assigné) et la part rendue (`Complété`). Une seconde requête
+        // aurait posé une lecture de plus pour un compte que celle-ci porte.
         prisma.assignation.groupBy({
-          by: ['idPatient'],
+          by: ['idPatient', 'statut'],
           where: { idPatient: { in: ids } },
           _count: { _all: true },
         }),
@@ -223,7 +226,19 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
       if (!connu || g.creeLe < connu) premiereConnexion.set(g.idPatient, g.creeLe);
     }
     const idsValides = new Set(validees.map(c => c.idPatient));
-    const nbAssignations = new Map(assignations.map(a => [a.idPatient, a._count._all]));
+    // Un patient rend désormais PLUSIEURS lignes (une par statut) : les poser
+    // par affectation écraserait tout sauf la dernière.
+    const nbAssignations = new Map<string, number>();
+    const nbAssignationsRendues = new Map<string, number>();
+    for (const a of assignations) {
+      nbAssignations.set(a.idPatient, (nbAssignations.get(a.idPatient) ?? 0) + a._count._all);
+      if (a.statut === 'Complété') {
+        nbAssignationsRendues.set(
+          a.idPatient,
+          (nbAssignationsRendues.get(a.idPatient) ?? 0) + a._count._all,
+        );
+      }
+    }
     const aEteRefuse = new Set(liensRefuses.map(l => l.idPatient));
 
     const lignes = lignesNouveauxPatients(
@@ -257,6 +272,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         entreeRefusee: aEteRefuse.has(p.idPatient),
         onboardingValide: idsValides.has(p.idPatient),
         nbAssignations: nbAssignations.get(p.idPatient) ?? 0,
+        nbAssignationsRendues: nbAssignationsRendues.get(p.idPatient) ?? 0,
       })),
     );
     return NextResponse.json({ ok: true, lignes, fenetreJours: FENETRE_JOURS });

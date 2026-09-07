@@ -8,7 +8,7 @@ import {
   FINALITE_CONSENTEMENT,
 } from '@/lib/consultation/portail';
 import { normaliserAnamnese, ANAMNESE_CHAMP_REQUIS } from '@/lib/consultation/anamnese';
-import { assignPackToPatient, qidsConsultation, qidsSuspendus } from '@/lib/consultation/assignBasePack';
+import { assignPackToPatient, echeancePackBase, qidsConsultation, qidsSuspendus } from '@/lib/consultation/assignBasePack';
 import { resolvePackQuestionnaireIds } from '@/lib/consultation/packRegistry';
 import { isMotifValide } from '@/lib/consultation/motifs';
 import { logger } from '@/lib/observability/logger';
@@ -172,6 +172,14 @@ export async function POST(req: Request): Promise<NextResponse<PortailValiderRes
         consentementDonne: true,
         consentementVersion: CONSENTEMENT_VERSION,
         idConsultation: consultation.idConsultation,
+        // Le pack de base partait SANS échéance, et la lecture du Fil filtre
+        // `dateLimite: { not: null }` avant même d'atteindre
+        // `cartesAssignationsEnRetard` : un pack de base oublié ne pouvait
+        // rougir nulle part. Une date suffit à le faire exister au Fil. Les
+        // agendas du pack en sont exemptés au moment de la création
+        // (`QIDS_SANS_DATE_LIMITE`), pas ici : la règle appartient à
+        // l'instrument.
+        dateLimite: echeancePackBase(),
       },
     });
     // Seconde cause d'amputation, même doctrine que les suspendus ci-dessus :

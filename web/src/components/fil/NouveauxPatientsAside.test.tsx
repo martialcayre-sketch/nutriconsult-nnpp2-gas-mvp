@@ -27,6 +27,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     entreeRefusee: false,
     onboardingValide: true,
     nbAssignations: 5,
+    nbAssignationsRendues: 5,
     ...over,
   };
 }
@@ -83,6 +84,15 @@ describe('NouveauxPatientsAside', () => {
     // Le raffinement est tout l'objet de l'item : le dossier ne se lit plus
     // comme un dossier tout neuf que personne n'a encore ouvert.
     expect(screen.queryByText('Jamais connecté')).toBeNull();
+    expect(screen.getByText('1 en attente')).toBeTruthy();
+  });
+
+  it('un pack assigné et jamais commencé se dit en toutes lettres', async () => {
+    stub(reponse([source({ nbAssignationsRendues: 0 })]));
+    render(<NouveauxPatientsAside />);
+    await waitFor(() => expect(screen.getByText('Pack assigné, rien rendu')).toBeTruthy());
+    // Le dossier ne se déclare plus en règle alors que rien n'est revenu.
+    expect(screen.queryByText('Accès et pack de base OK')).toBeNull();
     expect(screen.getByText('1 en attente')).toBeTruthy();
   });
 

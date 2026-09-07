@@ -49,6 +49,7 @@ export type EtapeNouveauPatient =
   | 'jamais_connecte'
   | 'onboarding_a_finir'
   | 'pack_absent'
+  | 'pack_sans_reponse'
   | 'complet';
 
 export type SourceNouveauPatient = {
@@ -106,6 +107,12 @@ export type SourceNouveauPatient = {
   onboardingValide: boolean;
   /** Assignations portées par le dossier, tous packs confondus. */
   nbAssignations: number;
+  /** Celles que le patient a RENDUES (`statut: 'Complété'`). Un pack assigné
+   * n'est pas un pack rempli : sans ce compte, l'encart déclarait « OK » un
+   * dossier dont rien n'était revenu. LIMITE ASSUMÉE : une assignation
+   * `Annulée` compte dans `nbAssignations` sans jamais compter ici — un pack
+   * entièrement annulé par le praticien se lira donc « rien rendu ». */
+  nbAssignationsRendues: number;
 };
 
 export type LigneNouveauPatient = SourceNouveauPatient & {
@@ -122,6 +129,7 @@ const LIBELLES: Record<EtapeNouveauPatient, string> = {
   jamais_connecte: 'Jamais connecté',
   onboarding_a_finir: 'Onboarding à finir',
   pack_absent: 'Pack de base absent',
+  pack_sans_reponse: 'Pack assigné, rien rendu',
   complet: 'Accès et pack de base OK',
 };
 
@@ -134,6 +142,17 @@ const LIBELLES: Record<EtapeNouveauPatient, string> = {
  * assigne le pack dans la même requête (`api/portail/valider`). Zéro
  * assignation après validation est donc une incohérence, pas une attente —
  * d'où un libellé qui ne se confond avec aucun des trois précédents.
+ *
+ * `pack_sans_reponse` est l'état qui manquait. L'encart s'arrêtait au COMPTE
+ * DES ASSIGNATIONS : un pack assigné et jamais ouvert passait « Accès et pack
+ * de base OK », c'est-à-dire exactement le dossier vide que l'encart existe
+ * pour montrer. Assigné n'est pas rempli ; seule une réponse rendue franchit
+ * la dernière porte.
+ *
+ * CONSÉQUENCE ASSUMÉE : tout dossier fraîchement validé passe par cet état,
+ * puisque rien n'est encore revenu. Le compteur « N en attente » de l'encart
+ * comptera donc les dossiers du jour. C'est voulu — l'attente est réelle — et
+ * la variante est `warning`, jamais `danger` : rien n'est cassé.
  */
 export function etapeNouveauPatient(source: SourceNouveauPatient): EtapeNouveauPatient {
   // Les deux fermetures passent AVANT les trois portes : elles sont le geste du
@@ -156,6 +175,12 @@ export function etapeNouveauPatient(source: SourceNouveauPatient): EtapeNouveauP
   if (!source.connecteLe) return 'jamais_connecte';
   if (!source.onboardingValide) return 'onboarding_a_finir';
   if (source.nbAssignations === 0) return 'pack_absent';
+  // L'ORDRE EST LA DISTINCTION. « Pack absent » est une incohérence de la
+  // machine (la validation aurait dû assigner) ; « pack assigné, rien rendu »
+  // est une attente du patient. Tester les réponses d'abord ferait passer la
+  // première pour la seconde, et enverrait relancer un patient au lieu de
+  // réparer un dossier.
+  if (source.nbAssignationsRendues === 0) return 'pack_sans_reponse';
   return 'complet';
 }
 

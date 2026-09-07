@@ -20,6 +20,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     entreeRefusee: false,
     onboardingValide: true,
     nbAssignations: 5,
+    nbAssignationsRendues: 5,
     ...over,
   };
 }
@@ -100,6 +101,30 @@ describe('etapeNouveauPatient', () => {
         source({ accesEnvoyeLe: null, connecteLe: null, onboardingValide: false, nbAssignations: 0, entreeRefusee: true }),
       ),
     ).toBe('acces_non_envoye');
+  });
+
+  it('un pack assigné dont rien n’est rendu n’est pas un dossier en règle', () => {
+    expect(etapeNouveauPatient(source({ nbAssignationsRendues: 0 }))).toBe('pack_sans_reponse');
+    expect(libelleEtape('pack_sans_reponse')).toBe('Pack assigné, rien rendu');
+  });
+
+  it('un rendu PARTIEL franchit la dernière porte — on ne réclame pas le pack entier', () => {
+    // CE BANC PASSERAIT SANS LE CORRECTIF. Il n'est là que pour un mutant : si
+    // la condition devenait `nbAssignationsRendues < nbAssignations`, l'encart
+    // réclamerait un pack COMPLET et garderait en attente un patient qui a
+    // commencé à répondre. Le seuil est « au moins un », pas « tout ».
+    expect(etapeNouveauPatient(source({ nbAssignations: 5, nbAssignationsRendues: 1 }))).toBe('complet');
+  });
+
+  it('un pack jamais commencé compte parmi les dossiers en attente', () => {
+    const [ligne] = lignesNouveauxPatients([source({ nbAssignationsRendues: 0 })]);
+    expect(estEnAttente(ligne)).toBe(true);
+  });
+
+  it('un pack ABSENT reste une incohérence, pas une attente du patient', () => {
+    // L'ordre compte : tester les réponses d'abord ferait passer un dossier que
+    // la validation aurait dû servir pour un patient qui traîne.
+    expect(etapeNouveauPatient(source({ nbAssignations: 0, nbAssignationsRendues: 0 }))).toBe('pack_absent');
   });
 
   it('un dossier désactivé se nomme, et prime sur la révocation', () => {

@@ -10,7 +10,16 @@ const { prisma } = vi.hoisted(() => ({
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/ids', () => ({ createPublicId: (prefix: string) => `${prefix}_TEST_12345678` }));
 
-import { assignPackToPatient, qidsConsultation, qidsSuspendus } from './assignBasePack';
+import { AGENDA_ALI_ID } from '@/lib/agenda-alimentaire/types';
+import { AGENDA_SOMMEIL_ID } from '@/lib/agenda-sommeil/types';
+import {
+  assignPackToPatient,
+  DELAI_PACK_BASE_JOURS,
+  echeancePackBase,
+  qidsConsultation,
+  qidsSuspendus,
+  QIDS_SANS_DATE_LIMITE,
+} from './assignBasePack';
 
 // Ce chemin est le plus sensible des trois points d'assignation : il part de
 // l'onboarding portail (`api/portail/valider`), donc sans clic praticien sur le
@@ -111,5 +120,87 @@ describe('assignPackToPatient — instruments suspendus', () => {
     expect(dejaOuverts).toEqual([]);
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(prisma.$queryRaw).not.toHaveBeenCalled();
+  });
+});
+
+describe('echeancePackBase', () => {
+  it('rend la date du cabinet plus le délai, un jour ordinaire', () => {
+    expect(echeancePackBase(new Date('2026-09-07T10:00:00.000Z'))).toBe('2026-10-07');
+  });
+
+  it('ancre sur le JOUR DE PARIS, pas sur la date UTC', () => {
+    // 22 h 30 UTC = 00 h 30 le lendemain à Paris. Le raccourci
+    // `now.toISOString().slice(0, 10)` daterait l'échéance de la veille : une
+    // validation faite en fin de soirée perdrait un jour.
+    expect(echeancePackBase(new Date('2026-09-07T22:30:00.000Z'))).toBe('2026-10-08');
+  });
+
+  it('ne perd pas un jour quand la fenêtre franchit le changement d’heure', () => {
+    // Du 21 octobre au 20 novembre : l'heure d'hiver tombe entre les deux.
+    // `now.getTime() + N * 86_400_000` rendrait le 19.
+    expect(echeancePackBase(new Date('2026-10-20T22:30:00.000Z'))).toBe('2026-11-20');
+  });
+
+  it('porte le délai de la fenêtre « nouveaux patients »', () => {
+    // VALEUR NON INVENTÉE, ET NON PARTAGEABLE : c'est `FENETRE_JOURS` de
+    // `api/praticien/nouveaux-patients`, que Next.js interdit d'exporter depuis
+    // un `route.ts`. Les deux constantes doivent bouger ensemble, à la main ;
+    // cette assertion est la seule chose qui rattrape leur désynchronisation.
+    expect(DELAI_PACK_BASE_JOURS).toBe(30);
+  });
+});
+
+describe('assignPackToPatient — les agendas ne reçoivent jamais d’échéance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    prisma.assignation.create.mockResolvedValue({});
+    prisma.assignation.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue([{ id: 1 }]);
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
+    );
+  });
+
+  async function assignerAvecEcheance(qids: string[]) {
+    return assignPackToPatient({
+      idPatientBusiness: 'PAT_TEST',
+      emailPatient: 'sophie.nicola@example.test',
+      qids,
+      packNom: 'Pack test',
+      options: { dateLimite: '2026-10-07' },
+    });
+  }
+
+  /** Retrouve une création par son instrument — jamais par son rang. */
+  function creation(idQuestionnaire: string) {
+    const appels = prisma.assignation.create.mock.calls as Array<
+      [{ data: { idQuestionnaire: string; dateLimite: string | null } }]
+    >;
+    return appels.find(c => c[0].data.idQuestionnaire === idQuestionnaire)?.[0].data;
+  }
+
+  it('un questionnaire ordinaire reçoit l’échéance du pack', async () => {
+    await assignerAvecEcheance(['Q_NEU_03']);
+    expect(creation('Q_NEU_03')?.dateLimite).toBe('2026-10-07');
+  });
+
+  it('l’agenda du sommeil ne la reçoit pas, dans le même pack', async () => {
+    // Sa fenêtre de 21 nuits est ancrée sur la PREMIÈRE SAISIE, pas sur
+    // l'assignation : une échéance de pack ne la borne pas, elle la tronque.
+    // Et `isDeadlineExpired` fermerait AUSSI la relance praticien — le seul
+    // geste de rattrapage.
+    await assignerAvecEcheance(['Q_NEU_03', 'Q_SOM_09']);
+    expect(creation('Q_NEU_03')?.dateLimite).toBe('2026-10-07');
+    expect(creation('Q_SOM_09')?.dateLimite).toBeNull();
+  });
+
+  it('l’agenda alimentaire est exempté lui aussi, drapeau ou pas', () => {
+    // PAS PAR LE CHEMIN D'ASSIGNATION, ET C'EST LA RAISON DE L'EXPORT.
+    // `Q_ALI_09` est dans `IDS_SUSPENDUS` tant que son drapeau est éteint : il
+    // n'est jamais créé, donc aucun banc passant par `assignPackToPatient` ne
+    // peut rougir si on le retire du Set. L'assertion porte sur l'appartenance,
+    // seule chose qui tienne avant l'allumage — et qui vaudra encore après.
+    expect(QIDS_SANS_DATE_LIMITE.has(AGENDA_ALI_ID)).toBe(true);
+    expect(QIDS_SANS_DATE_LIMITE.has(AGENDA_SOMMEIL_ID)).toBe(true);
   });
 });

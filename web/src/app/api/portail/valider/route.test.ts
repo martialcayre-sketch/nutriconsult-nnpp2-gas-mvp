@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { prisma } = vi.hoisted(() => ({
   prisma: {
@@ -207,6 +207,61 @@ describe('POST /api/portail/valider — instruments suspendus dans le pack de ba
 // au lieu de rendre la fixture quoi qu'on demande. C'est ce qui rend le banc
 // falsifiable : rétablir la comparaison stricte, ou remettre la constante en
 // capitales, rend `null` et la route répond 404 `pack_not_found`.
+describe('POST /api/portail/valider — l’échéance du pack de base', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NEXTAUTH_SECRET = 'secret-de-test-non-production';
+    prisma.patient.findUnique.mockResolvedValue(compte);
+    prisma.consultation.findFirst.mockResolvedValue(consultation);
+    prisma.consultation.update.mockResolvedValue({});
+    prisma.assignation.create.mockResolvedValue({});
+    prisma.questionnairePack.findUnique.mockResolvedValue(null);
+    prisma.assignation.findMany.mockResolvedValue([]);
+    prisma.$queryRaw.mockResolvedValue([{ id: 1 }]);
+    prisma.$transaction.mockImplementation(
+      (fn: (tx: typeof prisma) => Promise<unknown>) => fn(prisma),
+    );
+    // L'horloge est figée AVANT `post()`, qui signe la session sur `Date.now()`.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-09-07T10:00:00.000Z'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Retrouve une création par son instrument — jamais par son rang. */
+  function creation(idQuestionnaire: string) {
+    const appels = prisma.assignation.create.mock.calls as Array<
+      [{ data: { idQuestionnaire: string; dateLimite: string | null } }]
+    >;
+    return appels.find(c => c[0].data.idQuestionnaire === idQuestionnaire)?.[0].data;
+  }
+
+  it('le pack de base part AVEC une échéance — sans elle, aucun retard ne peut naître', async () => {
+    // La lecture du Fil filtre `dateLimite: { not: null }` avant même
+    // d'atteindre `cartesAssignationsEnRetard` : un pack de base oublié ne
+    // pouvait rougir nulle part. L'assertion porte sur TOUTES les créations,
+    // pas seulement la première.
+    const response = await POST(post(['Q_NEU_03', 'Q_SOM_06']));
+    expect(response.status).toBe(200);
+    expect(prisma.assignation.create).toHaveBeenCalledTimes(2);
+    expect(creation('Q_NEU_03')?.dateLimite).toBe('2026-10-07');
+    expect(creation('Q_SOM_06')?.dateLimite).toBe('2026-10-07');
+  });
+
+  it('l’agenda du pack de base part SANS échéance, sur le chemin réel', async () => {
+    // LE CÂBLAGE DE L'EXEMPTION, pas seulement sa fonction. `Q_SOM_09` est dans
+    // le pack de base de production : sans cette garde, chaque onboarding
+    // validé poserait une échéance qui, trente jours plus tard, refuserait la
+    // saisie d'une nuit ET fermerait la relance praticien.
+    const response = await POST(post(['Q_NEU_03', 'Q_SOM_09']));
+    expect(response.status).toBe(200);
+    expect(creation('Q_NEU_03')?.dateLimite).toBe('2026-10-07');
+    expect(creation('Q_SOM_09')?.dateLimite).toBeNull();
+  });
+});
+
 describe('POST /api/portail/valider — repli par nom du pack de base', () => {
   // TROIS CASSES, et c'est ce qui rend le banc falsifiable indépendamment de la
   // casse de la constante : une comparaison stricte, quelle que soit la forme
