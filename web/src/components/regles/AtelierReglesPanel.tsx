@@ -85,6 +85,29 @@ function BadgeGrade({ grade }: { grade: GradePreuveScientifique }) {
   return <Badge variant="neutral">preuve scientifique — {labelGradePreuve(grade)}</Badge>;
 }
 
+/**
+ * La condition biologique servie par l'API, rendue affichable et ré-éditable
+ * ([[D-138]], [[D-141]]).
+ *
+ * LECTURE DÉLIBÉRÉMENT PERMISSIVE, et c'est l'inverse du serveur : ici on rend
+ * ce qu'on peut MONTRER. Une condition que le moteur jugerait illisible doit
+ * rester visible au praticien — c'est précisément celle qu'il faut pouvoir
+ * corriger. La validation stricte appartient au serveur, qui la refusera à
+ * l'écriture avec le lecteur du moteur lui-même.
+ */
+function lireConditionBiologiqueAffichable(
+  valeur: unknown,
+): { cible: string; echeanceJour: string } | null {
+  if (typeof valeur !== 'object' || valeur === null || Array.isArray(valeur)) return null;
+  const condition = valeur as { cible?: unknown; echeance?: unknown };
+  if (typeof condition.cible !== 'string' || !condition.cible.trim()) return null;
+  // `<input type="date">` veut AAAA-MM-JJ ; la base garde un ISO complet.
+  const echeanceJour = typeof condition.echeance === 'string'
+    ? condition.echeance.slice(0, 10)
+    : '';
+  return { cible: condition.cible.trim(), echeanceJour };
+}
+
 type Etat = 'chargement' | 'chargee' | 'erreur';
 
 /** Délai avant qu'une frappe ne devienne une requête (motif PatientsPanel). */
@@ -390,6 +413,12 @@ function FormulaireCreation({
   const [justification, setJustification] = useState('');
   const [sourceReferenceId, setSourceReferenceId] = useState('');
   const [critereId, setCritereId] = useState('');
+  // La condition BIOLOGIQUE ([[D-138]]) : elle n'avait aucun champ de saisie —
+  // donc aucun producteur, alors que le moteur la lit et en fait naître une
+  // intention `conditionnelle_biologie`. Cible libre (un marqueur se nomme, il
+  // ne se choisit pas dans une liste que le dépôt n'a pas), échéance optionnelle.
+  const [cibleBio, setCibleBio] = useState('');
+  const [echeanceBio, setEcheanceBio] = useState('');
   const [claimId, setClaimId] = useState('');
   const [versionClaim, setVersionClaim] = useState('');
   const [envoi, setEnvoi] = useState(false);
@@ -423,7 +452,21 @@ function FormulaireCreation({
           ...(doseBasse.trim() ? { doseCibleBasse: Number(doseBasse) } : {}),
           ...(doseHaute.trim() ? { doseCibleHaute: Number(doseHaute) } : {}),
           ...(poids.trim() ? { poids: Number(poids) } : {}),
-          ...(critereId ? { conditionSupplementaire: { critereId } } : {}),
+          // Les deux natures séparées ([[D-138]], producteurs posés par
+          // [[D-141]]). L'ancien `conditionSupplementaire` n'est plus envoyé :
+          // le moteur ne le lisait plus, et la règle naissait inconditionnelle.
+          ...(critereId ? { conditionCritereId: critereId } : {}),
+          ...(cibleBio.trim()
+            ? {
+                conditionBiologie: {
+                  type: 'biologie',
+                  cible: cibleBio.trim(),
+                  ...(echeanceBio.trim()
+                    ? { echeance: new Date(echeanceBio).toISOString() }
+                    : {}),
+                },
+              }
+            : {}),
         }),
       });
       const payload = (await reponse.json()) as RegleCreationApiResponse;
@@ -436,6 +479,8 @@ function FormulaireCreation({
       setDoseBasse('');
       setDoseHaute('');
       setCritereId('');
+      setCibleBio('');
+      setEcheanceBio('');
       // Le claim est propre à CETTE règle : le laisser en place ferait fonder
       // la règle suivante sur la précédente sans que personne l'ait voulu.
       setClaimId('');
@@ -595,7 +640,33 @@ function FormulaireCreation({
               <option key={critere.id} value={critere.id}>{critere.labelFr}</option>
             ))}
           </select>
+          {/* La condition BIOLOGIQUE, seconde nature de l'ancien champ ([[D-138]]).
+              Sans ces deux champs, elle n'avait aucun producteur : le moteur la
+              lit, personne ne l'écrivait. */}
+          <input
+            type="text"
+            aria-label="Cible biologique conditionnelle (optionnelle)"
+            value={cibleBio}
+            disabled={fige}
+            onChange={(event) => setCibleBio(event.target.value)}
+            placeholder="cible biologique attendue (optionnelle)"
+            className={classeChamp()}
+          />
+          <input
+            type="date"
+            aria-label="Échéance de la cible biologique (optionnelle)"
+            value={echeanceBio}
+            disabled={fige || !cibleBio.trim()}
+            onChange={(event) => setEcheanceBio(event.target.value)}
+            className={classeChamp()}
+          />
         </div>
+        {cibleBio.trim() && (
+          <p className="text-xs text-muted-foreground">
+            Cette règle ne produira qu&apos;une intention <em>suspendue à un bilan</em> :
+            elle attendra « {cibleBio.trim()} » avant de rien proposer.
+          </p>
+        )}
         <textarea
           aria-label="Justification"
           value={justification}
@@ -645,6 +716,15 @@ function FormulaireRevision({
   const [formePrefereeId, setFormePrefereeId] = useState(regle.formePreferee?.id ?? '');
   const [doseBasse, setDoseBasse] = useState(regle.doseCibleBasse?.toString() ?? '');
   const [doseHaute, setDoseHaute] = useState(regle.doseCibleHaute?.toString() ?? '');
+  // LES CONDITIONS SONT REPRISES, ET C'EST UN CORRECTIF ([[D-141]]). Le
+  // formulaire de révision n'envoyait AUCUNE condition : une révision étant une
+  // réécriture complète, réviser une règle conditionnée à un critère la rendait
+  // INCONDITIONNELLE, en silence et sans que rien ne l'affiche. Le praticien
+  // croyait corriger une justification ; il retirait une garde clinique.
+  const [critereId, setCritereId] = useState(regle.conditionCritere?.id ?? '');
+  const conditionBio = lireConditionBiologiqueAffichable(regle.conditionBiologie);
+  const [cibleBio, setCibleBio] = useState(conditionBio?.cible ?? '');
+  const [echeanceBio, setEcheanceBio] = useState(conditionBio?.echeanceJour ?? '');
   // Le claim de la version révisée est REPRIS de la version en place — une
   // révision est une réécriture complète, et repartir vide ferait ressaisir à
   // la main ce que la règle porte déjà ([[D-140]]). Il reste modifiable :
@@ -718,6 +798,22 @@ function FormulaireRevision({
           sourceReferenceId,
           claimId: claimId.trim(),
           versionClaim: versionClaim.trim(),
+          // [[D-141]] — les conditions VOYAGENT avec la révision. Sans elles,
+          // une réécriture complète retirait la condition de la règle en
+          // silence : le praticien croyait corriger une justification, il
+          // levait une garde clinique.
+          ...(critereId ? { conditionCritereId: critereId } : {}),
+          ...(cibleBio.trim()
+            ? {
+                conditionBiologie: {
+                  type: 'biologie',
+                  cible: cibleBio.trim(),
+                  ...(echeanceBio.trim()
+                    ? { echeance: new Date(echeanceBio).toISOString() }
+                    : {}),
+                },
+              }
+            : {}),
           ...(formePrefereeId ? { formePrefereeId } : {}),
           ...(doseBasse.trim() ? { doseCibleBasse: Number(doseBasse) } : {}),
           ...(doseHaute.trim() ? { doseCibleHaute: Number(doseHaute) } : {}),
@@ -812,6 +908,44 @@ function FormulaireRevision({
             className={`${classeChamp()} w-full`}
           />
         </div>
+        <select
+          aria-label="Critère conditionnel de la révision"
+          value={critereId}
+          disabled={fige}
+          onChange={(event) => setCritereId(event.target.value)}
+          className={classeChamp()}
+        >
+          <option value="">Sans critère conditionnel</option>
+          {/* Le critère COURANT est toujours une option, même si le vocabulaire
+              servi ne le contient plus (critère désactivé depuis) : sans quoi le
+              select retomberait sur « sans critère » et la révision retirerait
+              la condition sans que rien ne l'annonce. */}
+          {(vocabulaire.criteres.some((c) => c.id === critereId) || !regle.conditionCritere
+            ? vocabulaire.criteres
+            : [{ id: regle.conditionCritere.id, code: regle.conditionCritere.code,
+                 labelFr: regle.conditionCritere.labelFr, categorie: null },
+               ...vocabulaire.criteres]
+          ).map((critere) => (
+            <option key={critere.id} value={critere.id}>{critere.labelFr}</option>
+          ))}
+        </select>
+        <input
+          type="text"
+          aria-label="Cible biologique conditionnelle de la révision"
+          value={cibleBio}
+          disabled={fige}
+          onChange={(event) => setCibleBio(event.target.value)}
+          placeholder="cible biologique attendue (optionnelle)"
+          className={classeChamp()}
+        />
+        <input
+          type="date"
+          aria-label="Échéance de la cible biologique de la révision"
+          value={echeanceBio}
+          disabled={fige || !cibleBio.trim()}
+          onChange={(event) => setEcheanceBio(event.target.value)}
+          className={classeChamp()}
+        />
         <input
           type="text"
           aria-label="Identifiant du claim fondateur de la révision"
@@ -1662,6 +1796,40 @@ export function AtelierReglesPanel() {
                       <blockquote className="whitespace-pre-wrap border-l-2 border-border pl-3 text-sm text-muted-foreground">
                         {regle.justification}
                       </blockquote>
+
+                      {/* LES CONDITIONS SE VOIENT ([[D-141]]). Aucun écran ne
+                          les montrait : une règle conditionnée était
+                          indiscernable d'une règle inconditionnelle, et c'est
+                          ce qui a laissé passer des mois d'écriture au mauvais
+                          endroit. Une garde clinique qui ne s'affiche pas ne se
+                          vérifie pas. */}
+                      {Boolean(regle.conditionCritere
+                        || lireConditionBiologiqueAffichable(regle.conditionBiologie)
+                        || regle.conditionSupplementaire) && (
+                        <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+                          {regle.conditionCritere && (
+                            <li>
+                              Conditionnée au critère «&nbsp;{regle.conditionCritere.labelFr}&nbsp;» —
+                              sans constat au dossier, cette règle ne produit rien.
+                            </li>
+                          )}
+                          {(() => {
+                            const bio = lireConditionBiologiqueAffichable(regle.conditionBiologie);
+                            return bio ? (
+                              <li>
+                                Suspendue au bilan «&nbsp;{bio.cible}&nbsp;»
+                                {bio.echeanceJour ? ` (échéance ${formatDate(bio.echeanceJour)})` : ''}.
+                              </li>
+                            ) : null;
+                          })()}
+                          {regle.conditionSupplementaire ? (
+                            <li className="text-status-warning">
+                              Cette règle porte encore une condition à l&apos;ancien format, que le
+                              moteur ne lit plus. Rouvrez-la en révision pour la reposer.
+                            </li>
+                          ) : null}
+                        </ul>
+                      )}
 
                       <p className="text-xs text-muted-foreground">
                         Source : {regle.source.citation}

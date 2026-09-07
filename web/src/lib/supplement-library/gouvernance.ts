@@ -27,6 +27,7 @@ import {
   VERSION_CLAIM_RE,
   type ReferenceClaim,
 } from '@/lib/rag/claims/validite';
+import { lireConditionBiologique, type WaitForBiologie } from './decisionAvantBiologie';
 import { parseGradePreuveScientifique, type GradePreuveScientifique } from './types';
 
 // ─── Statut d'une ligne ─────────────────────────────────────────────────────
@@ -107,7 +108,14 @@ export const SELECTION_REGLE = {
   typeRegle: true,
   poids: true,
   justification: true,
+  // L'ANCIEN champ, encore lu pour que l'atelier puisse MONTRER ce qu'une règle
+  // d'avant [[D-138]] porte encore. Plus personne ne l'écrit ([[D-141]]) ; il
+  // part avec le `DROP`, qui est un geste distinct.
   conditionSupplementaire: true,
+  // Les deux natures séparées. Le critère est JOINT — un écran doit pouvoir le
+  // NOMMER, pas afficher un identifiant.
+  conditionCritere: { select: { id: true, code: true, labelFr: true } },
+  conditionBiologie: true,
   doseCibleBasse: true,
   doseCibleHaute: true,
   gradePreuveScientifique: true,
@@ -149,6 +157,8 @@ type LigneRegleAtelier = {
   poids: number;
   justification: string;
   conditionSupplementaire: unknown;
+  conditionCritere: { id: string; code: string; labelFr: string } | null;
+  conditionBiologie: unknown;
   doseCibleBasse: number | null;
   doseCibleHaute: number | null;
   gradePreuveScientifique: string;
@@ -209,7 +219,16 @@ export type RegleAtelier = {
   doseCibleHaute: number | null;
   gradePreuve: GradePreuveScientifique;
   justification: string;
+  /**
+   * ANCIEN champ à deux natures, servi tel quel pour qu'un écran puisse montrer
+   * ce qu'une règle d'avant [[D-138]] porte encore. Ne rien en déduire : le
+   * moteur ne le lit plus, et plus personne ne l'écrit ([[D-141]]).
+   */
   conditionSupplementaire: unknown;
+  /** Le critère gouverné auquel la règle est conditionnée, NOMMÉ ([[D-138]]). */
+  conditionCritere: { id: string; code: string; labelFr: string } | null;
+  /** La condition biologique, telle que le moteur la lira ([[D-138]]). */
+  conditionBiologie: unknown;
   source: { id: string; citation: string; lienUrl: string | null };
   /**
    * Le claim du corpus qui fonde la règle ([[D-140]]). `null` ne peut plus
@@ -260,6 +279,8 @@ export function serialiserRegle(ligne: LigneRegleAtelier, lignee: LigneLignee[])
     gradePreuve: parseGradePreuveScientifique(ligne.gradePreuveScientifique),
     justification: ligne.justification,
     conditionSupplementaire: ligne.conditionSupplementaire ?? null,
+    conditionCritere: ligne.conditionCritere,
+    conditionBiologie: ligne.conditionBiologie ?? null,
     source: ligne.sourceReference,
     // Le COUPLE fait l'identité : une moitié seule ne désigne rien d'unique au
     // corpus, elle est donc rendue absente plutôt que complétée.
@@ -289,7 +310,14 @@ export type ContenuRegle = {
   justification: string;
   sourceReferenceId: string;
   poids: number | null;
-  conditionSupplementaire: { critereId: string } | null;
+  /**
+   * LES DEUX NATURES SÉPARÉES ([[D-138]]), et écrites — c'est ce que [[D-141]]
+   * ferme. L'ancien champ `conditionSupplementaire` mêlait les deux ; le moteur
+   * ne le lit plus depuis `D-138`, et les routes l'écrivaient encore : une règle
+   * créée avec un critère était donc INCONDITIONNELLE aux yeux du moteur.
+   */
+  conditionCritereId: string | null;
+  conditionBiologie: WaitForBiologie | null;
   /** Le claim fondateur ([[D-140]]) — obligatoire, jamais nul. */
   claim: ReferenceClaim;
 };
@@ -323,7 +351,8 @@ export function validerContenuRegle(body: {
   justification?: unknown;
   sourceReferenceId?: unknown;
   poids?: unknown;
-  conditionSupplementaire?: unknown;
+  conditionCritereId?: unknown;
+  conditionBiologie?: unknown;
   claimId?: unknown;
   versionClaim?: unknown;
 }): VerdictContenu {
@@ -421,25 +450,32 @@ export function validerContenuRegle(body: {
     poids = nombre;
   }
 
-  // Décision actée n°4 : la condition supplémentaire référence un critère du
-  // vocabulaire gouverné (`clinical_criteria`), jamais une chaîne libre.
-  let conditionSupplementaire: { critereId: string } | null = null;
-  if (body.conditionSupplementaire !== undefined && body.conditionSupplementaire !== null) {
-    const condition = body.conditionSupplementaire;
-    const critereId =
-      typeof condition === 'object' && !Array.isArray(condition)
-        ? texteOptionnel((condition as { critereId?: unknown }).critereId)
-        : null;
-    if (!critereId) {
+  // ── Les DEUX conditions, séparées ([[D-138]]) et enfin écrites ([[D-141]]) ──
+  //
+  // Décision actée n°4 : la condition de critère référence un mot du vocabulaire
+  // gouverné (`clinical_criteria`), jamais une chaîne libre. L'existence et
+  // l'activité du critère restent vérifiées par les routes contre la base.
+  const conditionCritereId = texteOptionnel(body.conditionCritereId);
+
+  // La condition BIOLOGIQUE est validée par le lecteur MÊME du moteur. Écrire
+  // ce que le moteur appellerait `illisible` produirait une règle que l'atelier
+  // accepte et que la décision refuse ensuite — un désaccord entre deux
+  // validations qui ne peut que grandir.
+  let conditionBiologie: WaitForBiologie | null = null;
+  if (body.conditionBiologie !== undefined && body.conditionBiologie !== null
+    && body.conditionBiologie !== '') {
+    const lue = lireConditionBiologique(body.conditionBiologie);
+    if (lue.forme !== 'biologie') {
       return {
         ok: false,
-        reason: 'condition_invalide',
+        reason: 'condition_biologie_invalide',
         message:
-          'La condition supplémentaire doit référencer un critère du vocabulaire gouverné '
-          + '({ critereId }), jamais une chaîne libre.',
+          'La condition biologique doit nommer une cible ({ type: "biologie", cible }), '
+          + 'et son échéance, si elle est posée, doit être une date ISO complète. '
+          + 'Le moteur refuserait une condition illisible plutôt que de l’ignorer.',
       };
     }
-    conditionSupplementaire = { critereId };
+    conditionBiologie = lue.waitFor;
   }
 
   return {
@@ -452,7 +488,8 @@ export function validerContenuRegle(body: {
       justification,
       sourceReferenceId,
       poids,
-      conditionSupplementaire,
+      conditionCritereId,
+      conditionBiologie,
       claim: { claimId, versionClaim },
     },
   };

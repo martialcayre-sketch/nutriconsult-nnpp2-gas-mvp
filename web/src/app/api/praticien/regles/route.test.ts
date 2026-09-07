@@ -225,20 +225,61 @@ describe('/api/praticien/regles', () => {
     expect((await reponse.json()).reason).toBe('doses_invalides');
   });
 
-  it('refuse une condition qui ne cite pas un critère gouverné', async () => {
-    const libre = await POST(
-      requetePost({ ...CORPS_CREATION, conditionSupplementaire: 'sous ISRS' }),
-    );
-    expect(libre.status).toBe(400);
-    expect((await libre.json()).reason).toBe('condition_invalide');
-
+  it('refuse un critère conditionnel inconnu ou inactif', async () => {
     prisma.clinicalCriterion.findUnique.mockResolvedValue(null);
     const inconnu = await POST(
-      requetePost({ ...CORPS_CREATION, conditionSupplementaire: { critereId: 'crit_x' } }),
+      requetePost({ ...CORPS_CREATION, conditionCritereId: 'crit_x' }),
     );
     expect(inconnu.status).toBe(422);
     expect((await inconnu.json()).reason).toBe('critere_introuvable');
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+  });
+
+  // ── Les deux conditions séparées, et ÉCRITES ([[D-141]]) ──────────────────
+  // Le défaut que ces bancs ferment : les routes écrivaient l'ancien champ
+  // `conditionSupplementaire`, que le moteur ne lit plus depuis `D-138`. Une
+  // règle créée avec un critère naissait donc INCONDITIONNELLE à ses yeux.
+  describe('conditions séparées', () => {
+    it('écrit le critère dans sa COLONNE, jamais dans l’ancien champ', async () => {
+      prisma.clinicalCriterion.findUnique.mockResolvedValue({ id: 'crit_1', actif: true });
+      await POST(requetePost({ ...CORPS_CREATION, conditionCritereId: 'crit_1' }));
+      const { data } = prisma.clinicalRule.create.mock.calls[0][0];
+      expect(data.conditionCritereId).toBe('crit_1');
+      expect(data).not.toHaveProperty('conditionSupplementaire');
+    });
+
+    it('écrit la condition biologique telle que le moteur la lira', async () => {
+      await POST(requetePost({
+        ...CORPS_CREATION,
+        conditionBiologie: { type: 'biologie', cible: 'ferritine', echeance: '2026-03-01T00:00:00.000Z' },
+      }));
+      const { data } = prisma.clinicalRule.create.mock.calls[0][0];
+      expect(data.conditionBiologie)
+        .toEqual({ type: 'biologie', cible: 'ferritine', echeance: '2026-03-01T00:00:00.000Z' });
+    });
+
+    // LE POINT QUI COMPTE : la validation d'écriture est le lecteur MÊME du
+    // moteur. Écrire ce qu'il appellerait « illisible » produirait une règle que
+    // l'atelier accepte et que la décision refuse ensuite `condition_illisible`
+    // — sans que l'écran permette de la corriger.
+    it.each([
+      ['cible vide', { type: 'biologie', cible: '   ' }],
+      ['type inattendu', { type: 'clinique', cible: 'ferritine' }],
+      ['échéance non ISO', { type: 'biologie', cible: 'ferritine', echeance: '2026-03-01' }],
+      ['chaîne libre', 'quand la ferritine sera basse'],
+    ])('refuse une condition biologique que le moteur jugerait illisible (%s)', async (_l, bio) => {
+      const reponse = await POST(requetePost({ ...CORPS_CREATION, conditionBiologie: bio }));
+      expect(reponse.status).toBe(400);
+      expect((await reponse.json()).reason).toBe('condition_biologie_invalide');
+      expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+    });
+
+    it('accepte une règle sans aucune condition — les deux colonnes restent vides', async () => {
+      await POST(requetePost(CORPS_CREATION));
+      const { data } = prisma.clinicalRule.create.mock.calls[0][0];
+      expect(data.conditionCritereId).toBeNull();
+      expect(data.conditionBiologie).toBeUndefined();
+    });
   });
 
   it('refuse de recréer une lignée existante : 409, la suite passe par une révision', async () => {

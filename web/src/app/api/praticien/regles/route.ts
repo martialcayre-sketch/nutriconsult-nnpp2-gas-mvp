@@ -167,7 +167,8 @@ type PostBody = {
   justification?: unknown;
   sourceReferenceId?: unknown;
   poids?: unknown;
-  conditionSupplementaire?: unknown;
+  conditionCritereId?: unknown;
+  conditionBiologie?: unknown;
   claimId?: unknown;
   versionClaim?: unknown;
 };
@@ -221,9 +222,9 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
             select: { id: true, actif: true, ingredientId: true },
           })
         : Promise.resolve(null),
-      contenu.conditionSupplementaire
+      contenu.conditionCritereId
         ? prisma.clinicalCriterion.findUnique({
-            where: { id: contenu.conditionSupplementaire.critereId },
+            where: { id: contenu.conditionCritereId },
             select: { id: true, actif: true },
           })
         : Promise.resolve(null),
@@ -246,7 +247,7 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
         422,
       );
     }
-    if (contenu.conditionSupplementaire && !critere?.actif) {
+    if (contenu.conditionCritereId && !critere?.actif) {
       return echec('critere_introuvable', 'Critère clinique inconnu ou inactif.', 422);
     }
     // UN SEUL REFUS POUR PLUSIEURS CAUSES, et c'est délibéré : le claim peut
@@ -282,7 +283,13 @@ export async function POST(req: Request): Promise<NextResponse<RegleCreationApiR
         typeRegle,
         poids: contenu.poids ?? 1,
         justification: contenu.justification,
-        conditionSupplementaire: contenu.conditionSupplementaire ?? undefined,
+        // LES DEUX NATURES SÉPARÉES, ET ÉCRITES ([[D-141]]). L'ancien champ
+        // `conditionSupplementaire` n'est plus écrit du tout : le moteur ne le
+        // lit plus depuis [[D-138]], et continuer à l'écrire produisait une
+        // règle INCONDITIONNELLE à ses yeux — le critère saisi par le praticien
+        // n'atteignait aucune décision.
+        conditionCritereId: contenu.conditionCritereId,
+        conditionBiologie: contenu.conditionBiologie ?? undefined,
         formePrefereeId: contenu.formePrefereeId,
         doseCibleBasse: contenu.doseCibleBasse,
         doseCibleHaute: contenu.doseCibleHaute,

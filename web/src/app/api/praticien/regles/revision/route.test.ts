@@ -176,6 +176,39 @@ describe('/api/praticien/regles/revision', () => {
     expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
   });
 
+  // ── Les conditions, sur le chemin de RÉVISION ([[D-141]]) ─────────────────
+  // Le formulaire n'envoyait aucune condition et la route écrivait l'ancien
+  // champ : réviser une règle conditionnée à un critère la rendait
+  // INCONDITIONNELLE, en silence. Le praticien croyait corriger une
+  // justification ; il retirait une garde clinique.
+  it('écrit le critère de la révision dans sa COLONNE, jamais dans l’ancien champ', async () => {
+    prisma.clinicalCriterion.findUnique.mockResolvedValue({ id: 'crit_1', actif: true });
+    await POST(requete({ ...CORPS, conditionCritereId: 'crit_1' }));
+    const { data } = prisma.clinicalRule.create.mock.calls[0][0];
+    expect(data.conditionCritereId).toBe('crit_1');
+    expect(data).not.toHaveProperty('conditionSupplementaire');
+  });
+
+  // Une révision est une réécriture COMPLÈTE : ne pas renvoyer la condition la
+  // retire. C'est le comportement voulu — mais il doit être un CHOIX du
+  // praticien, pas un effet de bord du formulaire, qui la reprend désormais.
+  it('retire la condition quand la révision n’en renvoie aucune', async () => {
+    await POST(requete(CORPS));
+    const { data } = prisma.clinicalRule.create.mock.calls[0][0];
+    expect(data.conditionCritereId).toBeNull();
+    expect(data.conditionBiologie).toBeUndefined();
+  });
+
+  it('refuse une condition biologique que le moteur jugerait illisible', async () => {
+    const reponse = await POST(requete({
+      ...CORPS,
+      conditionBiologie: { type: 'biologie', cible: '  ' },
+    }));
+    expect(reponse.status).toBe(400);
+    expect((await reponse.json()).reason).toBe('condition_biologie_invalide');
+    expect(prisma.clinicalRule.create).not.toHaveBeenCalled();
+  });
+
   it('écrit le claim sur la version révisée', async () => {
     await POST(requete({ ...CORPS, claimId: 'WN-CL-2026-001', versionClaim: 'v1.0' }));
     expect(prisma.clinicalRule.create).toHaveBeenCalledWith(
