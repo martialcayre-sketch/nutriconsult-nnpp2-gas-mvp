@@ -10,6 +10,7 @@ import {
   RAISON_DOSSIER_CLOS,
 } from '@/lib/patient/cycleDeVie';
 import { isC4Enabled } from '@/lib/supplement-library/featureFlag';
+import type { CritereConstatable } from '@/lib/supplement-library/constatsCriteres';
 
 // Constat praticien d'un critère sur un dossier ([[D-138]]).
 //
@@ -56,8 +57,10 @@ export type ConstatExpose = {
   constatePar: string;
 };
 
+export type { CritereConstatable };
+
 export type CriteresDossierApiResponse =
-  | { ok: true; constats: ConstatExpose[] }
+  | { ok: true; criteres: CritereConstatable[] }
   | { ok: true; constat: ConstatExpose }
   | { ok: false; reason: string; error: string };
 
@@ -130,15 +133,40 @@ export async function GET(req: Request): Promise<NextResponse<CriteresDossierApi
     const garde = await garder(idPatient, { route: ROUTE_JOURNAL, methode: 'GET' });
     if (garde.echec) return garde.echec;
 
-    const lignes = await prisma.critereDossierConstate.findMany({
-      where: { idPatient },
-      orderBy: { constateLe: 'desc' },
-      select: SELECTION,
+    // Le vocabulaire gouverné ACTIF, et les constats de ce dossier. Les deux
+    // sont recousus ICI, une fois, plutôt que par chaque écran.
+    const [vocabulaire, lignes] = await Promise.all([
+      prisma.clinicalCriterion.findMany({
+        where: { actif: true },
+        orderBy: [{ labelFr: 'asc' }],
+        select: { id: true, code: true, labelFr: true, categorie: true },
+      }),
+      prisma.critereDossierConstate.findMany({
+        where: { idPatient },
+        select: { critereId: true, present: true, note: true, constateLe: true, constatePar: true },
+      }),
+    ]);
+    const parCritere = new Map(lignes.map((ligne) => [ligne.critereId, ligne]));
+    const criteres: CritereConstatable[] = vocabulaire.map((critere) => {
+      const ligne = parCritere.get(critere.id);
+      return {
+        critereId: critere.id,
+        code: critere.code,
+        labelFr: critere.labelFr,
+        categorie: critere.categorie,
+        // Pas de ligne = INCONNU. Jamais un `present: false` de repli : ce
+        // serait affirmer que le praticien a constaté une absence.
+        constat: ligne
+          ? {
+              present: ligne.present,
+              note: ligne.note,
+              constateLe: ligne.constateLe.toISOString(),
+              constatePar: ligne.constatePar,
+            }
+          : null,
+      };
     });
-    return NextResponse.json<CriteresDossierApiResponse>({
-      ok: true,
-      constats: lignes.map(exposer),
-    });
+    return NextResponse.json<CriteresDossierApiResponse>({ ok: true, criteres });
   } catch (err) {
     console.error(
       '[praticien/criteres-dossier GET]',

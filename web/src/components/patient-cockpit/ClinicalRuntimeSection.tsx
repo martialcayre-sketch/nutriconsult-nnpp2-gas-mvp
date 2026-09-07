@@ -15,6 +15,8 @@ import {
   type EtatSelectionPriorite,
 } from './SelectionPrioritePanel';
 import { ProtocolMiniBuilder } from './ProtocolMiniBuilder';
+import { ConstatCriteresPanel, type ConstatState } from './ConstatCriteresPanel';
+import type { CritereConstatable } from '@/lib/supplement-library/constatsCriteres';
 import { ProtocolConsultationPanel } from './ProtocolConsultationPanel';
 import { ProtocolVersionHistory, type ProtocolVersionItem } from './ProtocolVersionHistory';
 import { ProtocolDiffusionPanel, type DiffusionState } from './ProtocolDiffusionPanel';
@@ -247,6 +249,13 @@ export function ClinicalRuntimeSection({
   // la révision) + arbitrages consignés. Inertes tant que `cbEnabled` est faux.
   const [contenuActif, setContenuActif] = useState<ContenuVersionActive | null>(null);
   const [arbitrages, setArbitrages] = useState<ArbitrageRow[]>([]);
+  // Constats de critères ([[D-138]]). La liste porte le vocabulaire ACTIF,
+  // chaque critère avec son constat — ou `null` pour « personne ne s'est
+  // prononcé ». Vide tant que le vocabulaire l'est : le panneau ne s'affiche
+  // alors pas du tout.
+  const [criteresDossier, setCriteresDossier] = useState<CritereConstatable[]>([]);
+  const [constatState, setConstatState] = useState<ConstatState>('idle');
+  const [constatError, setConstatError] = useState<string | null>(null);
   const [arbitrageState, setArbitrageState] = useState<ArbitrageState>('idle');
   const [arbitrageError, setArbitrageError] = useState<string | null>(null);
   // Proposition de bilan (D-071). `propositionDisponible` reste faux tant que
@@ -432,6 +441,57 @@ export function ClinicalRuntimeSection({
       // L'arbitrage est rechargeable : un échec de lecture ne bloque pas le cockpit.
     }
   }, [idPatient, cbEnabled]);
+
+  // Constats de critères du dossier ([[D-138]]) — vocabulaire actif + constats,
+  // recousus par la route. En mode fixture, aucun appel : la fiche de
+  // démonstration n'écrit ni ne lit dans un dossier.
+  const loadCriteresDossier = useCallback(async () => {
+    if (fixture) return;
+    try {
+      const response = await fetch(
+        `/api/praticien/criteres-dossier?idPatient=${encodeURIComponent(idPatient)}`,
+      );
+      const payload = (await response.json()) as { ok: boolean; criteres?: CritereConstatable[] };
+      // Un 404 (drapeau C4 éteint) laisse simplement la liste vide, donc le
+      // panneau absent — pas d'erreur à l'écran pour une surface qui n'existe
+      // pas sur cet environnement.
+      if (!response.ok || !payload.ok) return;
+      setCriteresDossier(payload.criteres ?? []);
+    } catch {
+      // La liste est rechargeable : un échec de lecture ne bloque pas le cockpit.
+    }
+  }, [idPatient, fixture]);
+
+  const constaterCritere = useCallback(
+    async (critereId: string, present: boolean, note: string) => {
+      setConstatState('saving');
+      setConstatError(null);
+      try {
+        const response = await fetch('/api/praticien/criteres-dossier', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idPatient, critereId, present, note }),
+        });
+        const payload = (await response.json()) as { ok: boolean; error?: string };
+        if (!response.ok || !payload.ok) {
+          // LE MESSAGE DU SERVEUR EST SERVI TEL QUEL : il nomme ce qui bloque
+          // (critère inactif, dossier clos), là où un texte générique
+          // renverrait le praticien à sa propre devinette.
+          setConstatState('error');
+          setConstatError(payload.error ?? 'Échec de l’enregistrement du constat.');
+          return;
+        }
+        setConstatState('idle');
+        // On RELIT plutôt que de recomposer la liste à la main : le serveur est
+        // seul à savoir ce que la ligne est devenue après upsert.
+        await loadCriteresDossier();
+      } catch {
+        setConstatState('error');
+        setConstatError('Échec de l’enregistrement du constat.');
+      }
+    },
+    [idPatient, loadCriteresDossier],
+  );
 
   // Relecture des pièces déjà remises. Elle ne re-dérive rien : ce sont les
   // lignes consignées, telles qu'elles sont parties au patient.
@@ -925,8 +985,17 @@ export function ClinicalRuntimeSection({
       // au registre (revue Codex du 2026-09-04, P1-4).
       void loadArbitrages();
       void loadProposition();
+      // Constats de critères ([[D-138]]) : chaîné ICI, sur la carte prête, et
+      // non à l'effet global — ce GET journalise un accès au dossier (GD-1), et
+      // le déclencher là où le panneau n'est pas rendu inscrirait au registre
+      // une lecture que personne n'a demandée (même défaut que la revue Codex
+      // du 2026-09-04 a relevé sur l'effet voisin).
+      void loadCriteresDossier();
     }
-  }, [readyDecisionCardId, loadVersions, loadDiffusion, loadCheckins, loadArbitrages, loadProposition]);
+  }, [
+    readyDecisionCardId, loadVersions, loadDiffusion, loadCheckins, loadArbitrages,
+    loadProposition, loadCriteresDossier,
+  ]);
 
   useEffect(() => {
     setFoodCompassSelection(null);
@@ -1385,6 +1454,21 @@ export function ClinicalRuntimeSection({
           etat={selectionState}
           erreur={selectionError}
           onRetenir={(candidateId, motif) => { void retenirPriorite(candidateId, motif); }}
+        />
+      )}
+      {/* CONSTATS DE CRITÈRES ([[D-138]]) — juste après le geste de priorité,
+          avant le constructeur de protocole : un critère non renseigné fait
+          REFUSER la règle qui en dépend, et le praticien doit voir cette dette
+          avant de bâtir, pas après. Le panneau se retire de lui-même quand le
+          vocabulaire est vide (il l'est encore en production). */}
+      {affiche('decision') && !fixture && (
+        <ConstatCriteresPanel
+          criteres={criteresDossier}
+          state={constatState}
+          error={constatError}
+          onConstater={(critereId, present, note) => {
+            void constaterCritere(critereId, present, note);
+          }}
         />
       )}
       {/* RECOUPEMENT FACTUEL contradiction ↔ décision (`D-119`) : quand une

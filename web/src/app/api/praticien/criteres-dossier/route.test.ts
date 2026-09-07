@@ -4,7 +4,7 @@ const { getServerSession, prisma, verifierAppartenancePatient, isC4Enabled } = v
   getServerSession: vi.fn(),
   prisma: {
     critereDossierConstate: { findMany: vi.fn(), upsert: vi.fn() },
-    clinicalCriterion: { findUnique: vi.fn() },
+    clinicalCriterion: { findUnique: vi.fn(), findMany: vi.fn() },
     patient: { findUnique: vi.fn() },
   },
   verifierAppartenancePatient: vi.fn(),
@@ -56,6 +56,10 @@ describe('/api/praticien/criteres-dossier', () => {
     verifierAppartenancePatient.mockResolvedValue('ok');
     prisma.patient.findUnique.mockResolvedValue({ actif: true, suiviClotureLe: null });
     prisma.clinicalCriterion.findUnique.mockResolvedValue({ id: 'crit_isrs', actif: true });
+    prisma.clinicalCriterion.findMany.mockResolvedValue([
+      { id: 'crit_isrs', code: 'sous_isrs', labelFr: 'Sous ISRS', categorie: null },
+      { id: 'crit_gross', code: 'grossesse', labelFr: 'Grossesse', categorie: null },
+    ]);
     prisma.critereDossierConstate.upsert.mockResolvedValue(LIGNE);
     prisma.critereDossierConstate.findMany.mockResolvedValue([LIGNE]);
   });
@@ -154,15 +158,47 @@ describe('/api/praticien/criteres-dossier', () => {
   // UN RÉFÉRENTIEL QU'ON ÉCRIT SANS POUVOIR LE RELIRE N'EN EST PAS UN
   // ([[D-132]]) : sans lecture, un second constat partirait à l'aveugle contre
   // une ligne qu'on ne voit pas.
-  it('relit les constats du dossier, critère nommé', async () => {
+  it('rend le vocabulaire ACTIF, chaque critère portant son constat', async () => {
+    prisma.critereDossierConstate.findMany.mockResolvedValue([
+      { critereId: 'crit_isrs', present: true, note: 'Sertraline depuis mars.',
+        constateLe: new Date('2026-09-07T10:00:00.000Z'), constatePar: 'praticien@wellneuro.fr' },
+    ]);
     const res = await GET(lecture({ idPatient: ID_PATIENT }));
     expect(res.status).toBe(200);
-    await expect(res.json()).resolves.toMatchObject({
-      ok: true,
-      constats: [{ critereId: 'crit_isrs', code: 'sous_isrs', labelFr: 'Sous ISRS', present: true }],
+    const corps = await res.json();
+    expect(corps.criteres).toHaveLength(2);
+    expect(corps.criteres[0]).toMatchObject({
+      critereId: 'crit_isrs',
+      labelFr: 'Sous ISRS',
+      constat: { present: true, note: 'Sertraline depuis mars.', constatePar: 'praticien@wellneuro.fr' },
     });
     expect(prisma.critereDossierConstate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({ where: { idPatient: ID_PATIENT } }),
+    );
+  });
+
+  // LE POINT QUI COMPTE DANS CETTE FORME. Un critère sans ligne rend
+  // `constat: null` — jamais un `present: false` de repli, qui affirmerait que
+  // le praticien a constaté une absence. C'est la même distinction que le
+  // moteur tient (`condition_critere_non_constate` ≠
+  // `condition_critere_non_remplie`) : elle ne se perd pas en chemin.
+  it('rend `constat: null` sur un critère non renseigné, jamais un `false`', async () => {
+    prisma.critereDossierConstate.findMany.mockResolvedValue([
+      { critereId: 'crit_isrs', present: false, note: null,
+        constateLe: new Date('2026-09-07T10:00:00.000Z'), constatePar: 'praticien@wellneuro.fr' },
+    ]);
+    const corps = await (await GET(lecture({ idPatient: ID_PATIENT }))).json();
+    const [isrs, grossesse] = corps.criteres;
+    // Constaté ABSENT : la ligne existe, `present` vaut false.
+    expect(isrs.constat).toMatchObject({ present: false });
+    // JAMAIS renseigné : pas de constat du tout.
+    expect(grossesse.constat).toBeNull();
+  });
+
+  it('ne propose que le vocabulaire ACTIF — un critère retiré ne se constate plus', async () => {
+    await GET(lecture({ idPatient: ID_PATIENT }));
+    expect(prisma.clinicalCriterion.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { actif: true } }),
     );
   });
 
