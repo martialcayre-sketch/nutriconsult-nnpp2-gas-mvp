@@ -32,7 +32,7 @@ describe('route NextAuth [...nextauth] (App Router)', () => {
 		const { GET } = await import('./route');
 		const req = new NextRequest('http://localhost:3000/api/auth/providers');
 
-		const response = await GET(req, { params: { nextauth: ['providers'] } });
+		const response = await GET(req, { params: Promise.resolve({ nextauth: ['providers'] }) });
 
 		expect(response.status).toBe(200);
 		const body = await response.json();
@@ -45,7 +45,7 @@ describe('route NextAuth [...nextauth] (App Router)', () => {
 			method: 'POST',
 		});
 
-		const response = await POST(req, { params: { nextauth: ['signout'] } });
+		const response = await POST(req, { params: Promise.resolve({ nextauth: ['signout'] }) });
 
 		expect(response.status).toBe(200);
 		const body = await response.json();
@@ -56,7 +56,7 @@ describe('route NextAuth [...nextauth] (App Router)', () => {
 		const { GET } = await import('./route');
 		const req = new NextRequest('http://localhost:3000/api/auth/session');
 
-		const response = await GET(req, { params: { nextauth: ['session'] } });
+		const response = await GET(req, { params: Promise.resolve({ nextauth: ['session'] }) });
 
 		expect(response.headers.get('X-WellNeuro-Correlation-Id')).toMatch(/^cor_/);
 	});

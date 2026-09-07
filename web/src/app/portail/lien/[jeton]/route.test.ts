@@ -23,7 +23,7 @@ function requete(jeton = JETON): Request {
 }
 
 function appeler(jeton = JETON) {
-  return GET(requete(jeton), { params: { jeton } });
+  return GET(requete(jeton), { params: Promise.resolve({ jeton }) });
 }
 
 const LIEN_VALIDE = { id: 'lk_1', idPatient: 'PAT_TEST', expireLe: DEMAIN, consommeLe: null };
@@ -76,7 +76,7 @@ describe('GET /portail/lien/[jeton]', () => {
   it('l’atterrissage vise l’hôte public même quand la requête porte l’hôte interne du conteneur', async () => {
     const res = await GET(
       new Request(`https://localhost:23577/portail/lien/${JETON}`),
-      { params: { jeton: JETON } },
+      { params: Promise.resolve({ jeton: JETON }) },
     );
     expect(res.headers.get('location')).toBe('http://localhost:3000/portail/PAT_TEST');
   });
@@ -87,7 +87,7 @@ describe('GET /portail/lien/[jeton]', () => {
     prisma.portailMagicLink.findUnique.mockResolvedValue(null);
     const res = await GET(
       new Request('https://localhost:23577/portail/lien/inconnu'),
-      { params: { jeton: 'inconnu' } },
+      { params: Promise.resolve({ jeton: 'inconnu' }) },
     );
     expect(res.headers.get('location')).toBe('http://localhost:3000/portail/lien/indisponible');
   });
