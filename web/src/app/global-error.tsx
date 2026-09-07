@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import * as Sentry from '@sentry/nextjs';
 
 type GlobalErrorProps = {
   error: Error & { digest?: string };
@@ -13,6 +14,16 @@ export default function GlobalError({ error, reset }: GlobalErrorProps) {
     console.error('Erreur globale application', {
       digest: error.digest,
     });
+    // SANS CETTE LIGNE, CET ÉCRAN S'AFFICHE POUR UNE PERSONNE SUIVIE SANS QUE
+    // PERSONNE NE L'APPRENNE. Le `digest` proposé en référence n'est posé que
+    // par le rendu SERVEUR : une erreur survenue dans le navigateur — le cas
+    // dominant, la plupart des pages du portail étant clientes — n'en porte
+    // pas, donc la ligne « Référence » ne s'affiche même pas. C'était un
+    // maillon manquant de la boucle de support, pas un maillon faible
+    // (`docs/claude/OBSERVABILITE_PRODUCTION.md`).
+    //
+    // Inerte sans DSN, et nettoyé par `beforeSend` quand il y en a un.
+    Sentry.captureException(error);
   }, [error]);
 
   return (

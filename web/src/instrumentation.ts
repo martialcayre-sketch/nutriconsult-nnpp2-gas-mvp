@@ -1,8 +1,28 @@
+import * as Sentry from '@sentry/nextjs';
 import { logger } from '@/lib/observability/logger';
 import { EVENT_CODES } from '@/lib/observability/eventCodes';
 import { deploymentEnv, releaseSha } from '@/lib/observability/deploymentEnv';
+import { dsnRegionUe } from '@/lib/observability/sentryRegion';
 
 export async function register(): Promise<void> {
+  // SENTRY S'INITIALISE ICI, PAR RUNTIME — c'est la convention de
+  // `@sentry/nextjs` 10 sous Next 15 : les fichiers `sentry.server.config.ts`
+  // et `sentry.edge.config.ts` ne sont chargés par personne d'autre. Ils
+  // existaient dans ce dépôt depuis juillet sans jamais être importés : la
+  // dépendance était installée, le SDK n'était initialisé nulle part.
+  //
+  // L'IMPORT EST CONDITIONNÉ À `SENTRY_DSN` DANS NOTRE CODE, alors que
+  // `Sentry.init` sans DSN est déjà inerte. Le doublon est délibéré : sur une
+  // application de santé, la condition qui déclenche une transmission vers un
+  // tiers doit se lire dans le dépôt, pas se déduire du comportement d'un SDK.
+  // Tant que la variable n'est pas posée en production, ce code n'émet rien.
+  if (process.env.NEXT_RUNTIME === 'edge') {
+    if (dsnRegionUe(process.env.SENTRY_DSN)) await import('../sentry.edge.config');
+    // On sort ici : la suite pose des handlers de process, et le bac à sable
+    // edge les refuse (voir juste en dessous).
+    return;
+  }
+
   // LES HANDLERS DE PROCESS SONT RÉSERVÉS AU RUNTIME NODE. Ce dépôt a un
   // `middleware.ts` (`matcher: '/patient/:path*'`), donc un compilateur edge.
   // Dans le bac à sable edge, TOUTE fonction de `process` jette
@@ -14,6 +34,23 @@ export async function register(): Promise<void> {
   // garde est posée AVANT la marche en 15, pas après, parce qu'après il serait
   // trop tard pour l'apprendre autrement qu'en production.
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  // LA RÉGION EST UNE CONDITION, PAS UN RÉGLAGE : le document d'information
+  // promet au patient un traitement dans l'Union européenne, et
+  // `dsnRegionUe` rend cette phrase vraie par construction. Un DSN américain
+  // posé par erreur laisse l'observabilité éteinte — ce qui se voit — plutôt
+  // qu'il n'ouvre un transfert hors UE, qui ne se verrait pas.
+  if (dsnRegionUe(process.env.SENTRY_DSN)) {
+    await import('../sentry.server.config');
+  } else if (process.env.SENTRY_DSN) {
+    logger.error({
+      event: EVENT_CODES.SYSTEM_UNHANDLED_ERROR,
+      domain: 'SYSTEM',
+      message: 'SENTRY_DSN posé hors région UE : Sentry reste éteint',
+      context: { environment: deploymentEnv(), release: releaseSha(), runtime: 'nodejs' },
+      metadata: { retryable: false },
+    });
+  }
 
   const context = {
     environment: deploymentEnv(),
@@ -62,3 +99,9 @@ export async function register(): Promise<void> {
     setImmediate(() => process.exit(1));
   });
 }
+
+// LES ERREURS DE RENDU SERVEUR NE REMONTENT PAS TOUTES SEULES. Next 15 les
+// livre à ce point d'entrée — sans lui, une erreur de composant serveur ou de
+// route handler n'atteint jamais Sentry, et le tableau de bord resterait vide
+// en donnant l'impression que tout va bien. Inerte sans client initialisé.
+export const onRequestError = Sentry.captureRequestError;

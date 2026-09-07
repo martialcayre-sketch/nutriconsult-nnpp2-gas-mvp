@@ -191,13 +191,19 @@ partage à un tiers (médecin traitant compris) sans choix explicite du patient
    fait à porter au document d'information v2 (lot TRUST). **Restent dus** :
    la localisation du traitement et la couverture DPA
    (`CHECKLIST_FINALISATION.md` §F).
-3. **Sentry est un sous-traitant de fait non déclaré au patient.**
-   `@sentry/nextjs` est une dépendance de `web/package.json`, sa résidence UE
-   n'est pas vérifiée et son volet client reste « à trancher »
-   (`CHECKLIST_FINALISATION.md:42, 68`) — mais il **n'apparaît pas** dans la
-   liste ci-dessus, qui est celle affichée aux personnes. Écart à trancher :
-   soit il ne traite aucune donnée personnelle et cela s'écrit, soit la liste
-   patient est incomplète et se corrige.
+3. ~~**Sentry est un sous-traitant de fait non déclaré au patient.**~~
+   **TRANCHÉ le 2026-09-07 (`D-141`), dans le second sens : la liste patient
+   était incomplète, elle se corrige.** Sentry a été câblé sur demande du
+   responsable et figure désormais dans `donnees_confidentialite@v5`, avec ce
+   qu'il reçoit (type d'erreur, navigateur, adresse de page anonymisée) et ce
+   qu'il ne reçoit jamais (réponses, documents, identité). **La résidence UE
+   n'est plus une déclaration mais un invariant de code** :
+   `web/src/lib/observability/sentryRegion.ts` refuse tout DSN hors
+   `.ingest.de.sentry.io`, et l'observabilité reste éteinte plutôt que
+   d'émettre ailleurs. Le volet client est tranché de la même façon
+   (`NEXT_PUBLIC_SENTRY_DSN`, même garde, Session Replay à zéro).
+   **Reste dû : le DPA Sentry**, avec les autres (rubrique 6).
+   Historique : écart ouvert le 2026-08-07, `CHECKLIST_FINALISATION.md:42, 68`.
 4. **Scalingo** est décidé (D-006, 2026-07-28 ; confirmé par D-037,
    2026-08-09) ~~mais **pas en service** : il n'entre dans cette liste qu'au
    basculement, et la décision subordonne toute donnée réelle à deux conditions
@@ -611,7 +617,7 @@ elle.
 | 6 | Sous-traitants | Aucun DPA archivé — forme connue depuis la réponse du 2026-08-11 (DPA + annexe HDS distincte, signature séparée requise) mais ~~**signature et archivage non faits**~~ — **annexe HDS signée le 2026-08-30** (déclaration du responsable, consignée le 2026-08-31, `D-121`) ; **restent dus : l'archivage du document signé, et la signature + archivage du DPA** | Responsable | ~~avant bascule Scalingo~~ — ordre suspendu par `D-078` : **dès réception de l'annexe** (demandée 2026-08-12, relancée 2026-08-19 — **canal et dates vérifiés au fil le 2026-08-20**, rubrique 6 ; **signée le 2026-08-30**) ; ~~en tout état de cause **avant tout décommissionnement**~~ — **plus depuis `D-080`** (2026-08-22) ; archivage dû **avant la revue du 2026-10-21** | `CHECKLIST_FINALISATION.md` §F |
 | 6 | Sous-traitants | ~~Périmètre HDS de la région `osc-fr1` non confirmé~~ — **répondu par écrit le 2026-08-11** : couvert, activités 5 et 6 incluses | Responsable | fermé | ici, rubrique 6 |
 | 6 | Sous-traitants | ~~Fournisseur SMTP réel non identifié~~ — **identifié le 2026-08-22 : Google Workspace** (rubrique 6, TROU 2 — SPF/MX/DKIM du domaine + expéditeur du code) ; **restent dus** : localisation du traitement et couverture DPA | Responsable | 2026-10-21 | ici, rubrique 6 |
-| 6 | Sous-traitants | Sentry non déclaré au patient | Responsable | 2026-10-21 | `gouvernance.ts` ou ici |
+| 6 | Sous-traitants | ~~Sentry non déclaré au patient~~ — **déclaré le 2026-09-07** dans `donnees_confidentialite@v5` (`D-141`), résidence UE rendue invariante par `sentryRegion.ts` ; **reste dû : le DPA Sentry** | Responsable | 2026-10-21 (DPA seul) | `contenus/registre.ts`, rubrique 6 |
 | 7 | Transferts | Mécanisme invoqué (CCT/DPA) | Conseil qualifié | 2026-10-21 | ici, rubrique 7 |
 | 8 | Conservation | Durées des données de santé | Responsable + conseil | 2026-10-21 | ici, rubrique 8 puis `gouvernance.ts` |
 | 9 | Droits | Délai, vérification d'identité, circuit interne | Responsable | 2026-10-21 | ici, rubrique 9 |

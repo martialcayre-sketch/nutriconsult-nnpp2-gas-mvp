@@ -4,6 +4,109 @@
 
 ## Décisions actives
 
+### D-141 — Sentry est câblé, et ce qui part tient à une variable
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage utilisateur explicite en session, « go A08 et active sentry ») — **câblage exécuté, activation non faite**.
+- Domaine : observabilité, RGPD, sécurité
+
+- Contexte : `A08` de l'audit du 2026-09-06. `@sentry/nextjs` est une
+  dépendance depuis juillet, trois fichiers `sentry.*.config.ts` existent, et un
+  test passait au vert à leur sujet. Le SDK n'était **initialisé nulle part** :
+  `withSentryConfig` absent de `next.config.mjs`, aucun import dans
+  `instrumentation.ts`. Le constat n'est devenu actionnable que le 2026-09-07,
+  la marche en Next 15 ayant rendu `instrumentation.ts` exécutable — il n'était
+  pas compilé sous Next 14.
+
+**1. Le chemin d'URL est une donnée, et il ne l'était pour personne.** Le
+`beforeSend` recopié dans les trois runtimes coupait la query string et
+conservait le chemin. Or `/portail/<idPatient>` et
+`/dashboard/patients/<idPatient>` portent un identifiant, et
+`/portail/lien/<jeton>` porte **le lien magique lui-même**. Un jeton de lien
+magique déposé chez un tiers n'est pas une fuite de donnée : c'est l'entrée du
+portail donnée à qui lit l'événement. Le même dépôt pose
+`Referrer-Policy: no-referrer` pour cette raison exacte
+(`next.config.mjs`) — l'observabilité contredisait l'en-tête.
+
+**2. Liste d'autorisation, jamais liste d'interdiction.** Le masquage
+(`masquageChemin.ts`) reconnaît les routes déclarées et rend leur gabarit ;
+tout le reste est réduit — `/portail/…`, ou `/…` si même la racine est
+inconnue. Une liste des segments « sensibles » aurait été fausse le jour où
+quelqu'un ajoute une route, et son échec aurait été silencieux : du bon côté
+pour le développeur, du mauvais pour le patient. Le repli fermé dégrade le
+diagnostic ; il ne laisse pas sortir.
+
+**3. Un test qui lit un fichier comme du texte ne prouve rien.**
+`sentryConfig.test.ts` cherchait la sous-chaîne `split('?')[0]` dans le source
+des configurations. Il était vert sur des fichiers que personne ne chargeait, et
+serait resté vert sur un masquage faux. Il est remplacé par des bancs qui font
+passer de vrais objets d'événement — 24 cas sur le masquage, 3 sur le câblage,
+trois mutants constatés rouges.
+
+**3 bis. `beforeSend` ne voit que les erreurs, et c'est la contre-épreuve qui
+l'a dit.** Le premier jet ne posait que ce crochet. Or `tracesSampleRate` vaut
+0,1 : une requête sur dix produit une transaction **en régime normal**, portant
+`transaction` et `request.url`. Un nettoyage limité aux erreurs aurait donc
+laissé sortir, quand tout va bien, ce qu'il interdisait pendant un incident —
+et l'inversion est le contraire de ce qu'on croit acheter en instrumentant.
+`beforeSendTransaction` et `beforeSendSpan` ferment ce canal. Deux autres
+trous sont venus de la même passe : les fils `ui.*`, dont le message est un
+sélecteur DOM porteur d'`aria-label` en français, et huit routes absentes de la
+liste d'autorisation le jour de son écriture — d'où le banc qui parcourt
+`web/src/app` et rougit à la prochaine.
+
+**4. La transmission tient à `SENTRY_DSN`, et la condition est écrite chez
+nous.** `Sentry.init` sans DSN est déjà inerte : le test explicite dans
+`instrumentation.ts` est un doublon **délibéré**. Sur une application de santé,
+ce qui déclenche un envoi vers un tiers doit se lire dans le dépôt en une ligne,
+pas se déduire du comportement d'une dépendance. Conséquence assumée : ce
+commit **n'active rien**. Il rend l'activation possible, et la rend sûre.
+
+**4 bis. La résidence UE ne pouvait pas s'écrire, alors elle est devenue un
+invariant.** Le document d'information nomme chaque prestataire et dit où il
+traite. Pour Sentry, cette phrase était invérifiable : la région dépend du DSN,
+et un DSN se pose dans une console d'hébergeur, hors de toute revue de code. Or
+`D-137` a précisément puni une affirmation fausse dans ce document.
+
+Le problème est donc renversé plutôt que contourné : `sentryRegion.ts` refuse
+tout DSN dont l'hôte ne finit pas par `.ingest.de.sentry.io`, aux quatre points
+d'entrée. Un DSN américain posé par erreur laisse l'observabilité **éteinte** —
+ce qui se voit, et qui est dit dans les logs — au lieu d'ouvrir un transfert
+hors UE, qui ne se verrait pas. La phrase du document devient vraie par
+construction, et un banc la tient à la place d'une déclaration.
+
+**5. L'information précède le traitement — `donnees_confidentialite@v5`.**
+Publiée avant que le DSN ne soit posé, et non après : c'est l'ordre qu'exige
+l'information des personnes. Elle nomme Sentry, dit ce qu'il reçoit (type
+d'erreur, navigateur, adresse de page anonymisée) et ce qu'il ne reçoit jamais
+(réponses, documents, identité, enregistrement d'écran). `requiresAcknowledgement`
+reste `false`, même régime que les v3 et v4 : l'ajout d'un prestataire est une
+information substantielle, pas une autorisation à recueillir.
+
+Un piège a été trouvé en la publiant, et il valait pour toutes les futures :
+`getDocumentCourant` comparait les dates avec `>=` et gardait donc la **plus
+ancienne** à égalité. Les v4 et v5 portant toutes deux le 2026-09-07, le patient
+serait resté sur le document périmé, sans aucun signal. Deux versions le même
+jour n'ont rien d'exceptionnel ; le `>=` était une bombe à retardement dans le
+seul endroit du dépôt où un document fait foi.
+
+**6. Ce qui reste dû, et à qui.** Deux pièces, toutes deux au responsable de
+traitement :
+
+- créer le projet Sentry **dans la région européenne** et en poser les DSN —
+  une autre région serait refusée par le code, et l'observabilité resterait
+  éteinte ;
+- le DPA Sentry, avec ceux des autres sous-traitants (`docs/DOSSIER_RGPD.md`,
+  rubrique 6, échéance 2026-10-21). La part déclarative de la ligne « Sentry non
+  déclaré au patient » est soldée par la v5.
+
+**7. Ce que cette décision ne tranche pas.** Elle ne dit pas que le masquage
+suffit. Un identifiant interpolé dans un `throw new Error()` reste invisible au
+nettoyage : le caviardage attrape les e-mails et les suites opaques de 24
+caractères ou plus, pas un prénom ni un motif de consultation. La discipline des
+messages d'erreur reste la première barrière ; le nettoyage est la seconde, pas
+la seule.
+
 ### D-140 — Une règle clinique nomme le claim qui la fonde, ou elle ne s'applique pas
 
 - Date : 2026-09-07
