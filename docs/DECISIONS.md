@@ -4,6 +4,89 @@
 
 ## Décisions actives
 
+### D-147 — Un drapeau de confirmation qu'aucun écran ne pose est une décision annoncée, et impossible à prendre
+
+- Date : 2026-09-08
+- Statut : accepté (constat `M03` de l'audit du 2026-09-06, requalifié par une lecture de production)
+- Domaine : correspondance patient, bilan neuronutritionnel, observabilité du dossier
+
+**1. Le constat de l'audit, et ce que la production en a fait.** `M03` disait :
+« une panne est muette, une confirmation passe pour une erreur », 5 lignes de
+bilan en `Erreur` sur 20, ventilation par opération **non lue**. Elle l'est
+désormais (conteneur one-off, lecture seule, agrégats) : `booklet_envois`
+compte 21 lignes — 16 `Envoye`, 5 `Confirmation_Requise/Registre`, **zéro
+`Erreur`** ; `correspondances_patient` compte 222 lignes — 217 `Envoye` et 5
+`Erreur`, qui sont **exactement** les 5 `Confirmation_Requise` de l'audit.
+Autrement dit : la seule erreur que ce journal ait jamais affichée au
+praticien, depuis l'origine, était fausse.
+
+**2. Le défaut tient en un ternaire.** `logBookletEnvoi` dérivait la ligne de
+journal de la ligne d'audit par `statut === 'Envoye' ? 'Envoye' : 'Erreur'`.
+L'audit du booklet connaît trois statuts, le journal en connaît trois aussi —
+mais **pas les mêmes**. `Confirmation_Requise` n'a pas d'équivalent, et le
+ternaire le rangeait avec les échecs. La fiche affichait donc « Échec d'envoi »
+pour un document qui attendait un clic. `Non_envoye` existait dans le
+vocabulaire du journal, employé par quatre autres routes, et disait la vérité :
+rien n'est parti, rien n'a échoué.
+
+**3. Le défaut symétrique : une panne réelle n'écrivait rien.** Un refus du
+relais SMTP tombait dans le `catch` général de la route, qui n'écrit qu'un
+`logger.error` — ni ligne d'audit, ni ligne de journal. Un bilan réellement
+perdu était donc **invisible sur la fiche**, pendant qu'une simple demande de
+confirmation, elle, s'y affichait en rouge. Le journal se trompait dans les
+deux sens à la fois. Le patron correct existait déjà dans le dépôt, un dossier
+plus loin (`file-envoi/envoyer/route.ts` : journaliser l'échec puis rendre la
+main) ; la route qui expédie le document le plus important au patient était la
+seule à ne pas l'appliquer.
+
+**4. LA CAUSE RÉELLE, que l'audit n'avait pas vue.** Les 5 lignes portent sur
+DEUX synthèses, pas cinq dossiers, et toutes les cinq sont la garde de registre
+anxiogène. Cette garde est confirmable : la route lit `confirmerRegistre`
+depuis toujours, et son commentaire écrit l'intention en toutes lettres — « le
+praticien voit le mot, et décide ». **Aucun des deux écrans qui appellent cette
+route ne l'envoyait.** L'avertissement rendu au praticien lui demandait
+d'« ajouter `confirmerRegistre: true` » : un champ JSON, sans commande pour le
+poser. La décision était annoncée, documentée, testée côté route — et
+matériellement impossible à prendre.
+
+**5. Ce que ça a coûté, daté.** Sur l'une des deux synthèses, validée le 16
+août : trois tentatives d'envoi à **18 h 09, 18 h 10 et 18 h 11**, puis plus
+rien. Aucune ligne `Envoye`, ni pour cette synthèse ni pour ce patient, jamais.
+Le bilan n'est pas parti, et il ne l'est toujours pas. La cadence d'une
+tentative par minute est la signature de quelqu'un qui pousse sur une porte
+sans poignée. La seconde synthèse est passée en `Rejetee` et son patient a reçu
+quatre bilans : pour lui, les deux « Échec d'envoi » sont une fausse alarme
+sans conséquence.
+
+**6. Ce qui est fait.** (a) `statutJournalDepuisAuditBooklet` traduit le
+vocabulaire d'audit vers celui du journal par énumération, `Confirmation_Requise`
+vers `Non_envoye`, un statut inconnu vers `Erreur` — le défaut prudent, à
+l'envers de celui qui traitait un cas CONNU comme un cas inconnu ; l'objet de la
+ligne dit « en attente de votre confirmation », parce que « Non envoyé » seul ne
+dirait pas quoi faire. (b) `sendMail` a son propre `catch` : audit + journal +
+502, et le message rendu ne renvoie plus le praticien vers « le terminal
+Next.js ». (c) Les deux avertissements nomment désormais une case qui existe, et
+`SynthesePanel` porte cette case — elle n'apparaît qu'APRÈS que la garde a
+mordu, jamais avant : on ne coche pas à l'avance une décision qu'on n'a pas
+encore eu à prendre. Le seuil de la garde n'est pas touché ; ce lot lui rend son
+issue, il ne la desserre pas.
+
+**7. La garde est structurelle, et elle devait l'être.**
+`confirmations.guard.test.ts` compare les drapeaux que la route exige aux clés
+que les écrans postent réellement, et rougit sur tout orphelin. Les bancs de
+route prouvaient déjà que `confirmerRegistre: true` laisse passer — ils le
+prouvaient PENDANT les vingt-trois jours où le drapeau était inatteignable. Un
+banc de route ne peut pas voir l'absence d'un appelant.
+
+**8. Ce qui n'est PAS fait, et pourquoi.** (a) `SMTP_URL` absente continue
+d'écrire `Erreur` là où quatre autres routes écrivent `Non_envoye` : zéro
+occurrence en production, et l'aligner serait un second changement de sens que
+le constat ne demande pas. (b) `api/praticien/comprehension` porte le même
+texte « renvoyez avec `confirmerRegistre: true` » sur un autre écran : même
+espèce, autre chaîne, non traitée ici. (c) **Le dossier resté sans bilan depuis
+le 16 août appelle un geste humain, pas un correctif** — le code lui rend une
+issue, il ne renvoie rien à sa place.
+
 ### D-146 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
 
 - Date : 2026-09-08

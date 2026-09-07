@@ -140,9 +140,17 @@ export function DocumentsPanel({ initialPatientId = '' }: { initialPatientId?: s
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ idSynthese: selectedIdSynthese, relectureConfirmee: true }),
       });
-      const d = (await r.json()) as { success?: boolean; needsConfirmation?: boolean; warning?: string; error?: string };
+      const d = (await r.json()) as { success?: boolean; needsConfirmation?: boolean; reason?: string; terme?: string; warning?: string; error?: string };
       if (d.needsConfirmation) {
-        setFeedback({ ok: false, msg: d.warning ?? 'Document déjà envoyé — confirmez le renvoi depuis l’écran Synthèse & Booklet.' });
+        // Cet écran ne tranche NI le renvoi NI le registre : il renvoie vers
+        // celui qui porte la prévisualisation, parce qu'une décision sur un
+        // mot du texte patient se prend en regardant le texte. Il doit en
+        // revanche dire LEQUEL des deux est en jeu — le message unique
+        // « déjà envoyé » envoyait chercher la mauvaise case.
+        const msgDefaut = d.reason === 'REGISTRE_ANXIOGENE'
+          ? `Le texte patient emploie « ${d.terme ?? 'un mot signalé'} ». Relisez-le depuis l’écran Synthèse & Booklet, où vous pourrez le reformuler ou l’assumer.`
+          : 'Document déjà envoyé — confirmez le renvoi depuis l’écran Synthèse & Booklet.';
+        setFeedback({ ok: false, msg: d.warning ?? msgDefaut });
       } else if (d.success) {
         setFeedback({ ok: true, msg: 'Document envoyé au patient.' });
       } else {

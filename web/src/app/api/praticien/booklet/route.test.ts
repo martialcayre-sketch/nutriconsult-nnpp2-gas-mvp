@@ -7,6 +7,12 @@ const findUniquePatient = vi.fn();
 const createJournal = vi.fn();
 const deleteManyJournal = vi.fn();
 const createBookletEnvoi = vi.fn();
+// Le journal de correspondance — la LIGNE QUE LE PRATICIEN VOIT sur la fiche —
+// n'était pas dans ce mock : `journaliserCorrespondancePatient` importe prisma
+// dynamiquement, tombait sur un `correspondancePatient` absent, et avalait son
+// exception. Le banc observait donc la ligne d'audit (juste) sans jamais voir
+// la ligne dérivée (fausse).
+const createCorrespondance = vi.fn();
 // Le booklet part au patient : la prévisualisation qualifie la synthèse dont il
 // est tiré (antérieure au retrait d'interprétation ?), d'où cette lecture des
 // passations du dossier, en sélection minimale.
@@ -23,6 +29,7 @@ vi.mock('@/lib/prisma', () => ({
       deleteMany: (...a: unknown[]) => deleteManyJournal(...a),
     },
     bookletEnvoi: { create: (...a: unknown[]) => createBookletEnvoi(...a) },
+    correspondancePatient: { create: (...a: unknown[]) => createCorrespondance(...a) },
     questionnaireReponse: { findMany: (...a: unknown[]) => findManyReponses(...(a as [])) },
   },
 }));
@@ -80,6 +87,8 @@ beforeEach(() => {
   createJournal.mockReset();
   deleteManyJournal.mockReset();
   createBookletEnvoi.mockReset();
+  createCorrespondance.mockReset();
+  createCorrespondance.mockResolvedValue({});
   // `actif` manquait : `phaseDossier` lit `!etat.actif` et concluait
   // « désactivé » sur un dossier censé être en suivi. Aucun test n'allait
   // jusque-là, donc le fixture pouvait rester faux sans que rien ne rougisse.
@@ -391,5 +400,119 @@ describe('POST /api/praticien/booklet — instantané de la note transmise', () 
       expect(derniereLigne().operation).toBe('Envoi');
       expect(derniereLigne().noteTransmise).toBe(NOTE_PREMIER_ENVOI);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M03 / D-147 — la ligne que le PRATICIEN voit sur la fiche.
+//
+// `booklet_envois` (l'audit) était juste ; `correspondances_patient` (ce qui
+// s'affiche) en dérivait par un ternaire qui rangeait tout non-`Envoye` en
+// `Erreur`. Lecture de production du 2026-09-08 : 222 lignes de journal, dont
+// 5 `Erreur` — les 5 mêmes que les 5 `Confirmation_Requise` de l'audit. La
+// seule erreur jamais affichée était fausse, et sur l'un des deux dossiers le
+// praticien a réessayé trois fois en trois minutes avant d'abandonner.
+// ---------------------------------------------------------------------------
+describe('POST /api/praticien/booklet — ce que le journal de correspondance dit', () => {
+  function envoyer(corps: Record<string, unknown>) {
+    return POST(
+      new Request('http://x/api/praticien/booklet', {
+        method: 'POST',
+        body: JSON.stringify({ idSynthese: 'SYN_1', relectureConfirmee: true, ...corps }),
+      }),
+    );
+  }
+
+  function ligneJournal() {
+    const appels = createCorrespondance.mock.calls;
+    return (appels[appels.length - 1][0] as { data: Record<string, unknown> }).data;
+  }
+
+  function avecNarratif(narratif: string) {
+    const s = syntheseFixture('Validee_Praticien');
+    s.syntheseJson.narratif_patient = narratif;
+    findFirst.mockResolvedValue(s);
+  }
+
+  it('une confirmation de REGISTRE attendue n’est pas un échec d’envoi', async () => {
+    avecNarratif('Une consultation urgente est à prévoir.');
+    await envoyer({});
+    // L'audit dit vrai — il le disait déjà.
+    expect(createBookletEnvoi.mock.calls[0][0].data.statut).toBe('Confirmation_Requise');
+    // Et la fiche ne dit plus « Échec d'envoi » pour un document en attente.
+    expect(ligneJournal().statut).toBe('Non_envoye');
+    expect(ligneJournal().statut).not.toBe('Erreur');
+    // « Non envoyé » seul ne dirait pas ce qui est attendu.
+    expect(String(ligneJournal().objet)).toContain('en attente de votre confirmation');
+  });
+
+  it('une confirmation de RENVOI attendue n’est pas davantage un échec', async () => {
+    const s = syntheseFixture('Validee_Praticien');
+    s.bookletEnvois = [{ dateEnvoi: new Date('2026-07-18T00:00:00.000Z') }] as never;
+    findFirst.mockResolvedValue(s);
+    await envoyer({});
+    expect(createBookletEnvoi.mock.calls[0][0].data.statut).toBe('Confirmation_Requise');
+    expect(ligneJournal().statut).toBe('Non_envoye');
+    expect(String(ligneJournal().objet)).toContain('Renvoi');
+  });
+
+  it('un envoi réussi reste « Envoye »', async () => {
+    process.env.SMTP_URL = 'smtp://test:test@localhost:1025';
+    try {
+      findFirst.mockResolvedValue(syntheseFixture('Validee_Praticien'));
+      const res = await envoyer({});
+      expect(res.status).toBe(200);
+      expect(ligneJournal().statut).toBe('Envoye');
+    } finally {
+      delete process.env.SMTP_URL;
+    }
+  });
+
+  // Le pendant exact du défaut : une panne RÉELLE n'écrivait NI ligne d'audit
+  // NI ligne de journal — seulement un `logger.error`. Un bilan perdu était
+  // donc invisible sur la fiche, pendant qu'une demande de confirmation, elle,
+  // s'y affichait en rouge. Le patron appliqué est celui de `file-envoi`.
+  it('un relais SMTP qui refuse écrit l’audit ET le journal, et répond 502', async () => {
+    process.env.SMTP_URL = 'smtp://test:test@localhost:1025';
+    try {
+      findFirst.mockResolvedValue(syntheseFixture('Validee_Praticien'));
+      sendMail.mockRejectedValueOnce(new Error('550 relais refusé'));
+
+      const res = await envoyer({});
+      expect(res.status).toBe(502);
+
+      expect(createBookletEnvoi).toHaveBeenCalledTimes(1);
+      const audit = createBookletEnvoi.mock.calls[0][0].data as Record<string, unknown>;
+      expect(audit.statut).toBe('Erreur');
+      expect(audit.operation).toBe('Envoi');
+      expect(String(audit.erreurCourte)).toContain('550');
+      // Rien n'est parti : aucun instantané de note ne doit être figé.
+      expect(audit.noteTransmise).toBeUndefined();
+
+      expect(ligneJournal().statut).toBe('Erreur');
+
+      // Et le praticien n'est plus renvoyé vers un terminal de développement.
+      const corps = await res.json();
+      expect(String(corps.error)).not.toContain('Next.js');
+      expect(String(corps.error)).toContain('pas parti');
+    } finally {
+      delete process.env.SMTP_URL;
+    }
+  });
+
+  // Les deux avertissements sont RENDUS TELS QUELS au praticien : ils ne
+  // peuvent pas nommer un champ JSON qu'aucun écran ne pose.
+  it('les avertissements nomment une case, pas un champ JSON', async () => {
+    avecNarratif('Une consultation urgente est à prévoir.');
+    const registre = await (await envoyer({})).json();
+    expect(registre.warning).not.toContain('confirmerRegistre');
+    expect(registre.warning).toContain('Envoyer tel quel');
+
+    const s = syntheseFixture('Validee_Praticien');
+    s.bookletEnvois = [{ dateEnvoi: new Date('2026-07-18T00:00:00.000Z') }] as never;
+    findFirst.mockResolvedValue(s);
+    const renvoi = await (await envoyer({})).json();
+    expect(renvoi.warning).not.toContain('forceSend');
+    expect(renvoi.warning).toContain('Confirmer le renvoi');
   });
 });

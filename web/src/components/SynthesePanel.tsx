@@ -74,6 +74,14 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
   const [sending, setSending] = useState(false);
   const [relectureConfirmee, setRelectureConfirmee] = useState(false);
   const [forceSend, setForceSend] = useState(false);
+  // Garde de registre anxiogène : la route SAIT depuis toujours accepter
+  // `confirmerRegistre` (« le praticien voit le mot, et décide »), mais aucun
+  // écran ne l'envoyait. Le praticien recevait un avertissement lui demandant
+  // d'« ajouter confirmerRegistre: true » — un champ JSON, sans commande pour
+  // le poser. `registreATrancher` porte le mot signalé ; il n'apparaît qu'après
+  // un refus de la garde, jamais avant : la case ne se coche pas à l'avance.
+  const [registreATrancher, setRegistreATrancher] = useState<string | null>(null);
+  const [confirmerRegistre, setConfirmerRegistre] = useState(false);
   const [notes, setNotes] = useState('');
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -312,6 +320,8 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
       setBookletInfo(null);
       setRelectureConfirmee(false);
       setForceSend(false);
+      setRegistreATrancher(null);
+      setConfirmerRegistre(false);
       setFeedback({ ok: true, msg: 'Synthèse vidée. Complétez le brouillon avant validation et booklet.' });
       await loadSyntheses(selectedPatient);
     } catch {
@@ -327,6 +337,8 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
     setBookletInfo(null);
     setRelectureConfirmee(false);
     setForceSend(false);
+    setRegistreATrancher(null);
+    setConfirmerRegistre(false);
     setFeedback(null);
     try {
       const r = await fetch(`/api/praticien/booklet?idSynthese=${encodeURIComponent(idSynthese)}`);
@@ -349,6 +361,8 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
     setBookletInfo(null);
     setRelectureConfirmee(false);
     setForceSend(false);
+    setRegistreATrancher(null);
+    setConfirmerRegistre(false);
     setFeedback({ ok: true, msg: 'Prévisualisation du booklet effacée.' });
   };
 
@@ -363,10 +377,14 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
       const r = await fetch('/api/praticien/booklet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idSynthese, relectureConfirmee, forceSend }),
+        body: JSON.stringify({ idSynthese, relectureConfirmee, forceSend, confirmerRegistre }),
       });
-      const d = await r.json() as { success?: boolean; error?: string; warning?: string; needsConfirmation?: boolean; emailMasque?: string };
+      const d = await r.json() as { success?: boolean; error?: string; warning?: string; needsConfirmation?: boolean; reason?: string; terme?: string; emailMasque?: string };
       if (d.needsConfirmation) {
+        // Deux confirmations distinctes, deux cases distinctes : le renvoi
+        // (déjà envoyé) et le registre (un mot du texte patient). La route
+        // refuse de faire valoir l'une pour l'autre ; l'écran non plus.
+        if (d.reason === 'REGISTRE_ANXIOGENE') setRegistreATrancher(d.terme ?? '');
         setFeedback({ ok: false, msg: d.warning ?? 'Booklet déjà envoyé. Cochez le renvoi forcé pour confirmer.' });
         return;
       }
@@ -377,6 +395,8 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
       setFeedback({ ok: true, msg: `Booklet envoyé à ${d.emailMasque ?? 'patient'}.` });
       setRelectureConfirmee(false);
       setForceSend(false);
+      setRegistreATrancher(null);
+      setConfirmerRegistre(false);
       await loadSyntheses(selectedPatient);
     } catch {
       setFeedback({ ok: false, msg: 'Erreur réseau. Réessayez.' });
@@ -679,6 +699,22 @@ export function SynthesePanel({ initialPatientId = '' }: { initialPatientId?: st
                       <label className="flex items-center gap-2 text-sm text-status-warning cursor-pointer">
                         <input type="checkbox" checked={forceSend} onChange={e => setForceSend(e.target.checked)} />
                         Confirmer le renvoi (déjà envoyé précédemment).
+                      </label>
+                    )}
+                    {registreATrancher !== null && (
+                      <label className="flex items-start gap-2 text-sm text-status-warning cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={confirmerRegistre}
+                          onChange={e => setConfirmerRegistre(e.target.checked)}
+                          className="mt-1"
+                        />
+                        <span>
+                          Envoyer tel quel malgré le mot{' '}
+                          <strong>« {registreATrancher} »</strong> dans le texte lu par le patient.
+                          Ce texte est lu seul, souvent avant la consultation : reformulez-le si vous
+                          le pouvez, ou cochez pour l&apos;assumer.
+                        </span>
                       </label>
                     )}
                     <div className="flex flex-wrap gap-2">
