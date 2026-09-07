@@ -283,6 +283,28 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     expect(screen.queryByText(/n’existe pas encore/)).toBeNull();
   });
 
+  // ── UNE MESURE DE LABORATOIRE NE SE CORRIGE PAS ICI (n3) ──────────────────
+  //
+  // La route refuse en 409 `correction_source_labo` — une valeur rendue par un
+  // laboratoire ne se rature pas sous une saisie praticien. L'écran l'offrait
+  // pourtant : le praticien frappait une valeur pour la voir rejetée. Cas
+  // LATENT (aucune ligne d'import n'existe encore) et affordance BIEN RÉELLE.
+  it('n’offre PAS « Corriger » sur une mesure d’import laboratoire, et dit pourquoi', async () => {
+    monterAvec([{ ...ORIGINE, source: 'import_labo' }]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(
+      screen.queryByRole('button', { name: /Corriger la mesure/ }),
+    ).toBeNull();
+    expect(screen.getByText(/ne se corrige pas par une saisie praticien/)).toBeTruthy();
+  });
+
+  it('l’offre toujours sur une saisie praticien', async () => {
+    monterAvec([ORIGINE]);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getByRole('button', { name: /Corriger la mesure/ })).toBeTruthy();
+    expect(screen.queryByText(/ne se corrige pas par une saisie praticien/)).toBeNull();
+  });
+
   it('une mesure corrigée RESTE à l’écran, barrée, avec la valeur et la date de sa correction', async () => {
     const correction = {
       ...ORIGINE,

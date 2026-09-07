@@ -513,7 +513,20 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
                             : ''}
                         </span>
                       )}
-                      {!corrigee && correctionDe !== mesure.id && (
+                      {/* UNE MESURE DE LABORATOIRE NE SE CORRIGE PAS ICI, et
+                          l'écran cesse de le proposer. La route refuse déjà en
+                          409 `correction_source_labo` : offrir le geste faisait
+                          frapper une valeur pour la voir rejetée, et laissait
+                          croire qu'une valeur rendue par un laboratoire se
+                          rature à la main. Le cas est latent — aucune ligne
+                          d'import n'existe encore — mais l'affordance, elle,
+                          était déjà là. */}
+                      {!corrigee && mesure.source !== 'saisie_praticien' && (
+                        <span className="ml-2 text-xs text-muted-foreground">
+                          · mesure de laboratoire — elle ne se corrige pas par une saisie praticien
+                        </span>
+                      )}
+                      {!corrigee && correctionDe !== mesure.id && mesure.source === 'saisie_praticien' && (
                         <button
                           type="button"
                           // Désactivé tant qu'un autre second temps est ouvert :
