@@ -4,6 +4,64 @@
 
 ## Décisions actives
 
+### D-144 — Un refus qui ne dit pas lequel des onze contrôles a mordu ne se diagnostique pas
+
+- Date : 2026-09-07
+- Statut : accepté (piste consignée à [[D-015]], reprise et posée)
+- Domaine : agenda alimentaire, observabilité, protection des données
+
+**§1 — Le prix payé, et pourquoi il était juste.** La route d'écriture de
+l'agenda alimentaire **masque le message** de toute erreur avant de la
+journaliser. Le motif est solide : un `PrismaClientValidationError` recopie
+l'invocation fautive dans son message, `data.reponses` **comprise** — les
+horaires de prises du patient, c'est-à-dire de la donnée de santé, partiraient
+en clair dans les journaux. `sanitizeError` ne l'en empêcherait pas : il tronque
+et masque quelques motifs, il ne lit pas la structure d'un message.
+
+Le prix : un `400` de domaine ne disait plus **lequel** des onze contrôles de
+`jour.ts` avait mordu. Un refus sans motif ne se diagnostique pas ; il
+s'accumule.
+
+**§2 — Pourquoi un code, et non un démasquage.** `D-015` notait que ces
+`TypeError` sont sûres — aucune n'interpole une valeur du patient. **Vérifié à
+nouveau, et l'affirmation tient pour `jour.ts`** : les seules interpolations
+sont des libellés littéraux, un rang de prise et une constante de module.
+
+**Mais elle ne tient pas pour le `catch`.** Celui-ci attrape aussi les
+`TypeError` levées par la persistance et par la lecture de contrat, dont
+certains messages interpolent une valeur reçue ou relue. Démasquer les messages
+au motif que *ceux-ci* sont sûrs ouvrirait la porte à ceux qui ne le sont pas.
+Un code énuméré, lui, est sûr **par construction** : c'est une constante du
+fichier, jamais une donnée.
+
+**§3 — La classe est le marqueur, le code est la charge.** C'est la réponse à la
+question laissée ouverte. `ErreurJourAlimentaire extends TypeError` porte un
+`code` énuméré ; une `TypeError` nue venue d'ailleurs dans la pile n'en porte
+pas et **reste masquée**, sans qu'aucun tri au cas par cas ait à être écrit ni
+tenu à jour. L'héritage de `TypeError` n'est pas cosmétique : la route branche
+son `400` sur `err instanceof TypeError`, et changer de base changerait le
+statut rendu au patient.
+
+**§4 — La plomberie existait déjà, elle n'avait rien à transporter.**
+`traceErreur` lit `err.code` et le range dans `metadata.erreurCode` depuis sa
+première version — la fonction était écrite pour les codes Prisma (`P2002`).
+Poser un `code` sur la classe suffit donc : aucune modification de la route
+n'était nécessaire. `D-015` imaginait un lot ; c'était un champ.
+
+**§5 — Le défaut que le banc a trouvé, et qui rend la garde nécessaire.**
+`sanitizeString` remplace **tout mot de 24 caractères ou plus par `[id]`**.
+**Trois des onze codes la franchissaient** à la première écriture et sortaient
+`erreurCode: "[id]"` — soit exactement l'absence de diagnostic qu'ils existent
+pour combler. C'est le même piège qui avait déjà coûté la trace des quatre
+classes d'erreur Prisma. Il se referme par un banc paramétré sur la liste des
+codes, éprouvé par mutation, et non par une note de commentaire.
+
+**§6 — Ce que ce lot ne fait pas.** Il ne change **rien** à la réponse rendue au
+patient : message fixe, `reason: 'invalid'`, statut `400`. Le code va au
+journal, pas à l'écran. Et il ne touche à aucune des neuf autres routes qui
+rendent `err.message` verbatim : elles ne manipulent pas d'objet dont le message
+puisse citer une donnée de santé, et les aligner sans motif serait un
+refactoring non demandé.
 ### D-143 — Une couleur par défaut n'est pas un défaut, c'est une invention
 
 - Date : 2026-09-07
