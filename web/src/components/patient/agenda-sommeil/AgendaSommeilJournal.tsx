@@ -71,6 +71,9 @@ export function AgendaSommeilJournal({ idAssignation, onRetourHub }: Props) {
 
   async function enregistrer(reponses: NuitReponses) {
     setEnvoi(true);
+    // L'ANCIEN REFUS S'EFFACE AU DÉPART, sans quoi une seconde tentative
+    // réussie laisserait le message de la première à l'écran.
+    setErreur('');
     try {
       const res = await fetch('/api/portail/agenda-sommeil', {
         method: 'POST',
@@ -95,6 +98,7 @@ export function AgendaSommeilJournal({ idAssignation, onRetourHub }: Props) {
 
   async function transmettre() {
     setEnvoi(true);
+    setErreur('');
     try {
       const res = await fetch('/api/portail/agenda-sommeil/cloture', {
         method: 'POST',
@@ -159,10 +163,36 @@ export function AgendaSommeilJournal({ idAssignation, onRetourHub }: Props) {
   }
 
   // Écran de saisie du matin.
+  // UN REFUS D'ÉCRITURE NE RESTE PAS MUET, ET IL SE REND DANS LES DEUX VUES.
+  //
+  // `enregistrer` et `transmettre` posaient `erreur` sans basculer `etat`, et
+  // `erreur` n'était rendu que par la branche `etat === 'erreur'` : le message
+  // n'atteignait JAMAIS l'écran. Le patient validait sa nuit, ne voyait rien, et
+  // repartait en croyant l'avoir enregistrée. Un refus invisible est pire qu'un
+  // refus bavard — le praticien lira ensuite un agenda troué sans savoir que le
+  // patient, lui, a cru répondre (`DC-24` dans l'autre sens : une nuit non
+  // écrite n'est pas une nuit sans sommeil).
+  //
+  // DANS LES DEUX VUES, parce que les deux écrivent : `enregistrer` part de la
+  // SAISIE, `transmettre` de la FRISE. Ne le poser que sur l'une laisserait
+  // l'autre muette — c'est le défaut d'origine, à moitié.
+  //
+  // EN PLACE, JAMAIS EN PLEIN ÉCRAN : basculer `etat` remplacerait la page par
+  // l'écran d'échec et emporterait la saisie en cours.
+  const alerteRefus = erreur !== '' ? (
+    <div
+      role="alert"
+      className="rounded-xl border border-status-warning/40 bg-status-warning/10 px-4 py-3 text-sm text-status-warning text-center"
+    >
+      {erreur}
+    </div>
+  ) : null;
+
   if (mode === 'saisie') {
     const enCorrection = cibleDate !== aujourdHui;
     return (
       <div className="space-y-4">
+        {alerteRefus}
         <PatientCard>
           <h2 className="font-display text-lg font-bold text-foreground mb-1">
             {enCorrection ? 'Corriger la nuit d’hier' : 'Votre nuit passée'}
@@ -195,6 +225,7 @@ export function AgendaSommeilJournal({ idAssignation, onRetourHub }: Props) {
   // Vue frise (par défaut si la nuit d'aujourd'hui est déjà notée).
   return (
     <div className="space-y-4">
+      {alerteRefus}
       {merci && (
         <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm text-primary text-center">
           Merci, à demain matin. ☕
