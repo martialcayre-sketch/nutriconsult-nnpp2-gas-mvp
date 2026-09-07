@@ -60,6 +60,34 @@ function erreurLisible(reason?: string, fallback?: string): string {
   return (reason && map[reason]) ?? fallback ?? 'Erreur inconnue.';
 }
 
+/**
+ * `success: true` ne dit que l'écriture en base ; c'est `envoi` qui dit si
+ * l'e-mail est parti. Les trois libellés d'envoi passent par ici, chacun
+ * nommant ses trois cas en toutes lettres.
+ *
+ * Le type vient du DTO de route, jamais de `lib/consultation/email` : ce
+ * module-là importe `nodemailer` via `transportSmtp`, et un import de valeur
+ * l'embarquerait au bundle client. Passer par `CreateConsultationResponse`
+ * (déjà importé) rend cette faute impossible plutôt que surveillée.
+ *
+ * `undefined` vaut « envoyé » : les routes posent désormais toujours le champ
+ * sur un chemin d'envoi, et son absence ne doit rougir ni un envoi réussi ni
+ * une action qui n'envoie rien.
+ */
+function libelleEnvoi(
+  envoi: CreateConsultationResponse['envoi'],
+  textes: { envoye: string; echoue: string; nonConfigure: string },
+): string {
+  return envoi === 'echoue' ? textes.echoue
+    : envoi === 'non_configure' ? textes.nonConfigure
+    : textes.envoye;
+}
+
+/** Vrai tant qu'aucun envoi n'est mort : sert la COULEUR de la ligne de statut. */
+function envoiReussi(envoi: CreateConsultationResponse['envoi']): boolean {
+  return envoi !== 'echoue' && envoi !== 'non_configure';
+}
+
 function StatusBadge({ value }: { value: string }) {
   const status = value || '—';
   const variant: BadgeVariant =
@@ -372,7 +400,19 @@ export function PatientsPanel({ lienMagiqueActif = false }: { lienMagiqueActif?:
         setConsultationFeedback({ ok: false, msg: erreurLisible(json.reason, json.error) });
         return;
       }
-      setConsultationFeedback({ ok: true, msg: `Consultation créée, lien d’accès envoyé au patient.` });
+      // `ok: true` MAINTENU même sur envoi mort : la consultation EST créée, le
+      // tiroir doit se fermer et le formulaire se réinitialiser. Un `ok: false`
+      // laisserait le tiroir ouvert sur un dossier déjà créé — invitation à la
+      // double soumission. C'est le TEXTE qui porte l'échec, et il dit quoi
+      // faire, pour que le vert ne se lise pas comme un succès d'envoi.
+      setConsultationFeedback({
+        ok: true,
+        msg: libelleEnvoi(json.envoi, {
+          envoye: 'Consultation créée, lien d’accès envoyé au patient.',
+          echoue: 'Consultation créée, mais l’e-mail n’est pas parti. Renvoyez le lien depuis le menu du dossier.',
+          nonConfigure: 'Consultation créée. Aucun e-mail n’est parti : la messagerie n’est pas configurée.',
+        }),
+      });
       setConsultationForm({ idPatient: '', motif: '' });
       // Succès → le tiroir se ferme, la ligne de statut de la page l'annonce.
       setTiroirOuvert(null);
@@ -400,7 +440,16 @@ export function PatientsPanel({ lienMagiqueActif = false }: { lienMagiqueActif?:
       setConsultationFeedback(
         !r.ok || !json.success
           ? { ok: false, msg: erreurLisible(json.reason, json.error) }
-          : { ok: true, msg: 'Lien d’accès renvoyé au patient.' }
+          : {
+              // Ici, pas de tiroir à refermer et l'action est répétable : un
+              // envoi mort peut donc rougir franchement la ligne de statut.
+              ok: envoiReussi(json.envoi),
+              msg: libelleEnvoi(json.envoi, {
+                envoye: 'Lien d’accès renvoyé au patient.',
+                echoue: 'Le lien n’est pas parti : l’envoi de l’e-mail a échoué. Réessayez.',
+                nonConfigure: 'Le lien n’est pas parti : la messagerie n’est pas configurée.',
+              }),
+            }
       );
     } catch {
       setConsultationFeedback({ ok: false, msg: 'Erreur réseau. Réessayez.' });
@@ -425,7 +474,14 @@ export function PatientsPanel({ lienMagiqueActif = false }: { lienMagiqueActif?:
       setConsultationFeedback(
         !r.ok || !json.success
           ? { ok: false, msg: erreurLisible(json.reason, json.error) }
-          : { ok: true, msg: 'Lien à usage unique envoyé — valable 24 h.' }
+          : {
+              ok: envoiReussi(json.envoi),
+              msg: libelleEnvoi(json.envoi, {
+                envoye: 'Lien à usage unique envoyé — valable 24 h.',
+                echoue: 'Lien à usage unique émis, mais l’e-mail n’est pas parti. Réessayez.',
+                nonConfigure: 'Lien à usage unique émis, mais aucun e-mail n’est parti : la messagerie n’est pas configurée.',
+              }),
+            }
       );
     } catch {
       setConsultationFeedback({ ok: false, msg: 'Erreur réseau. Réessayez.' });

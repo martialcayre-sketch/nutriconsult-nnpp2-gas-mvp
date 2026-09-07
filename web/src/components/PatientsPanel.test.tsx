@@ -63,6 +63,7 @@ function stubFetch(options?: {
    * rend la charge, ou lève pour simuler une panne réseau. Nécessaire dès que
    * la réponse doit DÉPENDRE de la requête — course entre deux statuts, échec.
    */
+  surConsultations?: (body: unknown) => unknown;
   surPatients?: (url: string) => unknown;
 }) {
   const appels: { url: string; method?: string; body?: unknown }[] = [];
@@ -84,6 +85,17 @@ function stubFetch(options?: {
         return {
           ok: true,
           json: async () => options?.surToken?.(body) ?? { success: true },
+        } as unknown as Response;
+      }
+      // Sans cette branche, le POST consultation retombait sur le fourre-tout
+      // du bas, qui rend `success: true` et RIEN d'autre. Le défaut ci-dessous
+      // ne pose délibérément PAS `envoi` : c'est ce qui fait du banc existant
+      // « la création de consultation refermée sur succès… » la garde du
+      // défaut « champ absent ⇒ envoyé » de l'écran.
+      if (String(url).startsWith('/api/praticien/consultations')) {
+        return {
+          ok: true,
+          json: async () => options?.surConsultations?.(body) ?? { success: true, idConsultation: 'CONS_TEST' },
         } as unknown as Response;
       }
       if (String(url).startsWith('/api/praticien/assignations/annulation')) {
@@ -182,6 +194,37 @@ describe('PatientsPanel — émission d’un lien à usage unique (G4)', () => {
 
     await waitFor(() => expect(screen.getByText(/révoqué/i)).toBeTruthy());
     expect(screen.queryByText(/valable 24 h/i)).toBeNull();
+  });
+
+  // Le serveur ACCEPTE (`success: true`, le lien est émis en base) et l'e-mail
+  // meurt quand même. C'est le cas que les trois `catch` muets rendaient
+  // indistinguable d'un succès : deux faits à dire, pas un.
+  it('un lien émis dont l’e-mail meurt dit les deux faits, et rougit', async () => {
+    stubFetch({
+      surToken: () => ({ success: true, lien: 'https://x/portail/lien/J', envoi: 'echoue' }),
+    });
+    render(<PatientsPanel lienMagiqueActif />);
+    await ouvrirMenu();
+    fireEvent.click(item(/usage unique/i));
+
+    const ligne = await screen.findByText(/Lien à usage unique émis, mais l’e-mail n’est pas parti/);
+    expect(ligne).toBeTruthy();
+    // LA COULEUR, ET PAS PAR `getByRole('status')` : deux `span[role=status]`
+    // coexistent dès qu'un tiroir est ouvert. L'assertion porte sur l'élément
+    // du texte, seul endroit sans ambiguïté.
+    expect(ligne.className).toContain('text-status-danger');
+    expect(screen.queryByText(/valable 24 h/i)).toBeNull();
+  });
+
+  it('un renvoi d’accès mort rougit lui aussi, et dit quoi faire', async () => {
+    stubFetch({ surToken: () => ({ success: true, envoi: 'echoue' }) });
+    render(<PatientsPanel />);
+    await ouvrirMenu();
+    fireEvent.click(item(/renvoyer le lien/i));
+
+    const ligne = await screen.findByText(/Le lien n’est pas parti/);
+    expect(ligne.className).toContain('text-status-danger');
+    expect(screen.queryByText(/renvoyé au patient/)).toBeNull();
   });
 });
 
@@ -646,6 +689,36 @@ describe('PatientsPanel — tiroirs d’action (SP-TRAJ LOT-05)', () => {
 
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(screen.getByText(/Consultation créée, lien d’accès envoyé au patient/)).toBeTruthy();
+  });
+
+  async function creerConsultation() {
+    render(<PatientsPanel />);
+    await screen.findAllByRole('button', { name: /gérer le dossier/i });
+    fireEvent.click(screen.getByRole('button', { name: 'Nouvelle consultation' }));
+    await screen.findByRole('dialog', { name: 'Nouvelle consultation' });
+    fireEvent.change(screen.getAllByRole('combobox')[0], { target: { value: 'PAT_SEED_03' } });
+    fireEvent.click(screen.getByRole('button', { name: /Créer une consultation/ }));
+  }
+
+  it('un envoi mort ne s’annonce plus « lien d’accès envoyé »', async () => {
+    // LE TIROIR SE FERME QUAND MÊME. La consultation EST créée : le laisser
+    // ouvert sur un dossier déjà créé inviterait à la double soumission. C'est
+    // le TEXTE qui porte l'échec, et il dit quoi faire.
+    stubFetch({ surConsultations: () => ({ success: true, idConsultation: 'CONS_1', envoi: 'echoue' }) });
+    await creerConsultation();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByText(/mais l’e-mail n’est pas parti/)).toBeTruthy();
+    expect(screen.queryByText(/lien d’accès envoyé au patient/)).toBeNull();
+  });
+
+  it('une messagerie non configurée ne dit pas « réessayez »', async () => {
+    // Deux causes, deux gestes : réessayer n'a aucun sens sans SMTP posé.
+    stubFetch({ surConsultations: () => ({ success: true, envoi: 'non_configure' }) });
+    await creerConsultation();
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.getByText(/la messagerie n’est pas configurée/)).toBeTruthy();
   });
 });
 

@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createPublicId } from '@/lib/ids';
 import { isMotifValide } from '@/lib/consultation/motifs';
-import { sendPortailLinkEmail } from '@/lib/consultation/email';
+import { sendPortailLinkEmail, type EnvoiAcces } from '@/lib/consultation/email';
 import { emailPraticien, verifierAppartenancePatient } from '@/lib/praticien/appartenance';
 import { journaliserAccesDossier } from '@/lib/praticien/journalAcces';
 import { accepteNouvelEnvoi, MESSAGE_DOSSIER_CLOS, RAISON_DOSSIER_CLOS } from '@/lib/patient/cycleDeVie';
@@ -27,6 +27,11 @@ export type ConsultationsApiResponse = {
 export type CreateConsultationResponse = {
   success: boolean;
   idConsultation?: string;
+  /**
+   * La consultation est créée quoi qu'il arrive (`success: true`) ; ce champ,
+   * et lui seul, dit si l'e-mail est parti. Toujours posé par le POST.
+   */
+  envoi?: EnvoiAcces;
   error?: string;
   reason?:
     | 'unauthenticated'
@@ -174,16 +179,22 @@ export async function POST(req: Request): Promise<NextResponse<CreateConsultatio
       },
     });
 
+    // L'envoi ne conditionne PAS la consultation : elle est créée, la réponse
+    // reste `success: true`. Ce que le `catch` avalait devient un champ, faute
+    // de quoi l'écran annonce « envoyé » sur un envoi mort.
+    let envoi: EnvoiAcces = 'envoye';
     try {
       // En serverless, on attend explicitement la promesse pour eviter que
       // l'envoi best-effort soit interrompu juste apres la reponse HTTP.
       // Le motif ne part plus dans l'e-mail (audit HDS) — il reste en base.
-      await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+      const statut = await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+      if (statut === 'Non_envoye') envoi = 'non_configure';
     } catch (e) {
+      envoi = 'echoue';
       console.error('[praticien/consultations POST] email:', (e as Error).message);
     }
 
-    return NextResponse.json({ success: true, idConsultation });
+    return NextResponse.json({ success: true, idConsultation, envoi });
   } catch {
     return NextResponse.json({ success: false, reason: 'exception', error: 'Erreur technique lors de la création de la consultation.' });
   }

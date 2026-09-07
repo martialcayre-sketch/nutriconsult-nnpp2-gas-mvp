@@ -7,6 +7,26 @@ import {
   type TypeCorrespondancePatient,
 } from '@/lib/correspondance/patient';
 
+/**
+ * Ce que l'appelant peut affirmer à l'écran. `Erreur` n'y figure pas : ce cas
+ * relance (il ne se rend pas), et c'est le `catch` de la route qui le nomme.
+ * Projection observable des statuts du journal de correspondance.
+ */
+export type StatutEnvoiAcces = 'Envoye' | 'Non_envoye';
+
+/**
+ * Ce que la RÉPONSE d'API dit de l'envoi. Trois cas, pas deux : trois `catch`
+ * muets rendaient `success: true` sur un envoi mort, et l'écran annonçait
+ * « envoyé ». `success` ne parle que de l'écriture en base.
+ *
+ * BORNE : 'envoye' signifie « le SMTP a accepté la transaction », pas « la
+ * boîte du patient l'a reçu ». Un destinataire rejeté au sein d'une
+ * transaction acceptée (`info.rejected` de nodemailer) résout et reste compté
+ * 'envoye'. Ce résidu est antérieur et hors périmètre — il est nommé ici pour
+ * que personne ne lise ce champ comme un accusé de réception.
+ */
+export type EnvoiAcces = 'envoye' | 'echoue' | 'non_configure';
+
 async function envoyerAccesTrace({
   idPatient,
   type,
@@ -17,18 +37,20 @@ async function envoyerAccesTrace({
   type: TypeCorrespondancePatient;
   objet: string;
   envoyer: () => Promise<unknown>;
-}): Promise<void> {
+}): Promise<StatutEnvoiAcces> {
   if (!process.env.SMTP_URL) {
     if (idPatient) {
       await journaliserCorrespondancePatient({ idPatient, type, objet, statut: 'Non_envoye' });
     }
-    return;
+    // Rendu MÊME sans `idPatient` : le statut décrit l'envoi, pas la trace.
+    return 'Non_envoye';
   }
   try {
     await envoyer();
     if (idPatient) {
       await journaliserCorrespondancePatient({ idPatient, type, objet, statut: 'Envoye' });
     }
+    return 'Envoye';
   } catch (erreur) {
     if (idPatient) {
       await journaliserCorrespondancePatient({ idPatient, type, objet, statut: 'Erreur', erreur });
@@ -68,9 +90,9 @@ export async function sendMagicLinkEmail(
   prenom: string,
   lien: string,
   idPatient?: string,
-): Promise<void> {
+): Promise<StatutEnvoiAcces> {
   const smtpUrl = process.env.SMTP_URL;
-  await envoyerAccesTrace({
+  return envoyerAccesTrace({
     idPatient,
     type: TYPES_CORRESPONDANCE_PATIENT.lienMagique,
     objet: 'Lien temporaire d’accès à l’espace patient',
@@ -131,10 +153,10 @@ export async function sendPortailLinkEmail(
   /** Adresse du praticien du dossier (`patients.praticien_email`), posée en
    * `Reply-To`. Facultative : sans elle, l'en-tête est simplement absent. */
   praticienEmail?: string,
-): Promise<void> {
+): Promise<StatutEnvoiAcces> {
   const smtpUrl = process.env.SMTP_URL;
   const connexion = buildGoogleConnexionUrl();
-  await envoyerAccesTrace({
+  return envoyerAccesTrace({
     idPatient,
     type: TYPES_CORRESPONDANCE_PATIENT.accesPortail,
     objet: 'Accès à l’espace patient',
