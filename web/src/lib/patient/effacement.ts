@@ -91,6 +91,13 @@ export async function effacerDossier(idPatient: string): Promise<ResultatEffacem
     supprimees.decisionPrioritySelections = (
       await tx.decisionPrioritySelection.deleteMany({ where: par })
     ).count;
+    // Constats de critères ([[D-138]]) : FK RESTRICT vers patients ET
+    // clinical_criteria. Le vocabulaire n'est pas touché — c'est du
+    // référentiel ; ce qui part, c'est « le praticien a constaté ce critère
+    // sur CE dossier », qui est une donnée de santé nominative.
+    supprimees.criteresDossierConstates = (
+      await tx.critereDossierConstate.deleteMany({ where: par })
+    ).count;
 
     // 3. Enfants directs.
     supprimees.synthesesIA = (await tx.syntheseIA.deleteMany({ where: par })).count;

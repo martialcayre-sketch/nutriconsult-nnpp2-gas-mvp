@@ -58,6 +58,7 @@ model Patient {
   protocolCheckins           ProtocolCheckin[]
   protocolDiffusionApprovals ProtocolDiffusionApproval[]
   arbitragesBiologiques      ArbitrageBiologique[]
+  criteresConstates          CritereDossierConstate[]
   panelsBiologieDocumentes   PanelBiologieDocumente[]
   documentsPatientBiologie   DocumentPatientBiologie[]
   resultatsBiologiques       ResultatBiologique[]
@@ -608,7 +609,71 @@ model ClinicalCriterion {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  // Le critère est un MOT du vocabulaire gouverné, rien de plus : ni seuil, ni
+  // dérivation, ni lecture d'une donnée patient. Ce qu'il vaut sur un dossier
+  // n'est pas calculé — il est CONSTATÉ par un praticien qui le signe
+  // (`criteres_dossier_constates`, [[D-138]]). C'est la seule forme
+  // d'évaluation qui n'invente pas de sémantique clinique (`DC-19`, `DC-20`).
+  reglesConditionnees ClinicalRule[]
+  constats            CritereDossierConstate[]
+
   @@map("clinical_criteria")
+}
+
+// Constat praticien d'un critère sur un dossier ([[D-138]]).
+//
+// CE QU'IL FERME. `clinical_criteria` ne porte qu'un `code`, un libellé et une
+// catégorie : rien n'y dit ce qui rend un critère VRAI sur un patient. Le
+// moteur C4 ne pouvait donc pas évaluer une règle conditionnée à un critère —
+// il la refusait, en la disant illisible. Cette table est le chaînon manquant,
+// et elle le fournit sans inventer de sémantique : le critère ne se dérive pas
+// d'un score ni d'une réponse, il se CONSTATE, signé et daté. Même patron que
+// `panels_biologie_documentes` (le praticien déclare un fait hors outil) et que
+// `arbitrages_biologiques` (le praticien tranche, et sa trace reste).
+//
+// TROIS ÉTATS, PAS DEUX. L'absence de ligne signifie INCONNU, jamais « absent »
+// (`DC-24` : une information absente n'est pas une autorisation). Un critère
+// constaté absent porte donc sa ligne, avec `present = false` — et le moteur
+// distingue « le praticien a constaté que non » de « personne ne s'est
+// prononcé ». Les deux refusent, mais ils ne disent pas la même chose au
+// praticien, et seul le second est une dette.
+//
+// SANS CONTENU CLINIQUE : la ligne dit qu'un mot du vocabulaire s'applique ou
+// non, jamais pourquoi ni sur quelle mesure. RLS deny-all posée par la
+// migration, comme toute table patient.
+//
+// Table fille de `patients`, donc effacée par la transaction IDP2 DÈS CETTE PR
+// — `effacement.test.ts` se dérive du SCHÉMA et rougit à la seconde où le
+// modèle apparaît (précédent `arbitrages_biologiques`, #680).
+model CritereDossierConstate {
+  id        String  @id @default(cuid())
+  idPatient String  @map("id_patient")
+  critereId String  @map("critere_id")
+  // `true` = constaté présent, `false` = constaté absent. Jamais nul : un
+  // constat sans sens ne serait qu'une ligne de bruit — l'inconnu s'exprime
+  // par l'ABSENCE de ligne.
+  present   Boolean @map("present")
+  // Note facultative du praticien, bornée en base (CHECK migration). Elle
+  // explique le constat ; elle ne le remplace pas.
+  note      String? @map("note")
+
+  constatePar String   @map("constate_par") // email praticien, posé côté serveur (CHECK migration : non vide)
+  // `@updatedAt` : re-constater REMET l'horodatage. `constatePar` n'a pas
+  // d'équivalent automatique — le bloc `update` d'un upsert DOIT le réécrire,
+  // sinon la ligne attribue au premier praticien un constat posé par un
+  // second (piège déjà payé par `panels_biologie_documentes`).
+  constateLe  DateTime @default(now()) @updatedAt @map("constate_le")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  patient Patient           @relation(fields: [idPatient], references: [idPatient])
+  critere ClinicalCriterion @relation(fields: [critereId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  // UN constat par critère et par dossier : re-constater met à jour, jamais
+  // n'empile deux verdicts contradictoires que rien ne départagerait.
+  // L'unicité commence par `idPatient` : elle sert aussi d'index à la lecture
+  // du dossier, qui filtre sur ce seul terme. Pas de second index.
+  @@unique([idPatient, critereId], map: "cb_critere_dossier_unique")
+  @@map("criteres_dossier_constates")
 }
 
 model FunctionalCategory {
@@ -631,7 +696,20 @@ model ClinicalRule {
   typeRegle               String @map("type_regle")
   poids                   Int    @map("poids")
   justification           String @map("justification")
+  // ANCIEN champ à deux natures ([[D-138]]) : il portait indifféremment une
+  // référence de critère `{ critereId }` — la SEULE forme que l'API sache
+  // écrire — et une condition biologique `{ type: 'biologie', cible }` — la
+  // seule que le moteur sache lire. Les deux ne se rencontraient jamais : une
+  // règle conditionnée à un critère était lue « illisible » et REFUSAIT son
+  // intention. Conservé le temps que le code cesse de l'écrire ; sa suppression
+  // est destructive et demandera sa propre confirmation.
   conditionSupplementaire Json?  @map("condition_supplementaire")
+  // Les deux natures, séparées. Le critère devient une VRAIE clé étrangère :
+  // jusqu'ici la référence vivait dans un JSON et rien n'empêchait qu'elle
+  // pende. La condition biologique garde sa forme, lue par
+  // `lireConditionBiologique`.
+  conditionCritereId      String? @map("condition_critere_id")
+  conditionBiologie       Json?   @map("condition_biologie")
 
   ingredientId            String  @map("ingredient_id")
   formePrefereeId         String? @map("forme_preferee_id")
@@ -655,14 +733,21 @@ model ClinicalRule {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
-  intentTag       ClinicalIntentTag          @relation(fields: [intentTagId], references: [id])
-  ingredient      SupplementIngredient       @relation(fields: [ingredientId], references: [id])
-  formePreferee   SupplementIngredientForme? @relation(fields: [formePrefereeId], references: [id])
-  sourceReference SupplementSourceReference  @relation(fields: [sourceReferenceId], references: [id])
+  intentTag        ClinicalIntentTag          @relation(fields: [intentTagId], references: [id])
+  ingredient       SupplementIngredient       @relation(fields: [ingredientId], references: [id])
+  formePreferee    SupplementIngredientForme? @relation(fields: [formePrefereeId], references: [id])
+  sourceReference  SupplementSourceReference  @relation(fields: [sourceReferenceId], references: [id])
+  // `Restrict` EXPLICITE, contre le défaut Prisma `SetNull` d'une relation
+  // optionnelle : supprimer un critère mettrait sinon `condition_critere_id` à
+  // NULL, et la règle deviendrait INCONDITIONNELLE en silence. C'est le
+  // fail-open exact que [[D-138]] ferme. Le vocabulaire se désactive
+  // (`actif`), il ne s'efface pas.
+  conditionCritere ClinicalCriterion?         @relation(fields: [conditionCritereId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([intentTagId, ingredientId, typeRegle, versionRegle], map: "clinical_rules_lignee_version_key")
   @@index([intentTagId])
   @@index([ingredientId])
+  @@index([conditionCritereId])
   @@map("clinical_rules")
 }
 

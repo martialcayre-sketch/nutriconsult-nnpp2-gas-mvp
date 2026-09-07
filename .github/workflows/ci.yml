@@ -679,6 +679,24 @@ jobs:
         working-directory: web
         run: npx prisma db execute --file prisma/checks/cb_panels_documentes_v1_negatif.sql
 
+      # Constats de critères sur un dossier (D-138). Ce qui rend un critère vrai
+      # chez un patient n'est écrit nulle part dans le dépôt : il ne se dérive
+      # donc pas, il se CONSTATE, signé. Contrat à neuf termes : un constat
+      # valide accepté ; un second constat CONTRADICTOIRE sur le même (patient,
+      # critère) rejeté en 23505 — sans quoi le verdict d'une règle clinique
+      # dépendrait de l'ordre de lecture ; les CHECK signataire et note qui
+      # mordent ; huit colonnes exactes en liste blanche (aucune valeur, aucun
+      # score) ; `present` NOT NULL, verrou DC-24 — un NULL y serait un
+      # troisième état muet, indiscernable de « constaté absent », alors que
+      # l'inconnu doit s'exprimer par l'ABSENCE de ligne ; les deux FK en ON
+      # DELETE RESTRICT, invisibles du drift check ; la RLS deny-all sans
+      # policy ; et la FK de `clinical_rules` vers le vocabulaire, qui est la
+      # moitié « séparation » de la migration. Transaction annulée.
+      - name: CB critères dossier negative tests
+        if: steps.scope.outputs.docs_only != 'true'
+        working-directory: web
+        run: npx prisma db execute --file prisma/checks/cb_criteres_dossier_v1_negatif.sql
+
       # Document patient biologie (décision F, D-122) : un document valide et
       # une seconde génération doivent être ACCEPTÉS (append-only) ; les CHECK
       # doivent MORDRE (texte vide ou blancs avec tabulations — trou btrim/1
