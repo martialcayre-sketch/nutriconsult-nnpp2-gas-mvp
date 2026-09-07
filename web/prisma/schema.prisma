@@ -696,14 +696,13 @@ model ClinicalRule {
   typeRegle               String @map("type_regle")
   poids                   Int    @map("poids")
   justification           String @map("justification")
-  // ANCIEN champ à deux natures ([[D-138]]) : il portait indifféremment une
-  // référence de critère `{ critereId }` — la SEULE forme que l'API sache
-  // écrire — et une condition biologique `{ type: 'biologie', cible }` — la
-  // seule que le moteur sache lire. Les deux ne se rencontraient jamais : une
-  // règle conditionnée à un critère était lue « illisible » et REFUSAIT son
-  // intention. Conservé le temps que le code cesse de l'écrire ; sa suppression
-  // est destructive et demandera sa propre confirmation.
-  conditionSupplementaire Json?  @map("condition_supplementaire")
+  // L'ancien champ à deux natures `condition_supplementaire` a été SUPPRIMÉ
+  // ([[D-145]], migration `20260908000000_drop_condition_supplementaire`) après
+  // que [[D-142]] eut coupé le dernier écrivain. Il portait indifféremment une
+  // référence de critère `{ critereId }` — la seule forme que l'API sût écrire —
+  // et une condition biologique `{ type: 'biologie', cible }` — la seule que le
+  // moteur sût lire. Les deux ne se rencontraient jamais.
+  //
   // Les deux natures, séparées. Le critère devient une VRAIE clé étrangère :
   // jusqu'ici la référence vivait dans un JSON et rien n'empêchait qu'elle
   // pende. La condition biologique garde sa forme, lue par

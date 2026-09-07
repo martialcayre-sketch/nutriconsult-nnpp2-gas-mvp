@@ -108,10 +108,6 @@ export const SELECTION_REGLE = {
   typeRegle: true,
   poids: true,
   justification: true,
-  // L'ANCIEN champ, encore lu pour que l'atelier puisse MONTRER ce qu'une règle
-  // d'avant [[D-138]] porte encore. Plus personne ne l'écrit ([[D-142]]) ; il
-  // part avec le `DROP`, qui est un geste distinct.
-  conditionSupplementaire: true,
   // Les deux natures séparées. Le critère est JOINT — un écran doit pouvoir le
   // NOMMER, pas afficher un identifiant.
   conditionCritere: { select: { id: true, code: true, labelFr: true } },
@@ -156,7 +152,6 @@ type LigneRegleAtelier = {
   typeRegle: string;
   poids: number;
   justification: string;
-  conditionSupplementaire: unknown;
   conditionCritere: { id: string; code: string; labelFr: string } | null;
   conditionBiologie: unknown;
   doseCibleBasse: number | null;
@@ -219,12 +214,6 @@ export type RegleAtelier = {
   doseCibleHaute: number | null;
   gradePreuve: GradePreuveScientifique;
   justification: string;
-  /**
-   * ANCIEN champ à deux natures, servi tel quel pour qu'un écran puisse montrer
-   * ce qu'une règle d'avant [[D-138]] porte encore. Ne rien en déduire : le
-   * moteur ne le lit plus, et plus personne ne l'écrit ([[D-142]]).
-   */
-  conditionSupplementaire: unknown;
   /** Le critère gouverné auquel la règle est conditionnée, NOMMÉ ([[D-138]]). */
   conditionCritere: { id: string; code: string; labelFr: string } | null;
   /** La condition biologique, telle que le moteur la lira ([[D-138]]). */
@@ -278,7 +267,6 @@ export function serialiserRegle(ligne: LigneRegleAtelier, lignee: LigneLignee[])
     doseCibleHaute: ligne.doseCibleHaute,
     gradePreuve: parseGradePreuveScientifique(ligne.gradePreuveScientifique),
     justification: ligne.justification,
-    conditionSupplementaire: ligne.conditionSupplementaire ?? null,
     conditionCritere: ligne.conditionCritere,
     conditionBiologie: ligne.conditionBiologie ?? null,
     source: ligne.sourceReference,

@@ -20,7 +20,6 @@ const DESACTIVEE = {
   typeRegle: 'recommande',
   poids: 1,
   justification: 'Justification sourcée.',
-  conditionSupplementaire: null,
   doseCibleBasse: null,
   doseCibleHaute: null,
   gradePreuveScientifique: 'modere',

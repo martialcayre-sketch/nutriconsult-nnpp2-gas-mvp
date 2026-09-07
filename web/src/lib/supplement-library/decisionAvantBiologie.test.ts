@@ -34,7 +34,6 @@ function regle(overrides: Partial<RegleResolue> = {}): RegleResolue {
     doseCibleHaute: 1000,
     gradePreuve: 'modere',
     justification: 'Justification fixture.',
-    conditionSupplementaire: null,
     conditionBiologie: null,
     conditionCritere: null,
     // La base l'exige depuis [[D-140]] : une fixture sans claim décrirait une
@@ -193,17 +192,11 @@ describe('Compléments avant biologie — la condition de critère', () => {
     });
   });
 
-  // LE MOTEUR NE LIT PLUS L'ANCIENNE COLONNE. Elle survit en base le temps que
-  // le code cesse de l'écrire ; si le moteur la lisait encore, la séparation
-  // n'aurait rien séparé.
-  it('ignore `conditionSupplementaire`, qui ne porte plus de sens pour lui', () => {
-    expect(deciderIntentionAvantBiologie(contexte({
-      regle: regle({
-        conditionSupplementaire: { type: 'biologie', cible: 'ferritine' },
-        conditionBiologie: null,
-      }),
-    }))).toMatchObject({ verdict: 'intention', statut: 'active' });
-  });
+  // Le banc qui éprouvait que le moteur IGNORE l'ancienne colonne a été retiré
+  // avec elle ([[D-145]]) : le champ n'existe plus, il ne peut donc plus être
+  // passé, et un banc qui ne peut plus rougir n'éprouve rien. Ce que garde
+  // désormais l'invariant, c'est `conditionRegle.guard.test.ts` — aucune source
+  // servie ne le nomme.
 
   // Une règle SANS condition de critère ne réclame aucun constat : le champ du
   // contexte reste requis, mais `null` y est la réponse juste.

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-142]].
+// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-142]], ÉLARGIE PAR [[D-145]].
 //
 // `D-138` a séparé l'ancien champ à deux natures `condition_supplementaire` en
 // deux colonnes — `condition_critere_id` et `condition_biologie` — et a fait
@@ -11,48 +11,46 @@ import { join } from 'node:path';
 // s'accordaient, les bancs passaient, et une règle créée avec un critère
 // naissait INCONDITIONNELLE aux yeux du moteur.
 //
-// Ce banc ferme la porte par le seul moyen qui tienne à cette échelle : lire
-// le code servi et refuser toute ÉCRITURE Prisma du champ retiré. Il ne juge
-// pas les LECTURES — l'atelier lit encore `conditionSupplementaire` pour
-// montrer ce qu'une règle d'avant `D-138` porte, et ce sera vrai jusqu'au
-// `DROP`, qui est un geste distinct et confirmé.
+// Ce banc était borné aux ROUTES, et pour une raison précise : l'atelier lisait
+// encore le champ pour MONTRER ce qu'une règle d'avant `D-138` portait, et une
+// sentinelle qui punit la bonne conduite finit désactivée. `D-145` a supprimé
+// la colonne ; plus personne ne la lit, cette raison a disparu, et le périmètre
+// devient TOUTE source servie. Une mention qui réapparaîtrait ne pourrait plus
+// être qu'un retour au défaut.
 
 const RACINE = join(__dirname, '..', '..');
-const ROUTES = join(RACINE, 'app', 'api');
 
 /**
- * Toutes les routes servies. Le périmètre est VOLONTAIREMENT les routes, et
- * pas `src` entier : ce sont elles, et elles seules, qui écrivent en base. Un
- * balayage plus large confondrait l'écriture avec la sérialisation — `serialiserRegle`
- * recopie légitimement l'ancien champ vers l'API pour que l'atelier puisse le
- * MONTRER, et une sentinelle qui refuse cela punit la bonne conduite.
+ * Toute source servie. Le client Prisma généré est exclu — il décrit le schéma,
+ * il ne le décide pas — et les bancs le sont aussi : un banc doit pouvoir
+ * NOMMER le champ retiré pour éprouver qu'il ne revient pas.
  */
-function routesServies(dossier: string, trouves: string[] = []): string[] {
+function sourcesServies(dossier: string, trouves: string[] = []): string[] {
   for (const entree of readdirSync(dossier)) {
     const chemin = join(dossier, entree);
     if (statSync(chemin).isDirectory()) {
-      routesServies(chemin, trouves);
+      if (entree === 'generated' || entree === 'node_modules') continue;
+      sourcesServies(chemin, trouves);
       continue;
     }
-    if (!/^route\.tsx?$/.test(entree)) continue;
+    if (!/\.tsx?$/.test(entree)) continue;
+    if (/\.test\.tsx?$/.test(entree)) continue;
     trouves.push(chemin);
   }
   return trouves;
 }
 
-describe('condition de règle — le champ retiré n’est plus écrit ([[D-142]])', () => {
-  const fichiers = routesServies(ROUTES);
+describe('condition de règle — le champ supprimé ne revient pas ([[D-145]])', () => {
+  const fichiers = sourcesServies(RACINE);
 
-  it('lit un corpus de routes non vide (sinon le banc passerait par vacuité)', () => {
-    expect(fichiers.length).toBeGreaterThan(30);
+  it('lit un corpus de sources non vide (sinon le banc passerait par vacuité)', () => {
+    expect(fichiers.length).toBeGreaterThan(100);
   });
 
-  // AUCUNE route ne doit plus NOMMER l'ancien champ. C'est une règle plus
-  // stricte que « ne pas l'écrire », et c'est délibéré : une route n'a aucune
-  // raison légitime de le lire non plus — le moteur ne le lit plus, et l'atelier
-  // le reçoit par `serialiserRegle`. La mention dans une route ne peut donc être
-  // qu'un retour au défaut que `D-142` ferme.
-  it('aucune route ne mentionne `conditionSupplementaire`', () => {
+  // AUCUNE source servie ne doit plus NOMMER l'ancien champ. La colonne
+  // n'existe plus en base : une mention ne serait pas seulement un retour au
+  // défaut de `D-142`, elle serait une lecture d'une colonne absente.
+  it('aucune source servie ne mentionne `conditionSupplementaire`', () => {
     const coupables: string[] = [];
     for (const fichier of fichiers) {
       readFileSync(fichier, 'utf8').split('\n').forEach((ligne, index) => {
