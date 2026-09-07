@@ -4,6 +4,68 @@
 
 ## Décisions actives
 
+### D-150 — Un geste attendu qu'aucun écran ne réclame se fait en moyenne quarante-trois jours trop tard
+
+- Date : 2026-09-08
+- Statut : accepté (constat `M08` de l'audit du 2026-09-06, vérifié par lecture de production)
+- Domaine : Fil du praticien, épisodes d'évaluation, appel à l'action
+
+**1. La mesure, et elle est sans nuance.** Quatre épisodes `T0` en production,
+quatre patients distincts. Écart entre `target_at` et `confirmed_at` :
+**43 jours en moyenne, de 27 à 56**. La tolérance de jalon est de
+**±8 jours** (`TOLERANCE_JOURS_JALON`). **Aucun** des quatre n'est dans la
+fenêtre — pas « la plupart », aucun. Aucun autre jalon n'existe en base :
+`T0` est le seul milestone consigné à ce jour.
+
+**2. Ce n'est pas un défaut de calcul, c'est un défaut d'appel.** Le Fil du
+praticien portait huit types de carte, aucun ne disant « ce dossier attend son
+T0 ». Le praticien reçoit les réponses, les lit dans l'inbox, et rien ne lui
+signale qu'un geste est attendu à ce stade. Il confirme un mois plus tard —
+avec les réponses de la deuxième et de la troisième semaine tombées hors
+fenêtre, à réinclure une par une. L'ancrage du J21 sur `confirmedAt` est un
+choix daté (A8-1) et n'est **pas** contesté ici : c'est le silence qui l'est.
+
+**3. LA CARTE APPELLE, ELLE NE JUGE PAS.** Elle ne dit pas « le T0 est
+confirmable ». Les préconditions dures — rideau cotable, anamnèse consignée,
+synthèse validée — s'évaluent **par dossier** et ont leur écran, qui reste
+l'autorité. Les appeler depuis le Fil ferait une évaluation par patient au
+chargement de l'écran d'accueil du praticien : un N+1 sur la page la plus
+ouverte de l'application. La carte dit donc ce qui est vrai et vérifiable à
+l'échelle du Fil — les quatre instruments du rideau sont renseignés, aucun T0
+n'est consigné — puis elle ouvre la fiche. Promettre davantage ferait dire à
+une carte ce que seul le dossier peut établir.
+
+**4. Trois lectures d'ensemble, aucune par patient.** Les passations du rideau,
+les épisodes `T0` existants, et la première passation de chaque dossier. La
+troisième n'est pas cosmétique : `targetAt` d'un T0 est la **première réponse
+du dossier, toutes sources confondues** (`dateDeReference` dans
+`runtimeFromPrisma`) — la carte doit dater la même chose que l'épisode qu'elle
+appelle, sinon elle compterait un retard qui n'est pas celui qu'on lui
+reprochera.
+
+**5. Le statut de validité passe par le filtre gaté, jamais par un `where`
+SQL.** `validite.ts` le dit en toutes lettres : filtrer sans le drapeau ferait
+disparaître des lignes que le LOT-00 s'est engagé à transmettre. La route
+SÉLECTIONNE `statutValidite` et `cartesT0AConfirmer` applique
+`filtrerPassationsExploitables`. Deux bancs tiennent les deux régimes :
+drapeau allumé, une passation retirée ne complète plus le rideau ; drapeau
+éteint, elle le complète encore. C'est la conséquence directe de [[D-146]].
+
+**6. `cartes.ts` reste pur, et le compilateur l'a rappelé.** La première
+rédaction importait `RIDEAU_T0` depuis le module des préconditions : sa chaîne
+d'imports atteint `prisma`, et le banc du Fil a cessé de démarrer. Le module
+est documenté « fonctions pures, sans accès base » — la taille du rideau est
+donc **passée** par la route, qui a déjà la constante pour son `where`. Le
+type exhaustif `Record<TypeCarteFil, …>` a de son côté imposé l'entrée d'écran
+du nouveau type : deux garde-fous existants ont fait leur travail sans qu'on
+les sollicite.
+
+**7. Ce qui n'est PAS fait.** La carte ne confirme rien et n'écrit rien. Elle
+ne juge pas les préconditions. Elle ne touche ni au seuil de tolérance, ni à
+l'ancrage du J21, ni à la définition du rideau. Et elle ne dit rien du dossier
+dont le rideau est **incomplet** : réclamer ce qui manque encore est un autre
+constat, qui n'est pas celui-ci.
+
 ### D-149 — Quinze passations détachées ne sont pas un import raté, mais une cohorte close — et la validité n'a jamais servi
 
 - Date : 2026-09-08

@@ -7,6 +7,8 @@
  */
 
 import { bornesJourParis, formatHeureParis } from './fuseau';
+import { TOLERANCE_JOURS_JALON } from '@/lib/equilibre/constants';
+import { filtrerPassationsExploitables } from '@/lib/scoring/validite';
 
 // `reponse_recente` a été retiré (accueil-observatoire LOT-02, décision
 // propriétaire 2026-07-23) : les questionnaires reçus vivent dans l'inbox par
@@ -20,6 +22,7 @@ export type TypeCarteFil =
   | 'synthese_a_valider'
   | 'synthese_a_generer'
   | 'jalon_j21'
+  | 't0_a_confirmer'
   | 'biologie_arbitree'
   | 'assignation_en_retard'
   | 'reprise';
@@ -271,6 +274,97 @@ export function cartesSynthesesAGenerer(
  * standard). Le « pourquoi maintenant » cite la date du check-in, et — quand
  * ils existent réellement — l'action principale observée et le momentum.
  */
+export type PassationRideauRow = {
+  idPatient: string;
+  idQuestionnaire: string;
+  dateReponse: Date;
+  statutValidite?: string | null;
+};
+
+/**
+ * « Ce dossier attend son T0 » — la carte qui manquait ([[D-150]], constat
+ * `M08`).
+ *
+ * CE QUE LA PRODUCTION DISAIT AVANT ELLE : quatre épisodes T0, quatre
+ * patients, confirmés en moyenne **43 jours** après leur `targetAt`, de 27 à
+ * 56 jours. La tolérance est de ±8 jours. Aucun des quatre n'est dans la
+ * fenêtre — pas « la plupart », aucun. Le praticien recevait les réponses sans
+ * qu'aucun écran ne lui dise qu'un geste était attendu à ce stade ; il
+ * confirmait un mois plus tard, avec les réponses de la deuxième et de la
+ * troisième semaine hors fenêtre, à réinclure une par une.
+ *
+ * CETTE CARTE APPELLE, ELLE NE JUGE PAS. Elle ne dit pas « le T0 est
+ * confirmable » : les préconditions dures (rideau cotable, anamnèse consignée,
+ * synthèse validée) s'évaluent par dossier et ont leur propre écran, qui reste
+ * l'autorité. Elle dit ce qui est vrai et vérifiable à l'échelle du Fil — les
+ * quatre instruments du rideau sont renseignés, aucun T0 n'est consigné — et
+ * elle ouvre la fiche. Promettre davantage exigerait une évaluation par
+ * patient au chargement de l'écran d'accueil, et ferait dire à une carte ce
+ * que seul le dossier peut établir.
+ *
+ * LE STATUT DE VALIDITÉ PASSE PAR LE FILTRE GATÉ, jamais par un `where` SQL :
+ * `validite.ts` le dit en toutes lettres — filtrer sans le drapeau ferait
+ * disparaître des lignes que le LOT-00 s'est engagé à transmettre.
+ */
+export function cartesT0AConfirmer(
+  /** Passations DÉJÀ bornées aux instruments du rideau par la route. */
+  passationsRideau: PassationRideauRow[],
+  premieresPassations: Map<string, Date>,
+  patientsAvecEpisodeT0: Set<string>,
+  /**
+   * Taille du rideau, passée et non importée : `RIDEAU_T0` vit dans le module
+   * des préconditions, dont la chaîne d'imports atteint `prisma`. Ce module
+   * est pur par contrat — la route, qui a déjà la constante pour son `where`,
+   * la lui transmet.
+   */
+  tailleRideau: number,
+  noms: Map<string, string>,
+  maintenant: Date,
+): CarteFil[] {
+  const instrumentsParPatient = new Map<string, Set<string>>();
+  for (const p of filtrerPassationsExploitables(passationsRideau)) {
+    const deja = instrumentsParPatient.get(p.idPatient) ?? new Set<string>();
+    deja.add(p.idQuestionnaire);
+    instrumentsParPatient.set(p.idPatient, deja);
+  }
+
+  return [...instrumentsParPatient.entries()]
+    .filter(([idPatient, instruments]) =>
+      instruments.size === tailleRideau && !patientsAvecEpisodeT0.has(idPatient))
+    .map(([idPatient]) => ({ idPatient, cible: premieresPassations.get(idPatient) ?? null }))
+    .filter((x): x is { idPatient: string; cible: Date } => x.cible !== null)
+    // Le plus en retard d'abord : c'est celui dont le plus de réponses sont
+    // déjà tombées hors fenêtre.
+    .sort((x, y) => x.cible.getTime() - y.cible.getTime())
+    .slice(0, MAX_CARTES_PAR_TYPE)
+    .map(({ idPatient, cible }) => {
+      const jours = Math.floor((maintenant.getTime() - cible.getTime()) / JOUR_MS);
+      const depassement = jours - TOLERANCE_JOURS_JALON;
+      const pourquoi = depassement > 0
+        ? `Les quatre instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
+          + `La fenêtre de tolérance (±${TOLERANCE_JOURS_JALON} j autour du ${formatDateFr(cible)}) est dépassée `
+          + `depuis ${depassement} jour${depassement > 1 ? 's' : ''} : les réponses arrivées depuis devront être `
+          + `réincluses une à une.`
+        : `Les quatre instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
+          + `La fenêtre de tolérance court jusqu'au ${formatDateFr(new Date(cible.getTime() + TOLERANCE_JOURS_JALON * JOUR_MS))}.`;
+      return {
+        type: 't0_a_confirmer' as const,
+        idPatient,
+        patient: nomPatient(noms, idPatient),
+        titre: 'Premier rideau complet, T0 non consigné',
+        pourquoi,
+        date: cible.toISOString(),
+        href: `/dashboard/patients/${idPatient}`,
+        actionLabel: 'Ouvrir la fiche',
+        // Clé agrégée, ancrée sur la date de référence du T0 : un dossier dont
+        // la première passation change (reprise, réinclusion) mérite une
+        // nouvelle décision, comme `reprise` et `synthese_a_valider`.
+        cle: cleCarte('t0_a_confirmer', `agregat:${idPatient}:${cible.toISOString()}`),
+        nbElements: tailleRideau,
+      };
+    });
+}
+
 export function cartesJalons(jalons: JalonRow[], noms: Map<string, string>): CarteFil[] {
   return jalons
     .slice()
@@ -474,6 +568,10 @@ export function construireFil(entrees: {
   lectures?: LectureRow[];
   dernieresSyntheses?: Map<string, Date>;
   jalons?: JalonRow[];
+  passationsRideau?: PassationRideauRow[];
+  premieresPassations?: Map<string, Date>;
+  patientsAvecEpisodeT0?: Set<string>;
+  tailleRideauT0?: number;
   biologiesArbitrees?: BiologieArbitreeCarteRow[];
   assignations: AssignationRow[];
   activites: DerniereActiviteRow[];
@@ -487,6 +585,10 @@ export function construireFil(entrees: {
     lectures = [],
     dernieresSyntheses = new Map<string, Date>(),
     jalons = [],
+    passationsRideau = [],
+    premieresPassations = new Map<string, Date>(),
+    patientsAvecEpisodeT0 = new Set<string>(),
+    tailleRideauT0 = 0,
     biologiesArbitrees = [],
     assignations,
     activites,
@@ -500,6 +602,11 @@ export function construireFil(entrees: {
     ...cartesConsultationsPrevues(consultations, noms, maintenant),
     ...cartesSynthesesAValider(syntheses, noms),
     ...cartesSynthesesAGenerer(lectures, dernieresSyntheses, noms),
+    // Le T0 précède le J21 : un dossier qui n'a pas son repère de départ ne
+    // peut pas produire de jalon suivant. La carte passe donc devant.
+    ...cartesT0AConfirmer(
+      passationsRideau, premieresPassations, patientsAvecEpisodeT0, tailleRideauT0, noms, maintenant,
+    ),
     ...cartesJalons(jalons, noms),
     // Une biologie arbitrée sans révision retient une décision déjà prise :
     // elle passe après les jalons (décision à prendre), avant les retards.

@@ -89,6 +89,11 @@ const MARQUEURS = [
 // pas accumuler de sédiments.
 const ALLOWLIST = new Map([
   [
+    'src/lib/fil/cartes.test.ts',
+    'ne nomme Q_ALI_01 que comme IDENTIFIANT d’instrument du rideau T0 (carte « T0 à confirmer », '
+      + 'D-150) : la carte compte des instruments distincts, elle ne lit ni score ni forme servie',
+  ],
+  [
     'src/lib/protocol/repassationCiblee.test.ts',
     'ne lit de BESOIN_SOURCES que les identifiants de questionnaire — jamais les max, seuls sensibles '
       + 'à la forme servie : le verdict est identique sous les deux drapeaux',
