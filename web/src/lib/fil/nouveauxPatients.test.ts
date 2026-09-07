@@ -17,6 +17,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     accesEnvoyeLe: '2026-08-24T12:05:00.000Z',
     accesEnEchec: false,
     connecteLe: '2026-08-25T09:00:00.000Z',
+    entreeRefusee: false,
     onboardingValide: true,
     nbAssignations: 5,
     ...over,
@@ -69,6 +70,36 @@ describe('etapeNouveauPatient', () => {
     expect(etapeNouveauPatient(jamaisEntre)).toBe('acces_revoque');
     expect(etapeNouveauPatient(source({ accesRevoque: true }))).toBe('acces_revoque');
     expect(libelleEtape('acces_revoque')).toBe('Accès révoqué');
+  });
+
+  it('une entrée refusée ne se dit pas « Jamais connecté »', () => {
+    const refuse = source({ connecteLe: null, onboardingValide: false, nbAssignations: 0, entreeRefusee: true });
+    expect(etapeNouveauPatient(refuse)).toBe('entree_refusee');
+    expect(libelleEtape('entree_refusee')).toBe('Entrée refusée');
+    const [ligne] = lignesNouveauxPatients([refuse]);
+    expect(estEnAttente(ligne)).toBe(true);
+    // Le même dossier sans tentative reste « Jamais connecté ».
+    expect(etapeNouveauPatient({ ...refuse, entreeRefusee: false })).toBe('jamais_connecte');
+  });
+
+  it('un lien rouvert APRÈS une entrée réussie ne rouvre aucune porte', () => {
+    // Le lien déjà consommé est présenté à nouveau : c'est un refus, ce n'est
+    // pas un dossier bloqué. Le drapeau ne se lit que si `connecteLe` est null.
+    expect(etapeNouveauPatient(source({ entreeRefusee: true }))).toBe('complet');
+  });
+
+  it('une entrée refusée ne prime jamais sur une fermeture praticien', () => {
+    const base = { connecteLe: null, onboardingValide: false, nbAssignations: 0, entreeRefusee: true };
+    expect(etapeNouveauPatient(source({ ...base, dossierDesactive: true }))).toBe('dossier_desactive');
+    expect(etapeNouveauPatient(source({ ...base, accesRevoque: true }))).toBe('acces_revoque');
+  });
+
+  it('un accès jamais parti passe avant le refus d’entrée', () => {
+    expect(
+      etapeNouveauPatient(
+        source({ accesEnvoyeLe: null, connecteLe: null, onboardingValide: false, nbAssignations: 0, entreeRefusee: true }),
+      ),
+    ).toBe('acces_non_envoye');
   });
 
   it('un dossier désactivé se nomme, et prime sur la révocation', () => {

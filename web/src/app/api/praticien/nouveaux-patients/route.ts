@@ -64,9 +64,29 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
       return NextResponse.json({ ok: true, lignes: [], fenetreJours: FENETRE_JOURS });
     }
     const ids = patients.map(p => p.idPatient);
+    // Les tentatives refusées s'agrègent HORS dossiers désactivés et révoqués.
+    //
+    // CE FILTRE EST UNE CEINTURE SUR DES BRETELLES, ET IL FAUT LE SAVOIR :
+    // `etapeNouveauPatient` retourne `dossier_desactive` et `acces_revoque`
+    // AVANT de regarder `entreeRefusee`, donc un dossier fermé n'affiche déjà
+    // jamais « Entrée refusée ». Ce que le filtre ajoute est ailleurs : il
+    // garde le DTO honnête — `entreeRefusee` ne vaut `true` que sur un dossier
+    // qu'on peut encore débloquer — et il borne la requête. Retirer l'un des
+    // deux ne casse rien de visible : ne retirer NI l'un NI l'autre.
+    //
+    // AUCUNE FERMETURE PRATICIEN N'ÉCRIT `rejeux_refuses`. Les deux gestes
+    // ramènent `expireLe` (`D-126`, `D-128`) ; c'est la présentation suivante
+    // du lien qui se fait refuser. Le compteur n'est donc pas pollué — c'est le
+    // refus qui n'est pas actionnable tant que la porte est fermée.
+    //
+    // IL PORTE SUR L'ÉTAT COURANT, PAS SUR CELUI DU JOUR DE LA TENTATIVE. Un
+    // dossier révoqué puis ROUVERT ressort avec ses refus d'alors — et c'est ce
+    // qu'il faut : la porte est rouverte, personne n'est entré, le lien d'alors
+    // est mort.
+    const idsOuverts = patients.filter(p => p.actif && !p.accessTokenRevoked).map(p => p.idPatient);
 
-    // Quatre lectures bornées par `ids`, jamais une par patient.
-    const [correspondances, liensConsommes, connexionsGoogle, validees, assignations] =
+    // Six lectures bornées par les identifiants du lot, jamais une par patient.
+    const [correspondances, liensConsommes, connexionsGoogle, validees, assignations, liensRefuses] =
       await Promise.all([
         // LES DEUX E-MAILS QUI OUVRENT LE DOSSIER, pas un seul. `acces_portail`
         // pointe la page de connexion (`sendPortailLinkEmail` — création de
@@ -113,6 +133,27 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
         prisma.assignation.groupBy({
           by: ['idPatient'],
           where: { idPatient: { in: ids } },
+          _count: { _all: true },
+        }),
+        // TENTATIVES REFUSÉES (M07). `rejeuxRefuses` n'est incrémenté que par
+        // l'atterrissage (`portail/lien/[jeton]`) : lien expiré, lien déjà
+        // consommé, lien fermé par une fermeture praticien, compte fermé.
+        //
+        // `groupBy` ET NON `findMany`, POUR DEUX RAISONS. La PRÉSENCE suffit —
+        // le compte exact ne s'affiche nulle part, `_count` n'est demandé que
+        // pour coller à l'idiome éprouvé ci-dessus. Et surtout, le banc
+        // `'ne lit que les liens magiques CONSOMMÉS…'` assère
+        // `portailMagicLink.findMany.mock.calls[0][0]` : une seconde lecture
+        // par `findMany` partagerait ce mock, glisserait `calls[0]` et rendrait
+        // plusieurs bancs existants faux.
+        //
+        // PAS DE VERSANT GOOGLE : le seul refus Google qui nomme un dossier est
+        // écrit sous la garde `!actif || accessTokenRevoked`. Croisé avec
+        // `idsOuverts`, il ne ramènerait que des refus périmés. Voir le champ
+        // `entreeRefusee` de `SourceNouveauPatient`.
+        prisma.portailMagicLink.groupBy({
+          by: ['idPatient'],
+          where: { idPatient: { in: idsOuverts }, rejeuxRefuses: { gt: 0 } },
           _count: { _all: true },
         }),
       ]);
@@ -183,6 +224,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
     }
     const idsValides = new Set(validees.map(c => c.idPatient));
     const nbAssignations = new Map(assignations.map(a => [a.idPatient, a._count._all]));
+    const aEteRefuse = new Set(liensRefuses.map(l => l.idPatient));
 
     const lignes = lignesNouveauxPatients(
       patients.map(p => ({
@@ -212,6 +254,7 @@ export async function GET(): Promise<NextResponse<NouveauxPatientsApiResponse>> 
           dernierStatut.has(p.idPatient) &&
           dernierStatut.get(p.idPatient) !== 'Envoye',
         connecteLe: premiereConnexion.get(p.idPatient)?.toISOString() ?? null,
+        entreeRefusee: aEteRefuse.has(p.idPatient),
         onboardingValide: idsValides.has(p.idPatient),
         nbAssignations: nbAssignations.get(p.idPatient) ?? 0,
       })),

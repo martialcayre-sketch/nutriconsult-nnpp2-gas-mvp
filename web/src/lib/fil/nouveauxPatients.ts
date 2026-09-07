@@ -33,11 +33,19 @@
  * révocation ferme elle aussi les liens en vol, et invalide en plus les
  * sessions déjà ouvertes (`sessionsInvalidesAvant`) que la désactivation, elle,
  * laisse simplement expirer. Aucune des deux ne compte « en attente », toutes
- * deux portent la même variante neutre : la place ne décide de rien d'autre. */
+ * deux portent la même variante neutre : la place ne décide de rien d'autre.
+ *
+ * `entree_refusee` PRÉCÈDE `jamais_connecte` PARCE QU'IL LE RAFFINE : les deux
+ * disent que personne n'est entré, mais l'un dit que la porte n'a jamais été
+ * poussée et l'autre qu'elle l'a été et n'a pas cédé. Le second appelle un
+ * geste — réémettre un lien, rectifier l'adresse — le premier une attente. Les
+ * confondre était le défaut : une tentative repoussée n'atteignait pas le
+ * praticien, elle se lisait « Jamais connecté », comme un dossier tout neuf. */
 export type EtapeNouveauPatient =
   | 'dossier_desactive'
   | 'acces_revoque'
   | 'acces_non_envoye'
+  | 'entree_refusee'
   | 'jamais_connecte'
   | 'onboarding_a_finir'
   | 'pack_absent'
@@ -70,6 +78,30 @@ export type SourceNouveauPatient = {
   /** Première entrée EFFECTIVE dans le portail (lien magique consommé ou
    * connexion Google aboutie), sinon null. */
   connecteLe: string | null;
+  /** Le lien magique de ce dossier a été présenté et REFUSÉ au moins une fois
+   * (`portail_magic_links.rejeux_refuses > 0`) — lien expiré, déjà consommé,
+   * ou fermé par une fermeture praticien. Distingue « personne n'a poussé la
+   * porte » de « la porte n'a pas cédé » : deux dossiers vides de la même
+   * façon, qui n'appellent pas le même geste.
+   *
+   * CE N'EST PAS « LE PATIENT A CLIQUÉ ». L'atterrissage `portail/lien/[jeton]`
+   * incrémente sur tout `GET` dont l'empreinte résout une ligne, sans
+   * authentification préalable : un scanner de liens de passerelle e-mail ou
+   * un destinataire à qui le message a été fait suivre l'incrémentent aussi.
+   * Le drapeau dit qu'un accès a été refusé sur le lien de ce dossier, jamais
+   * qui l'a demandé. Le libellé de l'étape le respecte.
+   *
+   * PAS DE VERSANT GOOGLE, ET CE N'EST PAS UN OUBLI. Le seul refus Google qui
+   * nomme un dossier (`portail/google/retour`, motif `sans_espace_eligible`)
+   * est écrit sous la garde `!patient.actif || patient.accessTokenRevoked` :
+   * il ne peut désigner qu'un dossier fermé, que l'ordre des étapes nomme déjà
+   * pour lui-même. Le lire ne remonterait que des refus périmés.
+   *
+   * BRUT, ET LU D'UN SEUL ENDROIT. Un refus APRÈS une entrée réussie — le lien
+   * déjà consommé est rouvert — met aussi ce drapeau à `true` : c'est bien un
+   * refus, ce n'est pas un dossier bloqué. `etapeNouveauPatient` ne le regarde
+   * donc que lorsque `connecteLe` est null. */
+  entreeRefusee: boolean;
   /** Onboarding validé par le patient — une consultation au statut `validee`. */
   onboardingValide: boolean;
   /** Assignations portées par le dossier, tous packs confondus. */
@@ -86,6 +118,7 @@ const LIBELLES: Record<EtapeNouveauPatient, string> = {
   dossier_desactive: 'Dossier désactivé',
   acces_revoque: 'Accès révoqué',
   acces_non_envoye: 'Accès non envoyé',
+  entree_refusee: 'Entrée refusée',
   jamais_connecte: 'Jamais connecté',
   onboarding_a_finir: 'Onboarding à finir',
   pack_absent: 'Pack de base absent',
@@ -110,6 +143,16 @@ export function etapeNouveauPatient(source: SourceNouveauPatient): EtapeNouveauP
   if (source.dossierDesactive) return 'dossier_desactive';
   if (source.accesRevoque) return 'acces_revoque';
   if (!source.accesEnvoyeLe || source.accesEnEchec) return 'acces_non_envoye';
+  // APRÈS `acces_non_envoye`, DÉLIBÉRÉMENT : un envoi en `Erreur` est un envoi
+  // à refaire, et refaire l'envoi est le geste qui débloque aussi le refus. Le
+  // nommer d'abord ne perd rien.
+  //
+  // La corrélation n'est pas fortuite : `rejeux_refuses > 0` exige qu'un lien
+  // magique existe, donc qu'un accès soit parti. Depuis que la route compte
+  // AUSSI les correspondances `lien_magique` (2026-09-07), un dossier servi par
+  // ce seul chemin n'affiche plus « Accès non envoyé » et n'avale donc plus son
+  // refus — l'ordre ci-dessous le laisse remonter.
+  if (!source.connecteLe && source.entreeRefusee) return 'entree_refusee';
   if (!source.connecteLe) return 'jamais_connecte';
   if (!source.onboardingValide) return 'onboarding_a_finir';
   if (source.nbAssignations === 0) return 'pack_absent';

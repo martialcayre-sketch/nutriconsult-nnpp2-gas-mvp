@@ -6,7 +6,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
   prisma: {
     patient: { findMany: vi.fn() },
     correspondancePatient: { findMany: vi.fn() },
-    portailMagicLink: { findMany: vi.fn() },
+    portailMagicLink: { findMany: vi.fn(), groupBy: vi.fn() },
     portailConnexionGoogle: { findMany: vi.fn() },
     consultation: { findMany: vi.fn() },
     assignation: { groupBy: vi.fn() },
@@ -46,6 +46,7 @@ function accesEnvoye() {
 function vide() {
   prisma.correspondancePatient.findMany.mockResolvedValue([]);
   prisma.portailMagicLink.findMany.mockResolvedValue([]);
+  prisma.portailMagicLink.groupBy.mockResolvedValue([]);
   prisma.portailConnexionGoogle.findMany.mockResolvedValue([]);
   prisma.consultation.findMany.mockResolvedValue([]);
   prisma.assignation.groupBy.mockResolvedValue([]);
@@ -260,11 +261,45 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     expect(ligne.libelle).toBe('Dossier désactivé');
   });
 
+  it('un lien magique refusé se lit, et seulement au-dessus de zéro', async () => {
+    accesEnvoye();
+    prisma.portailMagicLink.groupBy.mockResolvedValue([{ idPatient: 'PAT_1', _count: { _all: 1 } }]);
+    const [ligne] = await lignes();
+    // `rejeuxRefuses: { gt: 0 }` ne s'assère QUE sur la requête : aucun mock ne
+    // peut émuler un prédicat que la base seule évalue.
+    const where = prisma.portailMagicLink.groupBy.mock.calls[0][0].where;
+    expect(where.rejeuxRefuses).toEqual({ gt: 0 });
+    expect(where.idPatient).toEqual({ in: ['PAT_1'] });
+    expect(ligne.entreeRefusee).toBe(true);
+    expect(ligne.etape).toBe('entree_refusee');
+    expect(ligne.libelle).toBe('Entrée refusée');
+  });
+
+  it('n’agrège aucune tentative sur un dossier désactivé ou révoqué (arbitrage praticien)', async () => {
+    prisma.patient.findMany.mockResolvedValue([
+      patient({ idPatient: 'PAT_REVOQUE', accessTokenRevoked: true }),
+      patient({ idPatient: 'PAT_FERME', actif: false }),
+    ]);
+    accesEnvoye();
+    // MOCK QUI HONORE LE `where`. Un mock à valeur fixe rendrait les mêmes lignes
+    // filtre ou pas : `entreeRefusee` serait vrai dans les deux cas et ce banc ne
+    // pourrait asserter que la forme de la requête. Ici cent tentatives existent
+    // pour les deux dossiers, et seul le filtre décide si elles remontent.
+    prisma.portailMagicLink.groupBy.mockImplementation(async (args: { where: { idPatient: { in: string[] } } }) =>
+      args.where.idPatient.in.map(idPatient => ({ idPatient, _count: { _all: 100 } })),
+    );
+    const rendues = await lignes();
+    expect(prisma.portailMagicLink.groupBy.mock.calls[0][0].where.idPatient).toEqual({ in: [] });
+    expect(rendues.map(l => l.entreeRefusee)).toEqual([false, false]);
+    expect(rendues.map(l => l.etape).sort()).toEqual(['acces_revoque', 'dossier_desactive']);
+  });
+
   it('aucun dossier récent : aucune lecture d’agrégat n’est lancée', async () => {
     prisma.patient.findMany.mockResolvedValue([]);
     const json = (await (await GET()).json()) as NouveauxPatientsApiResponse;
     expect(json).toEqual({ ok: true, lignes: [], fenetreJours: 30 });
     expect(prisma.assignation.groupBy).not.toHaveBeenCalled();
+    expect(prisma.portailMagicLink.groupBy).not.toHaveBeenCalled();
   });
 
   it('une panne de lecture se dit, elle ne rend pas une liste vide', async () => {

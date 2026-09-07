@@ -24,6 +24,7 @@ function source(over: Partial<SourceNouveauPatient> = {}): SourceNouveauPatient 
     accesEnvoyeLe: '2026-08-24T12:05:00.000Z',
     accesEnEchec: false,
     connecteLe: '2026-08-25T09:00:00.000Z',
+    entreeRefusee: false,
     onboardingValide: true,
     nbAssignations: 5,
     ...over,
@@ -58,6 +59,31 @@ describe('NouveauxPatientsAside', () => {
     // nouveaux patients, pas seulement ses ennuis.
     expect(screen.getByText('Sophie Nicola')).toBeTruthy();
     expect(screen.getByText('Accès et pack de base OK')).toBeTruthy();
+  });
+
+  it('une entrée refusée se nomme à l’écran, et pas en simple attente', async () => {
+    // LE TEXTE, PAS LA COULEUR. `VARIANTE` porte bien `danger` pour cette
+    // étape, mais le composant pose en tête que « la couleur double toujours le
+    // libellé, jamais l'inverse » (règle A5-R1) : asserter la teinte
+    // encoderait un sens que le design refuse de lui donner.
+    stub(
+      reponse([
+        source({
+          idPatient: 'PAT_SEED_03',
+          patient: 'Michel Dogné',
+          connecteLe: null,
+          onboardingValide: false,
+          nbAssignations: 0,
+          entreeRefusee: true,
+        }),
+      ]),
+    );
+    render(<NouveauxPatientsAside />);
+    await waitFor(() => expect(screen.getByText('Entrée refusée')).toBeTruthy());
+    // Le raffinement est tout l'objet de l'item : le dossier ne se lit plus
+    // comme un dossier tout neuf que personne n'a encore ouvert.
+    expect(screen.queryByText('Jamais connecté')).toBeNull();
+    expect(screen.getByText('1 en attente')).toBeTruthy();
   });
 
   it('le dossier en attente passe devant le dossier complet plus récent', async () => {
