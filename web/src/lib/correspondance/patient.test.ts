@@ -12,6 +12,7 @@ vi.mock('@/lib/anthropic', () => ({
 
 import {
   journaliserCorrespondancePatient,
+  statutJournalDepuisAuditBooklet,
   TYPES_CORRESPONDANCE_PATIENT,
 } from './patient';
 
@@ -55,5 +56,33 @@ describe('journaliserCorrespondancePatient', () => {
         erreur: 'SMTP indisponible',
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+// Le journal de correspondance n'a que trois états, et le vocabulaire d'audit
+// du booklet en a davantage. La traduction se faisait par un ternaire
+// « tout ce qui n'est pas Envoye est une Erreur » : au 2026-09-08, les cinq
+// seules lignes `Erreur` que ce journal ait jamais portées (sur 222) étaient
+// cinq demandes de confirmation. D-148.
+describe('statutJournalDepuisAuditBooklet', () => {
+  it('« Envoye » reste un envoi', () => {
+    expect(statutJournalDepuisAuditBooklet('Envoye')).toBe('Envoye');
+  });
+
+  it('« Confirmation_Requise » n’est PAS une erreur : rien n’est parti, rien n’a échoué', () => {
+    expect(statutJournalDepuisAuditBooklet('Confirmation_Requise')).toBe('Non_envoye');
+  });
+
+  it('« Erreur » reste une erreur', () => {
+    expect(statutJournalDepuisAuditBooklet('Erreur')).toBe('Erreur');
+  });
+
+  // Défaut PRUDENT et assumé : un statut d'audit qu'on n'a pas prévu tombe en
+  // « Erreur ». Sur un envoi au patient, l'alarme de trop se relit ; l'alarme
+  // manquante ne se relit pas. Ce que la version fautive faisait était
+  // l'inverse : elle traitait un cas CONNU comme un cas inconnu.
+  it('un statut d’audit inconnu tombe en « Erreur », jamais en « Envoye »', () => {
+    expect(statutJournalDepuisAuditBooklet('Quarantaine_2027')).toBe('Erreur');
+    expect(statutJournalDepuisAuditBooklet('')).toBe('Erreur');
   });
 });

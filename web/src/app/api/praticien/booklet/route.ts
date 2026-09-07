@@ -21,6 +21,7 @@ import {
 } from '@/lib/observability/requestContext';
 import {
   journaliserCorrespondancePatient,
+  statutJournalDepuisAuditBooklet,
   TYPES_CORRESPONDANCE_PATIENT,
 } from '@/lib/correspondance/patient';
 
@@ -184,7 +185,11 @@ export async function POST(req: Request) {
         'Confirmation_Requise', 'Renvoi', relectureConfirmee, 'Booklet déjà envoyé.');
       return withCorrelationHeader(NextResponse.json({
         needsConfirmation: true,
-        warning: 'Ce booklet a déjà été envoyé. Ajoutez forceSend: true pour confirmer le renvoi.',
+        // Ces deux avertissements sont RENDUS TELS QUELS au praticien. Ils
+        // nommaient un champ JSON (`forceSend`, `confirmerRegistre`) : une
+        // instruction qu'aucun écran ne permettait de suivre. Ils nomment
+        // désormais la case qui existe, sur l'écran qui la porte.
+        warning: 'Ce booklet a déjà été envoyé. Cochez « Confirmer le renvoi » pour l’envoyer de nouveau.',
         emailMasque: maskEmail(synthese.emailPatient),
       }), requestContext);
     }
@@ -245,7 +250,7 @@ export async function POST(req: Request) {
         needsConfirmation: true,
         reason: 'REGISTRE_ANXIOGENE',
         terme,
-        warning: `Le narratif patient emploie « ${terme} ». Ce texte est lu seul, souvent avant la consultation. Reformulez-le, ou ajoutez confirmerRegistre: true pour l'envoyer tel quel.`,
+        warning: `Le narratif patient emploie « ${terme} ». Ce texte est lu seul, souvent avant la consultation. Reformulez-le, ou cochez « Envoyer tel quel » pour l'assumer.`,
         emailMasque: maskEmail(synthese.emailPatient),
       }), requestContext);
     }
@@ -266,13 +271,37 @@ export async function POST(req: Request) {
     // Corps `text` au registre des gabarits (Socle LOT-03, DC-26) ; le corps
     // `html` est le booklet rendu, gardé par le registre anxiogène plus haut.
     const gabarit = rendreGabarit(getGabarit('envoi_bilan'), {});
-    await transporter.sendMail({
-      from: '"Wellneuro" <noreply@wellneuro.fr>',
-      to: synthese.emailPatient,
-      subject: gabarit.sujet,
-      text: gabarit.corps,
-      html,
-    });
+    // Un refus du relais SMTP tombait dans le `catch` général, qui n'écrit
+    // qu'un `logger.error` : ni ligne d'audit, ni ligne de journal. Un bilan
+    // réellement perdu ne laissait donc AUCUNE trace lisible sur la fiche,
+    // pendant qu'une simple demande de confirmation, elle, s'y affichait en
+    // « Échec d'envoi ». Le patron appliqué ici est celui que le dépôt tient
+    // déjà un dossier plus loin (`file-envoi/envoyer`) : journaliser l'échec
+    // avec le vocabulaire du domaine, puis rendre la main.
+    try {
+      await transporter.sendMail({
+        from: '"Wellneuro" <noreply@wellneuro.fr>',
+        to: synthese.emailPatient,
+        subject: gabarit.sujet,
+        text: gabarit.corps,
+        html,
+      });
+    } catch (erreurEnvoi) {
+      const detail = erreurEnvoi instanceof Error ? erreurEnvoi.message : String(erreurEnvoi);
+      await logBookletEnvoi(idSynthese, synthese.idPatient, synthese.emailPatient,
+        'Erreur', forceSend ? 'Renvoi' : 'Envoi', relectureConfirmee, detail);
+      logger.error({
+        event: EVENT_CODES.BOOKLET_SEND_EXCEPTION,
+        domain: 'BOOKLET',
+        message: 'Relais SMTP en echec : le booklet n a pas ete remis',
+        context: finalizeLogContext(requestContext, { statusCode: 502, retryable: true }),
+        error: sanitizeAuditError(detail),
+      });
+      return withCorrelationHeader(NextResponse.json(
+        { error: "L'envoi n'a pas abouti : le bilan n'est pas parti. L'échec est consigné dans la correspondance du dossier. Réessayez ; s'il persiste, signalez-le." },
+        { status: 502 }
+      ), requestContext);
+    }
 
     // La note passée ici est CELLE QUI VIENT DE PARTIR — `synthese` a été lue
     // en début de requête et `buildBookletHTML` l'a rendue depuis le même
@@ -291,7 +320,10 @@ export async function POST(req: Request) {
       context: finalizeLogContext(requestContext, { statusCode: 500, retryable: true }),
       error: sanitizeAuditError(msg),
     });
-    return withCorrelationHeader(NextResponse.json({ error: 'Erreur lors de l\'envoi. Vérifiez le terminal Next.js.' }, { status: 500 }), requestContext);
+    // Message rendu au PRATICIEN, en production : « vérifiez le terminal
+    // Next.js » n'y désignait rien qu'il puisse ouvrir. Le seul fait qu'il
+    // doive connaître est l'état du document.
+    return withCorrelationHeader(NextResponse.json({ error: "Erreur technique pendant l'envoi. Rien n'a été confirmé comme parti : vérifiez la correspondance du dossier avant de réessayer." }, { status: 500 }), requestContext);
   }
 }
 
@@ -318,13 +350,21 @@ async function logBookletEnvoi(
         noteTransmise: noteTransmise?.trim() ? noteTransmise : undefined,
       },
     });
+    // Le journal ne connaît que trois états ; l'audit du booklet en connaît
+    // davantage. La traduction est faite par `statutJournalDepuisAuditBooklet`,
+    // et une confirmation en attente n'y est PAS une erreur : rien n'est parti,
+    // rien n'a échoué. L'objet le dit en toutes lettres, parce que « Non
+    // envoyé » seul ne dirait pas ce que le praticien doit faire.
+    const objet = operation === 'Renvoi'
+      ? 'Renvoi du bilan neuronutritionnel'
+      : 'Envoi du bilan neuronutritionnel';
     await journaliserCorrespondancePatient({
       idPatient,
       type: TYPES_CORRESPONDANCE_PATIENT.booklet,
-      objet: operation === 'Renvoi'
-        ? 'Renvoi du bilan neuronutritionnel'
-        : 'Envoi du bilan neuronutritionnel',
-      statut: statut === 'Envoye' ? 'Envoye' : 'Erreur',
+      objet: statut === 'Confirmation_Requise'
+        ? `${objet} — en attente de votre confirmation`
+        : objet,
+      statut: statutJournalDepuisAuditBooklet(statut),
       referenceType: 'synthese',
       referenceId: idSynthese,
       sourceType: 'booklet_envoi',
