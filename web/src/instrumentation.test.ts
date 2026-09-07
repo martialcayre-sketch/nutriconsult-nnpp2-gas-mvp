@@ -29,13 +29,20 @@ function capterHandlers(): Map<string, (arg: unknown) => void> {
 const tourDeBoucle = () => new Promise<void>(resoudre => setImmediate(resoudre));
 
 describe('instrumentation — une exception fatale doit rendre la main à Node', () => {
+  const runtimeInitial = process.env.NEXT_RUNTIME;
+
   beforeEach(() => {
     fatal.mockClear();
     erreur.mockClear();
+    // Les cas ci-dessous portent sur le runtime Node : on le pose explicitement
+    // plutôt que d'hériter de la machine (Vitest laisse NEXT_RUNTIME absent).
+    process.env.NEXT_RUNTIME = 'nodejs';
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    if (runtimeInitial === undefined) delete process.env.NEXT_RUNTIME;
+    else process.env.NEXT_RUNTIME = runtimeInitial;
   });
 
   it('journalise puis sort en 1 — sans la sortie, le conteneur servirait un état indéfini', async () => {
@@ -72,4 +79,22 @@ describe('instrumentation — une exception fatale doit rendre la main à Node',
     await tourDeBoucle();
     expect(sortie, 'le rejet non géré ne sort pas — décision distincte, non prise').not.toHaveBeenCalled();
   });
+
+  it.each(['edge', 'unknown'])(
+    'ne pose AUCUN handler hors runtime Node (%s) — sinon le middleware casse au chargement',
+    async runtime => {
+      process.env.NEXT_RUNTIME = runtime;
+      const handlers = capterHandlers();
+
+      await register();
+
+      // Dans le bac à sable edge, `process.on` JETTE et l'erreur de `register()`
+      // est relancée par Next : un seul handler posé et la redirection
+      // `/patient/*` tombe. Le contrat est donc « rien du tout », pas « rien de
+      // grave ».
+      expect(handlers.size, `handlers posés en runtime « ${runtime} » : ${[...handlers.keys()].join(', ')}`).toBe(0);
+      expect(fatal).not.toHaveBeenCalled();
+      expect(erreur).not.toHaveBeenCalled();
+    },
+  );
 });
