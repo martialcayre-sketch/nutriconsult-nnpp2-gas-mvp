@@ -16,7 +16,7 @@
 // de constitution »).
 import { prisma } from '@/lib/prisma';
 import { createEmbeddings } from '@/lib/rag/embeddings';
-import { sourcesDuNotebook } from '@/lib/rag/claims/notebooks';
+import { sourcesDuNotebook, sansSourcesEnQuarantaine } from '@/lib/rag/claims/notebooks';
 import {
   MESSAGE_INDISPONIBLE,
   MESSAGE_REQUETE_VIDE,
@@ -147,8 +147,16 @@ export async function servirRayonCorpus(params: {
   // aucune source au registre, rend un résultat VIDE sans jamais interroger la
   // base avec un filtre nul (qui servirait tout le corpus). C'est la garantie
   // « liste vide ⇒ résultat vide, jamais filtre ignoré ».
+  // La QUARANTAINE SANITAIRE retire la source du rayon, en plus du filtre par
+  // notebook. `match_wellneuro_rag_claims` ne connaît que la base et n'a aucune
+  // idée du `lifecycleStatus`, qui vit au registre : sans ce retrait, un claim
+  // VALIDÉ issu d'une notice mise en quarantaine pour relecture scientifique ou
+  // de sécurité serait servi comme contenu clinique ordinaire, sans le moindre
+  // signal. Le retrait a lieu ICI, sur le chemin qui SERT le claim — jamais
+  // dans `sourcesDuNotebook`, qui alimente aussi la file de revue où ces mêmes
+  // claims doivent rester visibles pour être arbitrés.
   const notebook = RAYON_VERS_NOTEBOOK[rayon];
-  const sourceIds = notebook ? sourcesDuNotebook(notebook) : [];
+  const sourceIds = notebook ? sansSourcesEnQuarantaine(sourcesDuNotebook(notebook)) : [];
   if (sourceIds.length === 0) {
     return {
       contractVersion: C4_RAYON_CORPUS_VERSION,

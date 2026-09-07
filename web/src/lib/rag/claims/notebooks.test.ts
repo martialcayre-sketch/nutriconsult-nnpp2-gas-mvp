@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { annoterSources, noticeDeSource, sourcesDuNotebook } from './notebooks';
+import {
+  annoterSources,
+  estSourceEnQuarantaine,
+  noticeDeSource,
+  sansSourcesEnQuarantaine,
+  sourcesDuNotebook,
+} from './notebooks';
 
 // Le registre réel (source_registry.json) est importé statiquement : ces tests
 // verrouillent le contrat sur des notices connues du pilote.
@@ -33,5 +39,40 @@ describe('notebooks — vue registre', () => {
     const annotees = annoterSources(['WN-SRC-0056', 'WN-SRC-0000']);
     expect(annotees).toHaveLength(2);
     expect(annotees[1]).toEqual({ sourceId: 'WN-SRC-0000', titre: 'WN-SRC-0000', notebook: 'Hors registre' });
+  });
+});
+
+describe('notebooks — quarantaine sanitaire', () => {
+  it('reconnaît une source en quarantaine du registre réel', () => {
+    // WN-SRC-0318 « Les insomnies premières ordonnances » — vigilance Élevée,
+    // action requise « Relecture scientifique et sécurité ».
+    expect(estSourceEnQuarantaine('WN-SRC-0318')).toBe(true);
+  });
+
+  it('ne met pas en quarantaine une source ordinaire ni une inconnue', () => {
+    expect(estSourceEnQuarantaine('WN-SRC-0056')).toBe(false);
+    expect(estSourceEnQuarantaine('WN-SRC-0000')).toBe(false);
+  });
+
+  it('retire les sources en quarantaine et conserve les autres', () => {
+    const filtrees = sansSourcesEnQuarantaine(['WN-SRC-0056', 'WN-SRC-0318', 'WN-SRC-0032']);
+    expect(filtrees).toEqual(['WN-SRC-0056', 'WN-SRC-0032']);
+  });
+
+  it('sourcesDuNotebook NE filtre PAS la quarantaine — la file de revue doit la voir', () => {
+    // C'est le contrat qui rend la quarantaine réversible : le praticien
+    // continue de voir ces claims pour les arbitrer. Les masquer ici rendrait
+    // la quarantaine définitive par accident. Le retrait appartient aux chemins
+    // qui SERVENT le claim (rayonCorpus), pas à ceux qui l'exposent pour
+    // décision.
+    const ids = sourcesDuNotebook('02 — Sommeil et chronobiologie');
+    expect(ids).toContain('WN-SRC-0318');
+  });
+
+  it('le rayon micronutrition perd bien des sources au filtrage (effet réel, pas théorique)', () => {
+    const brutes = sourcesDuNotebook('10 — Micronutrition et compléments');
+    const servables = sansSourcesEnQuarantaine(brutes);
+    expect(brutes.length).toBeGreaterThan(servables.length);
+    expect(servables.every((id) => !estSourceEnQuarantaine(id))).toBe(true);
   });
 });

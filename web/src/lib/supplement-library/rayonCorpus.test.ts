@@ -8,16 +8,26 @@ vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/rag/embeddings', () => ({ createEmbeddings }));
 
 import { servirRayonCorpus, RAYON_VERS_NOTEBOOK, RAYONS_RECHERCHE_CORPUS } from './rayonCorpus';
-import { sourcesDuNotebook } from '@/lib/rag/claims/notebooks';
+import {
+  estSourceEnQuarantaine,
+  sansSourcesEnQuarantaine,
+  sourcesDuNotebook,
+} from '@/lib/rag/claims/notebooks';
 
 const NOTEBOOK_MICRO = '10 — Micronutrition et compléments';
-const SOURCES_MICRO = sourcesDuNotebook(NOTEBOOK_MICRO);
+// Ce que le rayon SERT : les sources du notebook, MOINS celles sous quarantaine
+// sanitaire. Leur absence de la liste servie est le contrat, pas un effet de
+// bord.
+const SOURCES_MICRO_BRUTES = sourcesDuNotebook(NOTEBOOK_MICRO);
+const SOURCES_MICRO = sansSourcesEnQuarantaine(SOURCES_MICRO_BRUTES);
+// Les trois rayons de RECHERCHE suivent la MÊME règle : la quarantaine ne
+// connaît pas le rayon qui l'interroge.
 const NOTEBOOK_COGNITION = '05 — Cognition et mémoire';
-const SOURCES_COGNITION = sourcesDuNotebook(NOTEBOOK_COGNITION);
+const SOURCES_COGNITION = sansSourcesEnQuarantaine(sourcesDuNotebook(NOTEBOOK_COGNITION));
 const NOTEBOOK_INTESTIN = '07 — Axe intestin-cerveau';
-const SOURCES_INTESTIN = sourcesDuNotebook(NOTEBOOK_INTESTIN);
+const SOURCES_INTESTIN = sansSourcesEnQuarantaine(sourcesDuNotebook(NOTEBOOK_INTESTIN));
 const NOTEBOOK_DOULEUR = '06 — Douleurs chroniques';
-const SOURCES_DOULEUR = sourcesDuNotebook(NOTEBOOK_DOULEUR);
+const SOURCES_DOULEUR = sansSourcesEnQuarantaine(sourcesDuNotebook(NOTEBOOK_DOULEUR));
 
 // La 4ᵉ valeur interpolée du $queryRaw est la liste des source_ids jointe par
 // virgule (filter_source_ids). Ordre des interpolations : littéral, matchCount,
@@ -109,6 +119,15 @@ describe('servirRayonCorpus (rayon corpus par notebook, barrière D-003)', () =>
     expect(call[3]).toBe(0.5);
     expect(call[4]).toBe(SOURCES_MICRO.join(','));
     expect(filtreSourcesDuDernierAppel()).toBe(SOURCES_MICRO.join(','));
+
+    // Et la quarantaine sanitaire ne franchit pas la barrière : aucune des
+    // sources servies n'est en quarantaine, alors que le notebook brut en
+    // contient. Un claim VALIDÉ d'une notice mise en relecture pour raison de
+    // sécurité n'a pas à être servi comme contenu clinique ordinaire.
+    const servies = filtreSourcesDuDernierAppel().split(',');
+    expect(servies.some((id) => estSourceEnQuarantaine(id))).toBe(false);
+    expect(SOURCES_MICRO_BRUTES.some((id) => estSourceEnQuarantaine(id))).toBe(true);
+    expect(servies.length).toBeLessThan(SOURCES_MICRO_BRUTES.length);
   });
 
   it('sert le rayon cognition avec le filter_source_ids du notebook 05', async () => {
