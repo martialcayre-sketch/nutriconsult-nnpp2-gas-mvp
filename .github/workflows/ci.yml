@@ -697,6 +697,24 @@ jobs:
         working-directory: web
         run: npx prisma db execute --file prisma/checks/cb_criteres_dossier_v1_negatif.sql
 
+      # Claim fondateur d'une règle clinique (D-140). Le moteur vérifie
+      # `claimsValides` EN PREMIER, et `clinical_rules` n'avait aucun champ pour
+      # nommer un claim : toute règle était refusée, avec un motif qui affirmait
+      # faussement que « les claims cités » n'étaient pas valides. Ce contrat
+      # éprouve ce que la base garde seule : une référence bien formée acceptée
+      # (cas positif), un `claim_id` ou une `version_claim` hors format rejetés
+      # (formats RECOPIÉS de `rag_corpus_claims`), une référence dépareillée
+      # rejetée — le couple est ce qui est UNIQUE là-bas, un membre seul ne
+      # désigne rien —, les deux colonnes encore NULLABLES (c'est l'expand d'un
+      # expand/contract, et l'oubli du contract ne doit pas passer inaperçu), et
+      # l'index de lecture par claim. Il ne garde PAS que le claim existe et soit
+      # VALIDE : aucune FK n'est possible vers une table SQL-brut, cette
+      # vérification appartient à la route et au lecteur de catalogue.
+      - name: C4 règle/claim negative tests
+        if: steps.scope.outputs.docs_only != 'true'
+        working-directory: web
+        run: npx prisma db execute --file prisma/checks/c4_regle_claim_v1_negatif.sql
+
       # Document patient biologie (décision F, D-122) : un document valide et
       # une seconde génération doivent être ACCEPTÉS (append-only) ; les CHECK
       # doivent MORDRE (texte vide ou blancs avec tabulations — trou btrim/1
