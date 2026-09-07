@@ -49,3 +49,34 @@ un comportement de navigation n'est pas le rôle d'une PR de version.
 
 Reste hors de ce lot, et signalé : `next lint` est **déprécié** et disparaît en
 Next 16. La migration vers l'ESLint CLI est un chantier distinct.
+
+> **Correction du 2026-09-07, postérieure au merge de #934 — le titre est faux
+> sur un point qui comptait.**
+>
+> « React reste en 18 » est vrai de `package.json`. C'est **faux du runtime**.
+> Next embarque son propre React et l'aliase sur les trois couches de l'App
+> Router, `appPagesBrowser` compris : le dépôt n'ayant pas de Pages Router,
+> toute l'application s'exécute dessus, serveur comme navigateur.
+>
+> | | React réellement exécuté |
+> |---|---|
+> | `next@14.2.35` | `18.3.0-canary-178c267a4e-20241218` |
+> | `next@15.5.25` | `19.2.0-canary-0bdb9206-20250818` |
+>
+> **La marche emporte donc une majeure de React**, et l'arbitrage a été rendu
+> sans le savoir. Les 6708 bancs unitaires sont aveugles au changement —
+> `vitest` n'aliase pas React et joue le `18.3.1` de `node_modules` — et
+> `@types/react` reste en `^18.3.3`, donc `tsc` ne le voit pas non plus. Ce qui
+> a réellement éprouvé React 19, ce sont les **183 E2E sur build de
+> production**, deux navigateurs, baselines comprises.
+>
+> Décision reprise sur cette base et consignée en `D-139` : le déploiement part,
+> avec fenêtre de surveillance, et la majeure est arbitrée plutôt que subie.
+> `src/lib/observability/reactEmbarque.test.ts` refuse désormais tout changement
+> de majeure sans décision — c'est le contrôle dont l'absence a coûté cet
+> arbitrage.
+>
+> Second fait non dit : `staleTimes.dynamic` passe de 30 s à **0**. Deux pages du
+> rail praticien interrogent Postgres côté serveur ; chaque retour re-requête au
+> lieu de réutiliser 30 s de cache client. Non mesuré, consigné en `D-139` §6.
+
