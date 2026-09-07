@@ -29,5 +29,16 @@ export async function register(): Promise<void> {
       error,
       metadata: { retryable: false },
     });
+
+    // Poser un handler `uncaughtException` DÉSARME la sortie de Node : sans le
+    // `process.exit` ci-dessous, le processus survivrait à une exception fatale
+    // dans un état indéfini, et le conteneur continuerait de servir au lieu de
+    // redémarrer. La sortie est donc la raison d'être de ce handler, pas un
+    // accessoire de la trace.
+    //
+    // Elle est différée d'un tour de boucle À DESSEIN : `logger.fatal` écrit par
+    // `console.log`, asynchrone quand stdout est un tube — le cas en conteneur.
+    // Sortir dans le même tick tronquerait la trace qu'on vient d'écrire.
+    setImmediate(() => process.exit(1));
   });
 }
