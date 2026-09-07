@@ -93,6 +93,43 @@ describe('GET /api/praticien/patients', () => {
     expect(json.patients[1].suiviClotureLe).toBeNull();
   });
 
+  it('expose l’accès révoqué, distinct de l’état du dossier', async () => {
+    // TROIS ÉTATS INDÉPENDANTS, et c'est tout l'objet du champ : un dossier
+    // ACTIF, en suivi OUVERT, peut avoir son accès portail révoqué. `D-126` §2
+    // a tranché que désactiver ne pose PAS ce drapeau — il n'est donc dérivable
+    // ni d'`actif` ni de `suiviClotureLe`, et sans lui la seule surface qui le
+    // montrait était l'encart « Nouveaux patients », borné à 30 jours.
+    prisma.patient.findMany.mockResolvedValue([
+      {
+        idPatient: 'PAT_SEED_03',
+        email: 'michel.dogne@fictif.wellneuro.fr',
+        prenom: 'Michel',
+        nom: 'Dogné',
+        telephone: null,
+        actif: true,
+        suiviClotureLe: null,
+        accessTokenRevoked: true,
+      },
+      {
+        idPatient: 'PAT_SEED_01',
+        email: 'sophie.nicola@fictif.wellneuro.fr',
+        prenom: 'Sophie',
+        nom: 'Nicola',
+        telephone: null,
+        actif: true,
+        suiviClotureLe: null,
+        accessTokenRevoked: false,
+      },
+    ]);
+    const json = (await (await GET(get())).json()) as {
+      patients: { accesRevoque: boolean; actif: string; suiviClotureLe: string | null }[];
+    };
+    expect(json.patients[0].accesRevoque).toBe(true);
+    expect(json.patients[0].actif).toBe('OUI');
+    expect(json.patients[0].suiviClotureLe).toBeNull();
+    expect(json.patients[1].accesRevoque).toBe(false);
+  });
+
   it('liste paginée : scope aussi le where de recherche', async () => {
     await GET(get('page=1&search=Nicola'));
     const where = prisma.patient.findMany.mock.calls[0][0].where;

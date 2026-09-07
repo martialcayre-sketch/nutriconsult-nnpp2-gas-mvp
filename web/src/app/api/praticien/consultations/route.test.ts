@@ -126,25 +126,46 @@ describe('POST /api/praticien/consultations', () => {
     expect(json.reason).toBe('patient_not_found');
   });
 
-  it('patient accessible : lève la révocation et envoie le lien (comportement inchangé pour le bon praticien)', async () => {
+  // LE CŒUR DU LOT. Le cas précédent assertait la levée SILENCIEUSE : 200,
+  // drapeau tombé, e-mail parti, sans qu'on ait rien demandé.
+  it('accès révoqué sans accord : 409, aucune levée, aucune consultation, aucun e-mail', async () => {
     const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+    expect(res.status).toBe(409);
+    const json = (await res.json()) as { reason: string };
+    expect(json.reason).toBe('retablissement_non_confirme');
+    // Les trois écritures que le refus doit précéder.
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+    expect(prisma.consultation.create).not.toHaveBeenCalled();
+    expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('une chaîne « true » ne vaut pas un accord : la comparaison est stricte', async () => {
+    // Le drapeau vient du corps JSON d'une requête praticien. Une comparaison
+    // laxiste (`== true`, ou la véracité du champ) rouvrirait un portail fermé
+    // sur une valeur que personne n'a voulue.
+    const res = await POST(postRequest({ idPatient: 'PAT_1', retablirAcces: 'true' }));
+    expect(res.status).toBe(409);
+    expect(prisma.patient.update).not.toHaveBeenCalled();
+  });
+
+  it('accès révoqué AVEC accord : la levée a lieu, et la consultation part', async () => {
+    const res = await POST(postRequest({ idPatient: 'PAT_1', retablirAcces: true }));
     expect(res.status).toBe(200);
     expect(prisma.patient.update).toHaveBeenCalledWith({
       where: { idPatient: 'PAT_1' },
       data: expect.objectContaining({ accessTokenRevoked: false }),
     });
+    expect(prisma.consultation.create).toHaveBeenCalledOnce();
     expect(sendPortailLinkEmail).toHaveBeenCalledOnce();
-    // Le 4e argument porte le `Reply-To` : sans cette assertion, un
-    // remaniement le perdrait sans qu'aucun banc ne rougisse, et le bouton
-    // « Répondre » du patient viserait de nouveau `noreply@`.
+    // Le 4e argument porte le `Reply-To` : sans cette assertion, un remaniement
+    // le perdrait sans qu'aucun banc ne rougisse, et le bouton « Répondre » du
+    // patient viserait de nouveau `noreply@`.
     expect(sendPortailLinkEmail).toHaveBeenCalledWith(
       'sophie.nicola@example.test',
       'Sophie',
       'PAT_1',
       'p@wellneuro.fr',
     );
-    // Le POST ne journalise pas (GD-1) : il laisse déjà une trace datée.
-    expect(prisma.journalAccesDossier.create).not.toHaveBeenCalled();
   });
 
   // Cette route CRÉE une consultation, réactive au besoin un jeton révoqué et
@@ -153,6 +174,9 @@ describe('POST /api/praticien/consultations', () => {
   // l'avaient déjà — et le libellé de la clôture promet au praticien
   // qu'aucun document ne partira.
   it('un envoi mort ne s’annonce plus « envoyé » — la consultation est créée quand même', async () => {
+    // Ce banc porte sur l'ENVOI, pas sur la révocation : le dossier est ouvert,
+    // sinon la route refuserait en 409 avant d'atteindre l'e-mail.
+    prisma.patient.findUnique.mockResolvedValue({ ...patient, accessTokenRevoked: false });
     // LE DÉFAUT A05, EN UN CAS. Le `catch` avalait l'échec et la route rendait
     // `success: true` sans rien dire : l'écran affichait « lien d'accès envoyé
     // au patient » sur un e-mail qui n'était jamais parti.
@@ -167,6 +191,9 @@ describe('POST /api/praticien/consultations', () => {
   });
 
   it('une messagerie non configurée se distingue d’un envoi mort', async () => {
+    // Ce banc porte sur l'ENVOI, pas sur la révocation : le dossier est ouvert,
+    // sinon la route refuserait en 409 avant d'atteindre l'e-mail.
+    prisma.patient.findUnique.mockResolvedValue({ ...patient, accessTokenRevoked: false });
     // Deux causes, deux gestes : réessayer n'a aucun sens quand aucun SMTP
     // n'est posé. La route rend le statut, elle ne le devine pas.
     sendPortailLinkEmail.mockResolvedValueOnce('Non_envoye');
@@ -178,6 +205,9 @@ describe('POST /api/praticien/consultations', () => {
   });
 
   it('un envoi réussi le dit explicitement', async () => {
+    // Ce banc porte sur l'ENVOI, pas sur la révocation : le dossier est ouvert,
+    // sinon la route refuserait en 409 avant d'atteindre l'e-mail.
+    prisma.patient.findUnique.mockResolvedValue({ ...patient, accessTokenRevoked: false });
     const res = await POST(postRequest({ idPatient: 'PAT_1' }));
     const json = await res.json();
     expect(json.envoi).toBe('envoye');

@@ -51,6 +51,13 @@ type Patient = {
   // accès en lecture, un dossier inactif le perd. L'écran ne peut pas déduire
   // l'un de l'autre — d'où ce champ, et non un booléen de plus.
   suiviClotureLe: string | null;
+  // Accès au portail révoqué par le praticien (`accessTokenRevoked`). DISTINCT
+  // d'`actif` comme de `suiviClotureLe`, et non déductible de l'un ni de
+  // l'autre : `D-126` §2 a tranché que désactiver un dossier ne pose PAS ce
+  // drapeau. Sans ce champ, la seule surface qui montrait la révocation était
+  // l'encart « Nouveaux patients », borné à 30 jours — au 31ᵉ, le praticien ne
+  // voyait plus l'état qu'un envoi de lien allait lever.
+  accesRevoque: boolean;
 };
 
 type Assignation = {
@@ -304,6 +311,7 @@ function patientToDto(p: {
   telephone: string | null;
   actif: boolean;
   suiviClotureLe: Date | null;
+  accessTokenRevoked: boolean;
 }): Patient {
   return {
     idPatient: p.idPatient,
@@ -313,6 +321,10 @@ function patientToDto(p: {
     telephone: p.telephone ?? '',
     actif: p.actif ? 'OUI' : 'NON',
     suiviClotureLe: p.suiviClotureLe ? p.suiviClotureLe.toISOString() : null,
+    // Même nom que celui déjà servi par `api/praticien/nouveaux-patients`
+    // (`SourceNouveauPatient.accesRevoque`) : deux noms pour le même fait
+    // obligeraient l'écran à savoir de quelle route vient sa ligne.
+    accesRevoque: p.accessTokenRevoked,
   };
 }
 
@@ -492,6 +504,8 @@ export async function POST(req: Request): Promise<NextResponse<CreatePatientResp
         telephone,
         actif: 'OUI',
         suiviClotureLe: null,
+        // Le défaut Prisma (`@default(false)`) : un dossier neuf n'est jamais révoqué.
+        accesRevoque: false,
       },
     });
   } catch (err) {

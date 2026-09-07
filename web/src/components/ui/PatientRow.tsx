@@ -13,6 +13,9 @@ export type PatientRowData = {
   telephone: string;
   actif: 'OUI' | 'NON';
   suiviClotureLe: string | null;
+  /** Accès au portail révoqué. CUMULATIF, jamais dérivé : `phaseDossier` ne le
+   * connaît pas, et `D-126` §2 interdit de le déduire d'une désactivation. */
+  accesRevoque: boolean;
 };
 
 export type ActionDossier =
@@ -160,6 +163,13 @@ export function PatientRow({
         <span className="flex flex-wrap items-center gap-1">
           <Badge variant={VARIANT_PHASE[phase]}>{LIBELLE_PHASE[phase]}</Badge>
           {estClos && estInactif && <Badge variant="neutral">Inactif</Badge>}
+          {/* TROISIÈME ÉTAT, CUMULATIF AVEC LES DEUX AUTRES et jamais déduit
+              d'eux : un dossier actif, en suivi, peut avoir son accès révoqué —
+              et c'est exactement le cas que rien ne montrait. Même libellé et
+              même variante que l'encart « Nouveaux patients », pour qu'un seul
+              mot désigne le fait aux deux endroits. La différence : cette
+              pastille-ci ne s'éteint pas au 31ᵉ jour. */}
+          {patient.accesRevoque && <Badge variant="neutral">Accès révoqué</Badge>}
         </span>
       </td>
       <td className="px-4 py-2">
