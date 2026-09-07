@@ -4,6 +4,62 @@
 
 ## Décisions actives
 
+### D-137 — Le document d'information cesse de nier la connexion patient par Google
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session, option « Google en entier, e-mails compris ») et exécuté.
+- Domaine : TRUST, information patient, RGPD
+
+- Contexte : `donnees_confidentialite@v3`, servi à tout patient qui ouvre
+  « Informations, confidentialité et droits », énumérait les prestataires et
+  écrivait « Google — connexion sécurisée du praticien uniquement (jamais des
+  patients) ».
+
+**1. C'était une négation explicite, et elle était fausse.** La porte Google
+patient (`WN_G5_GOOGLE_PATIENT`) est ouverte en production depuis le
+2026-07-22, relue sur Scalingo le 2026-09-07, et deux écrans patient proposent
+« Continuer avec Google ». Le document normatif disait le contraire de ce que le
+produit fait — et c'est lui qui a valeur d'information.
+
+**2. Nommer le prestataire d'envoi SANS dire ce que les e-mails transportent
+aurait fabriqué une fausseté neuve.** `/portail/connexion` affirme « Seule votre
+adresse e-mail est transmise — aucune donnée de santé », ce qui est vrai de la
+CONNEXION. Le jour où le document écrit « Google — acheminement des emails
+Wellneuro », les deux surfaces se lisent ensemble comme « Google, aucune donnée
+de santé » — et c'est faux, puisque le bilan validé part par ce relais
+([[D-136]]). Une demi-correction eût été pire que la minimale : la v4 dit les
+deux rôles ET ce que le canal transporte.
+
+**3. Aucun accusé n'est redemandé, et c'est le point à ne pas manquer.**
+`requiresAcknowledgement` reste `false`, comme la v3 pour un changement de même
+portée. Le poser à `true` ne remettrait pas une case : `AvantDeCommencer` ne
+s'AJOUTE pas, il REMPLACE la page (`questionnaires/page.tsx`, et le hub par
+`step.name === 'avant'`). Tous les patients en cours retrouveraient quatre
+écrans et trois cases devant leur espace — y compris celui qui note sa
+quatorzième nuit sur vingt et une. Et rien ne l'aurait montré avant la
+production : les helpers e2e résolvent la version depuis le registre, donc les
+fixtures suivraient la v4 et aucun spec ne verrait le mur. Coût maximal,
+information nulle : ces quatre écrans ne parlent pas de Google.
+
+**4. Une incohérence voisine fermée.** Le document invitait à signaler « une
+connexion que vous ne reconnaissez pas » sans dire nulle part que les connexions
+étaient enregistrées. Il le dit désormais : douze mois, date, heure et moyen
+d'entrée, jamais le contenu.
+
+**5. Ce que le texte patient NE dit pas, et pourquoi.** La localisation du
+traitement d'acheminement et la couverture DPA restent dues
+(`docs/DOSSIER_RGPD.md` rubrique 6, échéance **2026-10-21**). L'arbitrage est de
+ne pas les porter dans le document patient : elles restent consignées là où
+elles sont suivies. L'omission est délibérée et datée ici ; l'échéance ne bouge
+pas.
+
+**6. Une phrase qu'il ne fallait surtout pas toucher.** « La politique détaillée
+de durées de conservation est en cours de formalisation » n'est pas périmée : le
+dossier RGPD la valide comme un aveu honnête, aucune durée n'étant fixée pour
+les données de santé. La retoucher promettrait ce que l'architecture ne fait pas.
+
+Aucune migration, aucun seuil de scoring.
+
 ### D-136 — Le bilan complet voyage par e-mail : ce n'était pas un mensonge, c'était un non-dit
 
 - Date : 2026-09-07

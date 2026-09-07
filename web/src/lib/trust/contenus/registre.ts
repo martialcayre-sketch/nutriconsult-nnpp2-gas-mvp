@@ -387,6 +387,104 @@ const DONNEES_CONFIDENTIALITE_V3: VersionDocumentTrust = {
   hash: 'f8c239c31a45cc90779b7d91837bfff96cbd0542eb50030813d8f3a6d3b5fe59',
 };
 
+const DONNEES_CONFIDENTIALITE_V4: VersionDocumentTrust = {
+  key: 'donnees_confidentialite',
+  type: 'privacy',
+  version: 'v4',
+  titre: 'Vos données personnelles et leur confidentialité',
+  resume:
+    'Quelles données sont recueillies, pourquoi, qui peut y accéder, où elles sont hébergées, et comment exercer vos droits.',
+  sections: [
+    {
+      titre: 'Qui est responsable ?',
+      paragraphes: [
+        'Votre praticien Wellneuro est responsable du traitement de vos données dans le cadre de votre accompagnement. Vous pouvez le contacter pour toute question à l’adresse indiquée dans « Exercer mes droits ».',
+      ],
+    },
+    {
+      titre: 'Quelles données sont recueillies ?',
+      paragraphes: [
+        'Les informations que vous transmettez : votre fiche de renseignements, vos réponses aux questionnaires, les éléments de votre situation que vous décrivez, vos signalements et vos choix.',
+        'Nous recueillons uniquement les informations nécessaires à votre accompagnement et à son suivi.',
+      ],
+    },
+    {
+      titre: 'Pourquoi ?',
+      paragraphes: [
+        'Pour préparer et suivre votre accompagnement en neuronutrition : comprendre votre situation, préparer les consultations, suivre l’évolution, et vous remettre des documents validés par votre praticien.',
+        'Cet accompagnement relève du bien-être et du suivi ; il n’établit pas de diagnostic médical.',
+      ],
+    },
+    {
+      titre: 'Ce qui est obligatoire et ce qui est facultatif',
+      paragraphes: [
+        'Répondre aux questionnaires proposés est nécessaire au travail de préparation de votre praticien, mais chaque envoi reste un geste explicite de votre part : rien n’est transmis tant que vous n’avez pas choisi « Transmettre ».',
+        'Les choix listés dans « Mes choix et autorisations » sont réellement facultatifs : les refuser ne bloque jamais votre accompagnement.',
+      ],
+    },
+    {
+      titre: 'Qui peut accéder à vos données ?',
+      paragraphes: [
+        'Votre praticien, dans le cadre de votre accompagnement. Personne d’autre n’y accède au sein de Wellneuro.',
+        'Aucun partage avec un tiers (par exemple votre médecin traitant) n’a lieu sans un choix explicite de votre part.',
+      ],
+    },
+    {
+      titre: 'Quels prestataires techniques interviennent ?',
+      paragraphes: [
+        'Des prestataires hébergent et font fonctionner l’application. Ils n’utilisent pas vos données pour leur propre compte :',
+      ],
+      points: [
+        'Scalingo — hébergement de l’application et de la base de données (hébergeur certifié « données de santé » HDS, France)',
+        'Anthropic — assistance d’intelligence artificielle pour la préparation des synthèses (voir « L’intelligence artificielle dans Wellneuro »)',
+        'Google Workspace — acheminement des emails Wellneuro, y compris les documents que votre praticien vous adresse (bilan, comptes rendus)',
+        'Google — connexion sécurisée de votre praticien, et, si vous le choisissez, votre propre connexion à cet espace : seule votre adresse email est alors transmise',
+      ],
+    },
+    {
+      titre: 'Où sont hébergées vos données',
+      paragraphes: [
+        'Depuis le 22 août 2026, l’application et la base de données sont hébergées chez Scalingo, en France, chez un hébergeur certifié « données de santé » (HDS) au sens de la réglementation française.',
+        'Le contrat spécifique à l’hébergement de données de santé (l’« annexe HDS ») a été signé le 30 août 2026. La période transitoire décrite dans la version précédente de ce document — pendant laquelle, sur ce point précis, la situation était moins protégée — est close.',
+        'Avant cette migration, vos données étaient hébergées chez Vercel et Supabase, dans l’Union européenne — ni l’un ni l’autre n’est un hébergeur certifié HDS. Ce constat, daté du 21 juillet 2026, et l’écart assumé qui en a découlé restent consignés. Le 1ᵉʳ septembre 2026, ces anciens hébergeurs ont été définitivement fermés et vos données y ont été effacées ; la preuve de cet effacement est consignée au registre tenu par votre praticien.',
+        'Vos droits — accès, rectification, effacement, limitation, opposition — s’exercent sans changement, comme indiqué dans « Exercer mes droits ».',
+      ],
+    },
+    {
+      titre: 'Combien de temps sont-elles conservées ?',
+      paragraphes: [
+        'La politique détaillée de durées de conservation est en cours de formalisation. Vos données sont conservées le temps de votre accompagnement ; vous pouvez à tout moment demander des précisions ou l’exercice de vos droits.',
+      ],
+    },
+    {
+      titre: 'Exercer mes droits',
+      paragraphes: [
+        'Vous pouvez demander l’accès à vos données, leur rectification, leur effacement, la limitation ou l’opposition à leur traitement, ainsi que le retrait d’une autorisation.',
+        'Le plus simple : la carte « Signaler un problème » de cet espace, choix « Je souhaite exercer un droit ». Vous pouvez aussi écrire à martialcayre@wellneuro.fr.',
+        'Certains droits dépendent du cadre applicable au traitement concerné : votre demande recevra une réponse expliquant ce qui est possible et pourquoi.',
+      ],
+    },
+    {
+      titre: 'Signaler un incident de confidentialité',
+      paragraphes: [
+        'Connexion que vous ne reconnaissez pas, document qui ne vous concerne pas, appareil perdu : signalez-le depuis la carte « Signaler un problème ». Chaque signalement est enregistré et examiné.',
+        'Pour que ce signalement soit possible, vos connexions à cet espace sont enregistrées pendant douze mois : la date, l’heure et le moyen d’entrée utilisé — jamais le contenu de ce que vous y faites.',
+      ],
+    },
+  ],
+  changeLevel: 'information_substantielle',
+  changeSummary:
+    'La version précédente indiquait à tort que Google ne concernait jamais les patients : la connexion par compte Google vous est proposée depuis juillet 2026, si vous la choisissez. Le fournisseur d’envoi des emails est désormais nommé, et ce que ces emails transportent est précisé — dont les documents que votre praticien vous adresse. Enfin, ce document dit maintenant que vos connexions sont enregistrées douze mois.',
+  publieLe: '2026-09-07',
+  // MÊME RÉGIME QUE LA v3, ET C'EST DÉLIBÉRÉ. `changeLevel` dit la portée du
+  // changement ; `requiresAcknowledgement` déclencherait un mur d'écrans devant
+  // TOUS les patients en cours — `AvantDeCommencer` ne s'ajoute pas, il
+  // remplace la page. Un patient au milieu d'un recueil de 21 nuits le
+  // retrouverait devant son espace, pour un texte qui ne parle pas de Google.
+  requiresAcknowledgement: false,
+  hash: 'e65c3877fe492ff5fe630c635756d5d342f492853cd019800dff513f4356245d',
+};
+
 const USAGE_IA_V1: VersionDocumentTrust = {
   key: 'usage_ia',
   type: 'ai_transparency',
@@ -511,6 +609,7 @@ export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.
   DONNEES_CONFIDENTIALITE_V1,
   DONNEES_CONFIDENTIALITE_V2,
   DONNEES_CONFIDENTIALITE_V3,
+  DONNEES_CONFIDENTIALITE_V4,
   USAGE_IA_V1,
   DROITS_PATIENT_V1,
   CONSENTEMENT_SUIVI_V2,
