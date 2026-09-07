@@ -10,13 +10,14 @@ import { isCeQuiCompteEnabled } from '@/lib/patient/featureFlag';
 //
 // Le drapeau garde l'écran ET la route. Ici `notFound()` plutôt qu'un message :
 // tant que la surface n'est pas ouverte, elle n'existe pas pour le patient.
-export default function PortailCeQuiComptePage({ params }: { params: { token: string } }) {
+export default async function PortailCeQuiComptePage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   if (!isCeQuiCompteEnabled()) notFound();
 
   return (
     <div className="w-full max-w-2xl space-y-4">
       <Link
-        href={`/portail/${params.token}/questionnaires`}
+        href={`/portail/${token}/questionnaires`}
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
         ← Mon parcours

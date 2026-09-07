@@ -24,11 +24,12 @@ import { patientButtonClassName } from '@/components/patient/ui/PatientButton';
 // build et y figerait la valeur des drapeaux de ce moment-là.
 export const dynamic = 'force-dynamic';
 
-export default function ConnexionPortailPage({
+export default async function ConnexionPortailPage({
   searchParams,
 }: {
-  searchParams?: { etat?: string };
+  searchParams?: Promise<{ etat?: string }>;
 }) {
+  const parametres = await searchParams;
   const googleActif = isG5GooglePatientEnabled();
   // La redemande self-service exige les DEUX drapeaux (canal magique + canal
   // public non authentifié), exactement comme la route `lien/demande`.
@@ -37,7 +38,7 @@ export default function ConnexionPortailPage({
   // Le paramètre ne prend qu'une valeur : tous les refus du chemin Google
   // atterrissent ici, à l'identique. Rien dans cet écran ne dit lequel des
   // motifs s'applique — c'est la propriété de non-oracle.
-  const refuse = searchParams?.etat === 'refus';
+  const refuse = parametres?.etat === 'refus';
 
   return (
     <div className="w-full max-w-md space-y-4">
@@ -54,6 +55,11 @@ export default function ConnexionPortailPage({
           <>
             {/* Un lien et non un bouton : la route pose un cookie puis redirige,
                 elle se navigue. Pas de JavaScript nécessaire pour entrer. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages --
+                `/portail/google` est un ROUTE HANDLER (`app/portail/google/route.ts`),
+                pas une page : il pose un cookie puis redirige. `<Link>` y ferait une
+                navigation client vers une cible qui n'en est pas une. La règle, qui
+                scanne désormais aussi l'app router, se trompe de cas. */}
             <a href="/portail/google" className={patientButtonClassName('primary', 'w-full')}>
               Continuer avec Google
             </a>

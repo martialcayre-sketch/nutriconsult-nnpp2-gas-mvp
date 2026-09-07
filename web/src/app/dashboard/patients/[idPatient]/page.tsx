@@ -17,13 +17,15 @@ import { AgendaAliFeatureProvider } from '@/components/agenda-alimentaire/Agenda
 import { isCbEnabled, isCbResultsEnabled } from '@/lib/biology-library/featureFlag';
 import { CbFeatureProvider } from '@/components/patient-cockpit/CbFeatureProvider';
 
-export default function FichePatientPage({
+export default async function FichePatientPage({
   params,
   searchParams,
 }: {
-  params: { idPatient: string };
-  searchParams?: { [key: string]: string | string[] | undefined };
+  params: Promise<{ idPatient: string }>;
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  const { idPatient } = await params;
+  const parametres = await searchParams;
   // Harnais de validation ergonomique C1 : actif uniquement en développement
   // local avec `?validationErgo=c1` — en production ce calcul vaut toujours
   // false et la fiche reste strictement identique. La fixture est construite
@@ -31,19 +33,19 @@ export default function FichePatientPage({
   // peut pas être embarqué dans le bundle client.
   const modeValidationErgo = estModeValidationErgoActif(
     process.env.NODE_ENV,
-    searchParams?.validationErgo,
+    parametres?.validationErgo,
   );
   const fixtureValidationErgo: ValidationErgoC1Fixture | null = modeValidationErgo
     ? buildValidationErgoC1Fixture()
     : null;
   // Deep-link `?onglet=` (ex. `?onglet=trajectoire` depuis la future page
   // Trajectoires) : validé ici côté serveur, toute valeur inconnue est ignorée.
-  const ongletBrut = Array.isArray(searchParams?.onglet) ? searchParams.onglet[0] : searchParams?.onglet;
+  const ongletBrut = Array.isArray(parametres?.onglet) ? parametres.onglet[0] : parametres?.onglet;
   const ongletInitial: OngletFiche | undefined = estOngletFiche(ongletBrut) ? ongletBrut : undefined;
   // Deep-link `?phase=` : un lien partageable vers une phase précise du rail
   // (« regarde la Réévaluation de ce dossier »). Même garde que `?onglet=` —
   // une valeur inconnue est ignorée et la règle D5 reprend la main.
-  const phaseBrute = Array.isArray(searchParams?.phase) ? searchParams.phase[0] : searchParams?.phase;
+  const phaseBrute = Array.isArray(parametres?.phase) ? parametres.phase[0] : parametres?.phase;
   const phaseDemandee: PhaseFiche | undefined = estPhaseFiche(phaseBrute) ? phaseBrute : undefined;
   return (
     <C5FeatureProvider enabled={isC5Enabled(process.env.WN_C5_ENABLED)}>
@@ -63,8 +65,8 @@ export default function FichePatientPage({
               même une seconde, ne se rattrape pas ; le coût assumé est la perte
               des brouillons en cours au changement de dossier. */}
           <FichePatientPanel
-            key={params.idPatient}
-            idPatient={params.idPatient}
+            key={idPatient}
+            idPatient={idPatient}
             ongletInitial={ongletInitial}
             phaseDemandee={phaseDemandee}
             fixtureValidationErgo={fixtureValidationErgo}

@@ -22,10 +22,10 @@ function notFound() {
 
 export async function GET(
   req: Request,
-  { params }: { params: { foodRef: string } },
+  { params }: { params: Promise<{ foodRef: string }> },
 ): Promise<NextResponse<Response>> {
   if (!isC5Enabled(process.env.WN_C5_ENABLED)) return notFound();
-  const foodRef = params.foodRef.trim();
+  const foodRef = (await params).foodRef.trim();
   if (!/^\d{1,6}$/.test(foodRef)) return notFound();
 
   try {

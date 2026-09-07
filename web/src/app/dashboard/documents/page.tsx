@@ -3,11 +3,12 @@ import { DocumentsPanel } from '@/components/patient-cockpit/DocumentsPanel';
 // `?idPatient=` : même contrat de continuité que /dashboard/synthese — un
 // praticien qui arrive depuis une fiche ouverte ne re-sélectionne pas son
 // patient à la main (audit du cockpit 2026-09-02, sortie sans continuité).
-export default function DashboardDocumentsPage({
+export default async function DashboardDocumentsPage({
   searchParams,
 }: {
-  searchParams?: { idPatient?: string };
+  searchParams?: Promise<{ idPatient?: string }>;
 }) {
+  const parametres = await searchParams;
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -17,7 +18,7 @@ export default function DashboardDocumentsPage({
           aperçu par destinataire et impression HTML
         </p>
       </div>
-      <DocumentsPanel initialPatientId={searchParams?.idPatient ?? ''} />
+      <DocumentsPanel initialPatientId={parametres?.idPatient ?? ''} />
     </div>
   );
 }

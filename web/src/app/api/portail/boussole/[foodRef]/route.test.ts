@@ -45,37 +45,37 @@ describe('GET /api/portail/boussole/[foodRef]', () => {
 
   it('reste introuvable lorsque C5 est désactivée', async () => {
     process.env.WN_C5_ENABLED = 'false';
-    const response = await GET(request(), { params: { foodRef: '26034' } });
+    const response = await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) });
     expect(response.status).toBe(404);
     expect(authorizePortail).not.toHaveBeenCalled();
   });
 
   it('exige une session portail', async () => {
     authorizePortail.mockResolvedValue({ ok: false, reason: 'unauthenticated', error: 'Connexion requise.' });
-    expect((await GET(request(), { params: { foodRef: '26034' } })).status).toBe(401);
+    expect((await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) })).status).toBe(401);
   });
 
   it('répond toujours 404 pour un patient, protocole ou aliment non autorisé', async () => {
     authorizePortail.mockResolvedValue({ ok: false, reason: 'not_found', error: 'Suivi absent.' });
-    const patientResponse = await GET(request(), { params: { foodRef: '26034' } });
+    const patientResponse = await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) });
     expect(patientResponse.status).toBe(404);
     const patientBody = await patientResponse.json();
 
     authorizePortail.mockResolvedValue({ idPatient: 'PAT_1', idAssignation: 'ASS_1' });
     resolveProtocoleDiffuse.mockResolvedValue(null);
-    const protocolResponse = await GET(request(), { params: { foodRef: '26034' } });
+    const protocolResponse = await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) });
     expect(protocolResponse.status).toBe(404);
     expect(await protocolResponse.json()).toEqual(patientBody);
 
     resolveProtocoleDiffuse.mockResolvedValue(diffuse);
     reconstructProtocolDraft.mockReturnValue({ actions: [] });
-    const foodResponse = await GET(request(), { params: { foodRef: '26034' } });
+    const foodResponse = await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) });
     expect(foodResponse.status).toBe(404);
     expect(await foodResponse.json()).toEqual(patientBody);
   });
 
   it('projette uniquement la vue qualitative autorisée', async () => {
-    const response = await GET(request(), { params: { foodRef: '26034' } });
+    const response = await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) });
     expect(response.status).toBe(200);
     const payload = await response.json();
     expect(payload).toEqual({ ok: true, view: safeView });
@@ -87,6 +87,6 @@ describe('GET /api/portail/boussole/[foodRef]', () => {
 
   it('masque une projection partielle ou incohérente en 404', async () => {
     resolvePatientFoodCompassView.mockResolvedValue(null);
-    expect((await GET(request(), { params: { foodRef: '26034' } })).status).toBe(404);
+    expect((await GET(request(), { params: Promise.resolve({ foodRef: '26034' }) })).status).toBe(404);
   });
 });

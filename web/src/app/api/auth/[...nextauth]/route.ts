@@ -13,7 +13,11 @@ const handler = NextAuth(authOptions);
 // NextAuth v4 détecte le mode App Router via la présence de `params` sur le
 // second argument : l'omettre le fait retomber en mode Pages Router
 // (`req.query.nextauth`) et casse toute l'authentification en production.
-type RouteContext = { params: { nextauth: string[] } };
+// Next 15 rend `params` asynchrone. next-auth await déjà la valeur
+// (`next-auth/next/index.js` : `(await context.params)?.nextauth`) et ne teste
+// que la PRÉSENCE de `params` pour détecter l'App Router : passer la promesse
+// telle quelle préserve donc la détection décrite ci-dessus.
+type RouteContext = { params: Promise<{ nextauth: string[] }> };
 
 export async function GET(req: Request, context: RouteContext): Promise<Response> {
 	const requestContext = createRequestContext(req);

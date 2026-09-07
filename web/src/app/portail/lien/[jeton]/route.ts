@@ -49,7 +49,7 @@ function refuser(req: Request): NextResponse {
 
 export async function GET(
   req: Request,
-  { params }: { params: { jeton: string } },
+  { params }: { params: Promise<{ jeton: string }> },
 ): Promise<NextResponse> {
   // Drapeau éteint : la route n'existe pas. C'est ce qui rend le NO-GO réel —
   // merger la migration n'active rien.
@@ -68,7 +68,7 @@ export async function GET(
     return refuser(req);
   };
 
-  const jeton = (params.jeton ?? '').trim();
+  const jeton = ((await params).jeton ?? '').trim();
   if (!jeton) return refuse('jeton_absent');
 
   try {

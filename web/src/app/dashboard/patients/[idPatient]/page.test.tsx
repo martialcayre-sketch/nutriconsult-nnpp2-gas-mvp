@@ -47,8 +47,14 @@ function trouverProvider(node: unknown): ReactElement | null {
   return trouverProvider(enfants);
 }
 
-function enabledDuProvider() {
-  const arbre = FichePatientPage({ params: { idPatient: 'PAT_1' }, searchParams: {} });
+// La page est asynchrone depuis Next 15 (`params` et `searchParams` sont des
+// promesses) : l'appeler sans l'attendre rendrait une promesse, et l'arbre
+// serait introuvable — l'échec accuserait alors le câblage du drapeau.
+async function enabledDuProvider() {
+  const arbre = await FichePatientPage({
+    params: Promise.resolve({ idPatient: 'PAT_1' }),
+    searchParams: Promise.resolve({}),
+  });
   const provider = trouverProvider(arbre);
   expect(provider, 'le provider de l’agenda alimentaire doit envelopper la fiche').not.toBeNull();
   return (provider?.props as { enabled?: unknown }).enabled;
@@ -61,19 +67,19 @@ beforeEach(() => {
 });
 
 describe('câblage de WN_AGENDA_ALI jusqu’au panneau agenda alimentaire', () => {
-  it('monte le provider autour de la fiche', () => {
+  it('monte le provider autour de la fiche', async () => {
     drapeau.mockReturnValue(true);
-    expect(enabledDuProvider()).toBe(true);
+    expect(await enabledDuProvider()).toBe(true);
   });
 
-  it('transporte `false` quand le drapeau est éteint', () => {
+  it('transporte `false` quand le drapeau est éteint', async () => {
     drapeau.mockReturnValue(false);
-    expect(enabledDuProvider()).toBe(false);
+    expect(await enabledDuProvider()).toBe(false);
   });
 
-  it('lit réellement le drapeau à chaque rendu, jamais une constante', () => {
+  it('lit réellement le drapeau à chaque rendu, jamais une constante', async () => {
     drapeau.mockReturnValue(true);
-    enabledDuProvider();
+    await enabledDuProvider();
     expect(drapeau).toHaveBeenCalled();
   });
 });

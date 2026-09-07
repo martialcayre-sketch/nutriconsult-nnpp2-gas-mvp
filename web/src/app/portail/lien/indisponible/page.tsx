@@ -50,6 +50,11 @@ export default function LienIndisponiblePage() {
             d'en être un — la personne peut entrer sans attendre d'e-mail. Le
             lien n'apparaît que si le chemin existe vraiment. */}
         {isG5GooglePatientEnabled() && (
+          // Navigation pleine page ASSUMÉE : `connexion` est `force-dynamic` pour
+          // relire ses drapeaux à chaque requête, et ce cul-de-sac doit repartir
+          // d'un état propre. Passer à `<Link>` changerait le comportement — pas
+          // le rôle d'une PR de version.
+          // eslint-disable-next-line @next/next/no-html-link-for-pages
           <a href="/portail/connexion" className={patientButtonClassName('ghost', 'w-full')}>
             Continuer avec Google
           </a>

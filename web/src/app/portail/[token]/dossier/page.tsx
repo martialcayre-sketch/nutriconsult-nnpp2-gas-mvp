@@ -14,18 +14,19 @@ import { isDossierDeuxVoixEnabled } from '@/lib/patient/featureFlag';
 // LE JETON D'URL N'EST PAS UN FACTEUR D'AUTHENTIFICATION — il n'est transmis au
 // composant que pour construire les liens vers les deux autres écrans du
 // portail. C'est le cookie signé qui dit qui lit.
-export default function PortailDossierPage({ params }: { params: { token: string } }) {
+export default async function PortailDossierPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params;
   if (!isDossierDeuxVoixEnabled()) notFound();
 
   return (
     <div className="w-full max-w-2xl space-y-4">
       <Link
-        href={`/portail/${params.token}/questionnaires`}
+        href={`/portail/${token}/questionnaires`}
         className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
       >
         ← Mon parcours
       </Link>
-      <DossierDeuxVoixView token={params.token} />
+      <DossierDeuxVoixView token={token} />
     </div>
   );
 }
