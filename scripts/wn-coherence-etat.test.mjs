@@ -223,6 +223,47 @@ test('garde 3 : hors campagne active, rien à comparer', () => {
   assert.deepEqual(champs(ecarts), []);
 });
 
+test('garde 4 : une tête de reprise qui nomme une AUTRE campagne est détectée (le défaut A11)', () => {
+  const etat = {
+    ...etatSain(),
+    next_action: ['CAMPAGNE PRIMAIRE ACTIVE : campagne-perimee, lot courant LOT-01.'],
+  };
+  const ecarts = comparerEtat(etat, faitsSains(etat));
+  assert.deepEqual(champs(ecarts), ['next_action[0]']);
+});
+
+test("garde 4 : les traces d'anciennes têtes ne sont JAMAIS relues", () => {
+  // La moitié qui compte. `next_action` est une pile dont les entrées 1+ citent
+  // des campagnes closes — c'est sa raison d'être. Un garde qui les lirait
+  // rougirait sur toute campagne correctement archivée, et serait désarmé dans
+  // la semaine.
+  const etat = {
+    ...etatSain(),
+    next_action: [
+      'CAMPAGNE PRIMAIRE ACTIVE : campagne-x, lot courant LOT-03.',
+      '[trace 2026-08-23 — ancienne tête remplacée] CAMPAGNE PRIMAIRE ACTIVE : campagne-perimee, LOT-01.',
+      '[trace 2026-08-22 — ancienne tête remplacée] CAMPAGNE PRIMAIRE ACTIVE : campagne-plus-vieille, LOT-09.',
+    ],
+  };
+  const ecarts = comparerEtat(etat, faitsSains(etat));
+  assert.deepEqual(champs(ecarts), []);
+});
+
+test('garde 4 : une tête qui nomme la campagne mais tait son lot courant est détectée', () => {
+  const etat = {
+    ...etatSain(),
+    next_action: ['CAMPAGNE PRIMAIRE ACTIVE : campagne-x — le lot n\'est pas nommé.'],
+  };
+  const ecarts = comparerEtat(etat, faitsSains(etat));
+  assert.deepEqual(champs(ecarts), ['next_action[0]']);
+});
+
+test('garde 4 : sans next_action, aucune comparaison — jamais un écart inventé', () => {
+  const etat = { ...etatSain(), next_action: undefined };
+  const ecarts = comparerEtat(etat, faitsSains(etat));
+  assert.deepEqual(champs(ecarts), []);
+});
+
 test('ordinalDeLot : « aucun », vide et non-chaîne rendent null, jamais une égalité par accident', () => {
   assert.equal(ordinalDeLot('LOT-07-cloture.md'), 'LOT-07');
   assert.equal(ordinalDeLot('lot-07'), 'LOT-07');
@@ -421,4 +462,21 @@ test('DÉPÔT RÉEL — le lot actif de .wn/state.json est celui que CAMPAGNE.md
     lotCourantDeclare: campagnes.find((campagne) => campagne.name === etat.active_campaign)?.lotCourant ?? null,
   });
   assert.deepEqual(ecarts.filter((ecart) => ecart.champ === 'active_lot'), []);
+});
+
+test("DÉPÔT RÉEL — la tête de next_action nomme la campagne active, pas une campagne close", () => {
+  const etat = JSON.parse(fs.readFileSync(path.join(RACINE, '.wn', 'state.json'), 'utf8'));
+  const ecarts = comparerEtat(etat, {
+    worktreesVivants: [],
+    dirty: null,
+    maintenant: new Date(etat.updated_at),
+  });
+  assert.deepEqual(
+    ecarts.filter((ecart) => ecart.champ === 'next_action[0]'),
+    [],
+    "La tête de `next_action` annonce une autre campagne que `active_campaign`. "
+      + 'Réparer : pousser une tête neuve en position 0 et préfixer la précédente '
+      + "de `[trace <date> — ancienne tête remplacée]`. Ne PAS réécrire les entrées "
+      + "suivantes : elles sont l'archive, et c'est à ça qu'elles servent.",
+  );
 });

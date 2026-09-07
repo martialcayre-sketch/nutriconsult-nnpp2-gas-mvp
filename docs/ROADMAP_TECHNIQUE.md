@@ -13,7 +13,7 @@
 > - historique des chantiers et lots de consolidation R0→R10 → `docs/HISTORIQUE_CHANTIERS_TECHNIQUES.md` ;
 > - état courant condensé pour reprise rapide → `docs/claude/PROJET_CONTEXTE.md` (qui renvoie ici pour le détail).
 >
-> Mis à jour le 2026-08-03. Ce document décrit l'état constaté au moment de la
+> Mis à jour le 2026-09-07. Ce document décrit l'état constaté au moment de la
 > rédaction — en cas de doute, le code fait foi, pas ce texte.
 
 ## 1. Vue d'ensemble
@@ -23,39 +23,43 @@ production sur `app.wellneuro.fr`. Deux portails distincts partagent la même
 base de données :
 
 ```text
-                    ┌─────────────────────────┐
-                    │   Vercel (Next.js 14)    │  région fra1
-                    └───────────┬─────────────┘
-         ┌────────────────────┬─┴───────────────────┐
-         │                    │                      │
-  dashboard/*            portail/[token]      patient/[idAssignation]
-  (praticien,          (patient permanent,      (legacy, passation
-   session NextAuth)    session cookie)          sans session)
-         │                    │                      │
-         └────────────────────┴──────────┬───────────┘
-                                          │
-                              api/{praticien,portail,patient,internal}/*
-                                          │
-                    ┌─────────────────────┼─────────────────────┐
-                    │                     │                     │
-            PostgreSQL (Supabase)   Anthropic (synthèse IA,   SMTP (envoi
-            via Prisma 7            corpus clinique)          booklet/relance)
-                    │
-        + tables SQL-brut pgvector (rag_corpus_*, hors diff Prisma)
+                    ┌──────────────────────────┐
+                    │  Scalingo (Next.js 15)   │  région osc-fr1, HDS
+                    └────────────┬─────────────┘
+              ┌──────────────────┴──────────────────┐
+              │                                     │
+        dashboard/*                          portail/[token]
+        (praticien,                    (patient, cookie signé posé
+         session NextAuth)              par lien magique ou Google)
+              │                                     │
+              └──────────────────┬──────────────────┘
+                                 │
+                   api/{praticien,portail,patient,internal}/*
+                                 │
+          ┌──────────────────────┼──────────────────────┐
+          │                      │                      │
+   PostgreSQL (add-on     Anthropic (synthèse IA,   SMTP (envoi
+   Scalingo) via Prisma 7  corpus clinique)         booklet/relance)
+          │
+     + tables SQL-brut pgvector (rag_corpus_*, hors diff Prisma)
 ```
+
+`api/patient/*` n'est PAS un vestige : c'est le back-end vivant du portail, et
+il exige la session `wn_portail` comme les autres. Le parcours `patient/*` de
+page, lui, a été retiré le 2026-08-08.
 
 ## 2. Stack technique
 
 | Composant | Détail |
 |---|---|
-| Framework | Next.js 14, App Router, TypeScript, Tailwind CSS |
+| Framework | Next.js 15, App Router, TypeScript, Tailwind CSS |
 | Auth praticien | NextAuth 4, provider Google OAuth, domaine restreint `@wellneuro.fr` |
-| Auth patient | Cookie signé HMAC (portail) ou email gate (legacy) — indépendant de NextAuth |
-| Base de données | PostgreSQL (Supabase), Prisma 7 (driver adapter `pg`) |
+| Auth patient | Cookie signé HMAC (portail), posé par lien magique ou Google — indépendant de NextAuth |
+| Base de données | PostgreSQL (add-on Scalingo, non exposé à Internet), Prisma 7 (driver adapter `pg`) |
 | IA | Anthropic SDK (synthèse praticien, corpus clinique injecté, prompt caching) |
-| Recherche/embeddings | OpenAI (embeddings du corpus RAG, clé Vercel partagée) |
+| Recherche/embeddings | OpenAI (embeddings du corpus RAG, `OPENAI_API_KEY` du conteneur) |
 | Email | Nodemailer (SMTP) |
-| Déploiement | Vercel, région `fra1` |
+| Déploiement | Scalingo, région `osc-fr1` (hébergement HDS) |
 
 ## 3. Cartographie applicative (routes App Router)
 
@@ -64,7 +68,6 @@ base de données :
 | Groupe | Rôle |
 |---|---|
 | `dashboard/*` | Back-office praticien (session NextAuth) : `patients/[idPatient]`, `synthese`, `trajectoires`, `regles`, `biologie`, `bibliotheque`, `copilote`, `corpus`, `correspondance`, `documents`, `droits`, `agenda`, `parametres` — un dossier par module, `page.tsx` + `layout.tsx` commun |
-| `patient/[idAssignation]` | Parcours de passation questionnaire côté patient, legacy, sans session |
 | `portail/[token]` | Espace patient authentifié par token : `alimentation`, `informations`, `questionnaires`, `suivi`, `connexion`, `google/retour`, `lien/[jeton]` (lien magique), `lien/indisponible` |
 | `login` | Connexion praticien |
 | `dev/*` | Pages de vitrine/validation en développement, hors production |
