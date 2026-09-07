@@ -148,7 +148,9 @@ describe('GET /api/praticien/nouveaux-patients', () => {
       { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
     ]);
     prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
-    prisma.assignation.groupBy.mockResolvedValue([{ idPatient: 'PAT_1', _count: { _all: 5 } }]);
+    prisma.assignation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'Complété', _count: { _all: 5 } },
+    ]);
     const [ligne] = await lignes();
     expect(ligne.accesEnEchec).toBe(false);
     expect(ligne.etape).toBe('complet');
@@ -183,7 +185,9 @@ describe('GET /api/praticien/nouveaux-patients', () => {
       { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
     ]);
     prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
-    prisma.assignation.groupBy.mockResolvedValue([{ idPatient: 'PAT_1', _count: { _all: 5 } }]);
+    prisma.assignation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'Complété', _count: { _all: 5 } },
+    ]);
     const [ligne] = await lignes();
     expect(ligne.etape).toBe('complet');
     expect(ligne.nbAssignations).toBe(5);
@@ -292,6 +296,58 @@ describe('GET /api/praticien/nouveaux-patients', () => {
     expect(prisma.portailMagicLink.groupBy.mock.calls[0][0].where.idPatient).toEqual({ in: [] });
     expect(rendues.map(l => l.entreeRefusee)).toEqual([false, false]);
     expect(rendues.map(l => l.etape).sort()).toEqual(['acces_revoque', 'dossier_desactive']);
+  });
+
+  it('un pack assigné dont aucun questionnaire n’est revenu ne se dit pas complet', async () => {
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
+    ]);
+    prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
+    prisma.assignation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'En attente', _count: { _all: 5 } },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.nbAssignations).toBe(5);
+    expect(ligne.nbAssignationsRendues).toBe(0);
+    expect(ligne.etape).toBe('pack_sans_reponse');
+    expect(ligne.libelle).toBe('Pack assigné, rien rendu');
+  });
+
+  it('les statuts se somment, ils ne s’écrasent pas', async () => {
+    // Un patient rend DÉSORMAIS plusieurs lignes, une par statut. Les poser par
+    // affectation au lieu de les additionner ne garderait que la dernière.
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
+    ]);
+    prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
+    prisma.assignation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'En attente', _count: { _all: 3 } },
+      { idPatient: 'PAT_1', statut: 'Complété', _count: { _all: 2 } },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.nbAssignations).toBe(5);
+    expect(ligne.nbAssignationsRendues).toBe(2);
+    expect(ligne.etape).toBe('complet');
+  });
+
+  it('une assignation annulée ne compte pas comme rendue', async () => {
+    // LIMITE ASSUMÉE, ET C'EST ICI QU'ELLE SE LIT : un pack entièrement annulé
+    // par le praticien se lira « rien rendu ». Le dire dans un banc vaut mieux
+    // que de le découvrir à l'écran.
+    accesEnvoye();
+    prisma.portailMagicLink.findMany.mockResolvedValue([
+      { idPatient: 'PAT_1', consommeLe: new Date('2026-09-02T10:00:00.000Z') },
+    ]);
+    prisma.consultation.findMany.mockResolvedValue([{ idPatient: 'PAT_1' }]);
+    prisma.assignation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_1', statut: 'Annulée', _count: { _all: 5 } },
+    ]);
+    const [ligne] = await lignes();
+    expect(ligne.nbAssignations).toBe(5);
+    expect(ligne.nbAssignationsRendues).toBe(0);
+    expect(ligne.etape).toBe('pack_sans_reponse');
   });
 
   it('aucun dossier récent : aucune lecture d’agrégat n’est lancée', async () => {

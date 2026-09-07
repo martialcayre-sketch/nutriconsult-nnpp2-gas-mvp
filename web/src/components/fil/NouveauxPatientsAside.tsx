@@ -28,6 +28,9 @@ const VARIANTE: Record<EtapeNouveauPatient, BadgeVariant> = {
   onboarding_a_finir: 'warning',
   // Anomalie, pas attente : l'onboarding validé aurait dû assigner le pack.
   pack_absent: 'danger',
+  // Attente du patient, comme `onboarding_a_finir` : le pack est parti, il
+  // n'est pas revenu. Rien n'est cassé, quelque chose manque.
+  pack_sans_reponse: 'warning',
   complet: 'success',
 };
 
