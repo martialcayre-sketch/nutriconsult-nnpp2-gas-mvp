@@ -717,7 +717,7 @@ model ClinicalRule {
   doseCibleHaute          Float?  @map("dose_cible_haute")
   gradePreuveScientifique String  @map("grade_preuve_scientifique")
   sourceReferenceId       String  @map("source_reference_id")
-  // LE CLAIM QUI FONDE LA RÈGLE ([[D-139]]). Miroir exact de l'invariant déjà
+  // LE CLAIM QUI FONDE LA RÈGLE ([[D-140]]). Miroir exact de l'invariant déjà
   // énoncé pour `BiologyFunctionalRange` et pour les règles d'orientation :
   // « une plage fonctionnelle sans claim validé n'existe pas ». Référence
   // (`claim_id`, `version_claim`) vers `rag_corpus_claims`, dont le couple est

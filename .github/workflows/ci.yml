@@ -697,7 +697,7 @@ jobs:
         working-directory: web
         run: npx prisma db execute --file prisma/checks/cb_criteres_dossier_v1_negatif.sql
 
-      # Claim fondateur d'une règle clinique (D-139). Le moteur vérifie
+      # Claim fondateur d'une règle clinique (D-140). Le moteur vérifie
       # `claimsValides` EN PREMIER, et `clinical_rules` n'avait aucun champ pour
       # nommer un claim : toute règle était refusée, avec un motif qui affirmait
       # faussement que « les claims cités » n'étaient pas valides. Ce contrat

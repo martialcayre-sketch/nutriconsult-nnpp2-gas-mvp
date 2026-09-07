@@ -1,4 +1,4 @@
--- Contrat du claim fondateur d'une règle clinique ([[D-139]]).
+-- Contrat du claim fondateur d'une règle clinique ([[D-140]]).
 --
 -- Ce fichier éprouve ce que la BASE garde toute seule, et rien d'autre :
 --   1. une règle citant un claim BIEN FORMÉ est acceptée (cas positif — sans

@@ -1,4 +1,4 @@
--- Le claim qui fonde la règle ([[D-139]], arbitrage du 2026-09-07 : « un claim,
+-- Le claim qui fonde la règle ([[D-140]], arbitrage du 2026-09-07 : « un claim,
 -- comme les plages biologiques »).
 --
 -- CE QUE CETTE MIGRATION FERME. `deciderIntentionAvantBiologie` vérifie

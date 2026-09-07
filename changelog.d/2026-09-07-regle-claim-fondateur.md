@@ -1,4 +1,4 @@
-### Une règle nomme le claim qui la fonde (`D-139`) — migration
+### Une règle nomme le claim qui la fonde (`D-140`) — migration
 
 Le moteur C4 vérifie `claimsValides` en premier, et `clinical_rules` n'avait
 aucun champ pour nommer un claim : la prévisualisation de l'atelier refusait
