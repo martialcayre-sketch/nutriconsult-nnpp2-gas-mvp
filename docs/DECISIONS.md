@@ -4,7 +4,75 @@
 
 ## Décisions actives
 
+### D-143 — Une couleur par défaut n'est pas un défaut, c'est une invention
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session : « oui retire orange »)
+- Domaine : sécurité des compléments, sentinelle C4B
+
+**§1 — Le fait.** `sentinelle.ts` écrivait `'orange'` en dur à deux endroits :
+**inconditionnellement** sur tout candidat `cumul_substance`, et en **repli** sur
+un candidat `depassement_seuil` dépourvu d'alerte jointe. Aucune échelle de
+gradation n'est fondée dans le dépôt — `supplement_safety_alerts.niveau_alerte`
+est un `TEXT` sans `CHECK`, saisi librement à l'atelier, et [[D-132]] a
+explicitement refusé d'inventer une gradation faute de source.
+
+**Une échelle refusée en prose et écrite en code n'est pas refusée.**
+
+**§2 — Ce que la cartographie a établi, et qui déplace la question.** Le niveau
+**ne commande aucune décision** : les deux portes qui touchent aux alertes —
+`deciderIntentionAvantBiologie` et le tableau de compatibilité — basculent sur
+la **présence** de l'alerte, jamais sur son niveau. Mais il **circule** : la
+sentinelle le recopie dans `CandidatProtocolReviewFlag`, destiné à
+`protocol_review_flags`.
+
+La question ouverte n'est donc pas « quels paliers » mais **à quoi le niveau
+doit servir** — documenter, trier, ou moduler un refus de sécurité. La troisième
+serait un assouplissement de garde (`DC-12`, `DC-23`). Rien dans le dépôt
+n'indique qu'un avis ANSES fournisse une taxonomie de paliers : un avis fonde le
+**contenu** d'une alerte, ce que `message_fr` porte déjà. Cette question reste
+ouverte, et elle est désormais posée dans les bons termes.
+
+**§3 — La décision.** `niveauAlerte` devient `string | null` sur le candidat, et
+vaut `null` partout où aucune alerte n'est jointe. **L'absence n'affaiblit
+rien** : ce qui alerte est le FAIT — un cumul constaté, un seuil dépassé —,
+jamais l'étiquette posée dessus. Le jour où une échelle sera fondée, elle
+remplira ce champ ; d'ici là il dit la vérité, qui est qu'on ne sait pas
+(`DC-19`, `DC-20`, `DC-24`).
+
+**§4 — Portée nulle sur l'existant.** `protocol_review_flags` n'est écrite par
+AUCUN chemin du dépôt, et aucun consommateur de production ne lit le niveau du
+candidat. Étiquette (`D-125`) : **démontré dans le code, sans occurrence
+observée**. Le défaut n'a rien produit ; il aurait produit la première ligne
+d'une échelle non fondée le jour où cette table s'ouvrirait.
+
+**§5 — La sentinelle.** `echelleAlerte.guard.test.ts` refuse toute valeur
+d'échelle affectée à un champ de niveau dans une source servie. Elle ne juge pas
+les bancs — un niveau de FIXTURE décrit une entrée, il n'affirme rien — et elle
+ne vise pas le mot « orange » ailleurs, ce qui en ferait une nuisance qu'on
+finirait par désactiver. Éprouvée par mutation : la réintroduction la fait rougir
+en nommant fichier et ligne.
+
+**§6 — Comment ce code est arrivé sur la branche principale, et pourquoi cette
+décision est en retard.** Le code de ce lot a été emporté par la fusion de #943 :
+un changement de branche opéré avec un travail non enregistré a fait suivre les
+fichiers, et une indexation globale les a balayés dans le commit de fusion. La
+PR #943 ne le décrit donc nulle part. Le CI complet est passé au vert sur la tête
+fusionnée — le code n'est pas non éprouvé —, mais il est arrivé **sans sa
+décision ni son fragment**, que cette entrée répare. Rien n'est à défaire ; c'est
+la trace qui manquait.
+
+**Conséquence de méthode** : un travail non enregistré ne survit pas à un
+changement de branche sans y être emporté. Enregistrer avant de basculer, ou
+n'indexer que les chemins du lot.
+
 ### D-142 — Une condition séparée qui n'est écrite nulle part est une garde levée
+
+> **Le commit de fusion (#943) porte « (D-141) » dans son sujet.** Cette décision
+> a été renumérotée de `D-141` en `D-142` après que #942 (Sentry) a pris le
+> numéro pendant l'attente du CI ; le titre de la PR n'a pas suivi. Le registre
+> fait foi ; l'historique se trompe, et cela ne se réécrit pas sur la branche
+> principale.
 
 - Date : 2026-09-07
 - Statut : accepté (clôture du chantier « séparation de `condition_supplementaire` », ouvert par [[D-138]])
