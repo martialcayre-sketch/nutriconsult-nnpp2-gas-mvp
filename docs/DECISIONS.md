@@ -169,6 +169,26 @@ recueil de 21 nuits comme un point J42, privant le cycle de sa lecture J21.
 
 Aucune migration, aucun seuil de scoring.
 
+**Suivi — 2026-09-07, arbitrage rendu sur l'unité des doses (`D-132`).** Le
+responsable a tranché : **verrou exécutable d'abord, migration ensuite**.
+
+`uniteDosesVerrou.test.ts` refuse tout écrivain de
+`ingredient_functional_thresholds` tant que `ClinicalRule` ne porte pas d'unité.
+Il ne tranche RIEN — il garantit que la question sera posée avant que la
+comparaison ne serve, puisque c'est l'ouverture de cet écrivain qui la rend
+atteignable. Il **se relâche seul** dès que le champ existe : il est écrit pour
+mourir.
+
+Deux cas l'accompagnent, et ils ne sont pas décoratifs : l'un vérifie que le
+motif de recherche reconnaît réellement une écriture (sans lui, une faute de
+frappe rendrait le verrou vert à jamais — le défaut même de `D-134`), l'autre
+constate l'asymétrie de schéma qui motive tout. Le verrou a été **vu rougir**
+sous une sonde ouvrant l'écrivain interdit.
+
+Ce qu'il ne fait pas, et qui reste dû : dire quoi faire quand DEUX unités
+diffèrent. La seule réponse qui n'invente rien est « on ne compare pas », et
+elle appartient à la migration.
+
 ### D-134 — Un banc qui fabrique l'erreur qu'il attend ne prouve pas qu'elle arrive
 
 - Date : 2026-09-07
