@@ -4,6 +4,76 @@
 
 ## Décisions actives
 
+### D-132 — Deux référentiels de plus, et un troisième qu'on n'ouvre pas : une dose sans unité ne se compare à rien
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « 1, 2 puis 3 », le premier point étant l'ouverture du catalogue C4)
+- Domaine : atelier de règles cliniques (C4), référentiel du moteur d'intention.
+  **Aucun seuil clinique posé, aucune échelle d'alerte inventée, aucune
+  migration.**
+- Porte sur : `D-131` (dont ceci est la suite), `D-056` arbitrage 2, la décision
+  n°11 du moteur d'intention, `DC-19`/`DC-20`, `D-125` pour l'étiquetage
+
+**Ce que la décision livre.** Les deux derniers référentiels **non chiffrés**
+restés sans écrivain après `D-131` : `functional_categories` et
+`supplement_safety_alerts`, chacun avec sa route (POST **et GET**) et son geste
+d'écran, sous `WN_C4_ENABLED` comme le reste de l'atelier.
+
+**Pourquoi un GET, et pas seulement un POST.** Le code est unique en base : sans
+relecture, une ressaisie rendrait 409 devant un écran muet. Pour les alertes,
+c'est davantage qu'une commodité — le catalogue **publié** est exactement ce que
+`deciderIntentionAvantBiologie` exige avant de proposer quoi que ce soit
+(`D-056` arbitrage 2), et le praticien doit pouvoir constater qu'il existe. Un
+référentiel de sécurité qu'on écrit sans le relire est pire qu'un référentiel
+absent.
+
+**Le niveau d'alerte est exigé, PAS contraint.** `niveau_alerte` est un `TEXT`
+sans `CHECK` ; aucun vocabulaire n'est défini dans le dépôt — la seule occurrence
+du mot « orange » est un défaut interne de la sentinelle, sur un autre objet ; et
+le moteur de décision **ne lit pas le niveau** : toute alerte active refuse, quel
+qu'il soit. Poser ici une liste « orange / rouge » aurait inventé une gradation
+clinique que rien ne source (`DC-19`, `DC-20`). Le champ est donc obligatoire et
+borné, et l'écran en fait un champ libre plutôt qu'une liste déroulante. **La
+définition de l'échelle reste due.**
+
+**Arbitrage principal — les seuils fonctionnels NE SONT PAS ouverts, et le motif
+n'est pas la prudence de principe.** `depasseSeuilHaut`
+(`decisionAvantBiologie.ts`) compare `regle.doseCibleBasse/Haute` à
+`seuil.seuilDoseHaute` **par un `>` numérique nu**. Or :
+
+- `ClinicalRule` ne porte **aucune colonne d'unité** — ni au schéma, ni dans
+  `validerContenuRegle` ;
+- `IngredientFunctionalThreshold` en porte une (`unite`, NOT NULL) ;
+- le dépôt connaît déjà la règle et l'applique ailleurs — `compositions.ts` :
+  « **Dose et unité vont PAR PAIRE** […] Une dose sans unité est un nombre auquel
+  un lecteur prêtera la grandeur qui l'arrange ».
+
+Une règle à 500 (µg dans l'intention du rédacteur) comparée à un seuil de 200 mg
+serait refusée à tort ; une règle à 500 mg comparée à un seuil de 1000 µg
+**passerait** en étant 500 fois au-dessus. Le second sens est celui qui blesse.
+
+**Ce défaut est INATTEIGNABLE aujourd'hui, et le serait devenu par cette PR.**
+`seuilsActifs` est toujours vide faute d'écrivain, donc `aucun_seuil_publie` mord
+en premier. Ouvrir le chemin des seuils rendrait la comparaison atteignable —
+même forme que `D-127` §8, où persister sans traiter la péremption rendait une
+régression atteignable. Constat **démontré dans le code, sans occurrence
+observée** (`D-125`) : aucun seuil n'existe en production.
+
+**Deux sorties, et aucune n'est mienne.** (a) Une **migration** ajoutant l'unité
+à `ClinicalRule`, la dose et l'unité devenant une paire comme partout ailleurs ;
+(b) un **refus fail-closed** dans le moteur — une dose sans unité n'est
+comparable à rien, donc ne se compare pas — ce qui est une modification de
+logique clinique. L'une demande une autorisation de migration, l'autre une
+décision clinique : les deux appellent un arbitrage explicite, et cette décision
+les nomme plutôt que d'en choisir une au passage.
+
+**Ce que ça n'ouvre pas.** La chaîne C4 reste **muette** : une règle peut naître
+et être validée, un catalogue d'alertes peut être publié — mais
+`deciderIntentionAvantBiologie` exige encore des seuils actifs, et surtout **il
+n'est appelé par personne** (aucun module de `src/` ne l'importe hors de son
+propre banc). Cette seconde rupture est le chantier suivant.
+
 ### D-131 — Le catalogue C4 n'était pas seulement vide : il n'était pas remplissable
 
 - Date : 2026-09-06

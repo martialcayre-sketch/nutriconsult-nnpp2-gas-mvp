@@ -15,6 +15,16 @@ const URL_DESACTIVATION = '/api/praticien/regles/desactivation';
 const URL_REVISION = '/api/praticien/regles/revision';
 const URL_PREVISUALISATION = '/api/praticien/regles/previsualisation';
 const URL_SOURCES = '/api/praticien/regles/sources';
+const URL_CATEGORIES = '/api/praticien/regles/categories';
+const URL_ALERTES = '/api/praticien/regles/alertes';
+
+const CATEGORIE = { id: 'cat_1', code: 'antioxydant', labelFr: 'Antioxydant', description: null };
+const ALERTE = {
+  id: 'alerte_1',
+  code: 'levure_riz_rouge',
+  messageFr: 'Monacoline K : interaction avec les statines.',
+  niveauAlerte: 'orange',
+};
 
 const REGLE = {
   id: 'regle_1',
@@ -140,6 +150,9 @@ function router(
     vocabulaireEnEchec?: boolean;
     /** Remplace la réponse du chargement initial (appel nu). */
     vocabulaire?: unknown;
+    /** Référentiels de sécurité ([[D-132]]). */
+    categories?: unknown;
+    alertes?: unknown;
   } = {},
 ) {
   return (url: string, options?: { method?: string }) => {
@@ -166,12 +179,24 @@ function router(
           json({ ok: true, type: 'intention', entree: VOCABULAIRE.intentions[0] }),
         );
       }
+      if (url === URL_CATEGORIES) {
+        return Promise.resolve(json({ ok: true, categorie: CATEGORIE }, true));
+      }
+      if (url === URL_ALERTES) {
+        return Promise.resolve(json({ ok: true, alerte: ALERTE }, true));
+      }
       if (url === URL_SOURCES) {
         return Promise.resolve(
           json({ ok: true, source: { id: 'src_2', citation: 'ANSES, avis du 2024-03-12.', lienUrl: null } }, true),
         );
       }
       return Promise.resolve(json({}, false));
+    }
+    if (url === URL_CATEGORIES) {
+      return Promise.resolve(json(surcharges.categories ?? { ok: true, categories: [CATEGORIE] }));
+    }
+    if (url === URL_ALERTES) {
+      return Promise.resolve(json(surcharges.alertes ?? { ok: true, alertes: [ALERTE] }));
     }
     if (url.startsWith(URL_VOCABULAIRE)) {
       const params = new URLSearchParams(url.split('?')[1] ?? '');
@@ -837,6 +862,98 @@ describe('AtelierReglesPanel (Atelier de règles cliniques v1)', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/figure déjà au référentiel/)).toBeTruthy();
+    });
+  });
+
+  // ── SÉCURITÉ ET CATÉGORIES (`D-132`) ──────────────────────────────────────
+  //
+  // La LISTE compte autant que le formulaire : le code est unique en base, et
+  // sans relecture une ressaisie rendrait 409 devant un écran muet. Pour les
+  // alertes, c'est davantage — le catalogue publié est ce que le moteur exige
+  // avant de proposer quoi que ce soit.
+  it('montre les référentiels de sécurité déjà enregistrés', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+    await waitFor(() => {
+      expect(screen.getByText('Antioxydant')).toBeTruthy();
+      expect(screen.getByText(/Monacoline K/)).toBeTruthy();
+    });
+  });
+
+  it('ajoute une catégorie fonctionnelle et relit le référentiel', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+    const lecturesAvant = fetchMock.mock.calls.filter((appel) => appel[0] === URL_CATEGORIES).length;
+
+    fireEvent.change(screen.getByLabelText('Code de la catégorie fonctionnelle'), {
+      target: { value: 'chelateur' },
+    });
+    fireEvent.change(screen.getByLabelText('Libellé de la catégorie fonctionnelle'), {
+      target: { value: 'Chélateur' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter la catégorie' }));
+
+    await waitFor(() => {
+      const posts = appelsPost();
+      expect(posts).toHaveLength(1);
+      expect(posts[0][0]).toBe(URL_CATEGORIES);
+      expect(JSON.parse(posts[0][1].body)).toEqual({ code: 'chelateur', labelFr: 'Chélateur' });
+    });
+    await waitFor(() => {
+      expect(fetchMock.mock.calls.filter((appel) => appel[0] === URL_CATEGORIES).length)
+        .toBeGreaterThan(lecturesAvant);
+    });
+  });
+
+  it('ajoute une alerte — le niveau reste un champ LIBRE, sans échelle imposée', async () => {
+    fetchMock.mockImplementation(router());
+    await attendreLaListe();
+
+    fireEvent.change(screen.getByLabelText('Code de l’alerte de sécurité'), {
+      target: { value: 'millepertuis' },
+    });
+    fireEvent.change(screen.getByLabelText('Message de l’alerte'), {
+      target: { value: 'Inducteur enzymatique : interactions multiples.' },
+    });
+    // Une valeur hors du seul mot qu'on croise dans le code : l'écran ne
+    // prétend pas connaître l'échelle, il ne l'invente donc pas.
+    fireEvent.change(screen.getByLabelText('Niveau de l’alerte'), {
+      target: { value: 'vigilance renforcée' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter l’alerte' }));
+
+    await waitFor(() => {
+      const posts = appelsPost();
+      expect(posts[0][0]).toBe(URL_ALERTES);
+      expect(JSON.parse(posts[0][1].body)).toEqual({
+        code: 'millepertuis',
+        messageFr: 'Inducteur enzymatique : interactions multiples.',
+        niveauAlerte: 'vigilance renforcée',
+      });
+    });
+  });
+
+  it('rend le refus du serveur sur une alerte, tel quel', async () => {
+    fetchMock.mockImplementation(
+      router({
+        posts: {
+          [URL_ALERTES]: {
+            ok: false,
+            payload: { ok: false, reason: 'code_deja_pris', error: 'Ce code d’alerte existe déjà.' },
+          },
+        },
+      }),
+    );
+    await attendreLaListe();
+    fireEvent.change(screen.getByLabelText('Code de l’alerte de sécurité'), {
+      target: { value: 'levure_riz_rouge' },
+    });
+    fireEvent.change(screen.getByLabelText('Message de l’alerte'), { target: { value: 'Doublon.' } });
+    fireEvent.change(screen.getByLabelText('Niveau de l’alerte'), { target: { value: 'orange' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ajouter l’alerte' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('Ce code d’alerte existe déjà.')).toBeTruthy();
     });
   });
 

@@ -21,6 +21,14 @@ import type {
 } from '@/app/api/praticien/regles/vocabulaire/route';
 import type { ReglesPrevisualisationApiResponse } from '@/app/api/praticien/regles/previsualisation/route';
 import type { SourceCreationApiResponse } from '@/app/api/praticien/regles/sources/route';
+import type {
+  CategorieCreee,
+  CategoriesListeApiResponse,
+} from '@/app/api/praticien/regles/categories/route';
+import type {
+  AlerteCreee,
+  AlertesListeApiResponse,
+} from '@/app/api/praticien/regles/alertes/route';
 
 // Atelier de règles cliniques v1 (C4, LOT-03b) — le pendant de l'Atelier
 // corpus pour le référentiel du moteur d'intention. L'écran matérialise le
@@ -994,6 +1002,233 @@ function FormulaireSource({
   );
 }
 
+// ─── Encart « sécurité et catégories fonctionnelles » ([[D-132]]) ───────────
+//
+// LES DEUX RÉFÉRENTIELS VONT ENSEMBLE parce qu'un seuil fonctionnel a besoin des
+// deux : il se publie SUR une catégorie, et peut basculer une alerte. Les
+// séparer à l'écran ferait chercher dans deux volets ce qu'un seul geste
+// prépare.
+//
+// LA LISTE VAUT AUTANT QUE LE FORMULAIRE. Le code est unique en base : sans
+// relecture, une ressaisie rendrait 409 devant un écran muet. Et pour les
+// alertes, c'est plus que de l'ergonomie — le catalogue PUBLIÉ est exactement ce
+// que `deciderIntentionAvantBiologie` exige avant de proposer quoi que ce soit
+// (`D-056` arbitrage 2) ; le praticien doit pouvoir constater qu'il existe.
+
+function EncartCatalogueC4({ desactive }: { desactive: boolean }) {
+  const [categories, setCategories] = useState<CategorieCreee[]>([]);
+  const [alertes, setAlertes] = useState<AlerteCreee[]>([]);
+  const [codeCategorie, setCodeCategorie] = useState('');
+  const [labelCategorie, setLabelCategorie] = useState('');
+  const [codeAlerte, setCodeAlerte] = useState('');
+  const [messageAlerte, setMessageAlerte] = useState('');
+  const [niveauAlerte, setNiveauAlerte] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const [erreur, setErreur] = useState('');
+  const [succes, setSucces] = useState('');
+
+  const charger = useCallback(async () => {
+    try {
+      const [repCategories, repAlertes] = await Promise.all([
+        fetch('/api/praticien/regles/categories'),
+        fetch('/api/praticien/regles/alertes'),
+      ]);
+      const payloadCategories = (await repCategories.json()) as CategoriesListeApiResponse;
+      const payloadAlertes = (await repAlertes.json()) as AlertesListeApiResponse;
+      if (payloadCategories.ok) setCategories(payloadCategories.categories);
+      if (payloadAlertes.ok) setAlertes(payloadAlertes.alertes);
+    } catch {
+      // Silencieux : la lecture n'est pas le geste, et un référentiel
+      // momentanément illisible ne doit pas masquer les formulaires.
+    }
+  }, []);
+
+  useEffect(() => {
+    void charger();
+  }, [charger]);
+
+  const envoyer = async (url: string, corps: Record<string, string>, apres: () => void) => {
+    if (envoi) return;
+    setEnvoi(true);
+    setErreur('');
+    setSucces('');
+    try {
+      const reponse = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corps),
+      });
+      const payload = (await reponse.json()) as { ok: boolean; error?: string };
+      if (!reponse.ok || !payload.ok) {
+        // Le message du serveur est le message : il nomme le refus.
+        setErreur(payload.error ?? 'L’entrée n’a pas pu être ajoutée.');
+        return;
+      }
+      apres();
+      await charger();
+    } catch {
+      setErreur('L’entrée n’a pas pu être ajoutée.');
+    } finally {
+      setEnvoi(false);
+    }
+  };
+
+  const fige = desactive || envoi;
+  const categoriePrete = codeCategorie.trim() && labelCategorie.trim();
+  const alertePrete = codeAlerte.trim() && messageAlerte.trim() && niveauAlerte.trim();
+
+  return (
+    <details className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <summary className="cursor-pointer font-display text-lg font-semibold text-foreground">
+        Sécurité et catégories fonctionnelles
+      </summary>
+      <div className="mt-3 flex flex-col gap-5">
+        <p className="text-sm text-muted-foreground">
+          Tant que le catalogue d&apos;alertes n&apos;est pas publié, aucun
+          complément n&apos;est proposable : « aucune alerte » ne serait pas un
+          constat, seulement une absence d&apos;examen.
+        </p>
+
+        <div className="flex flex-col gap-2">
+          <h4 className="text-sm font-semibold text-foreground">
+            Catégories fonctionnelles ({categories.length})
+          </h4>
+          {categories.length > 0 && (
+            <ul className="max-h-32 overflow-y-auto rounded-lg border border-border text-sm">
+              {categories.map((categorie) => (
+                <li key={categorie.id} className="px-3 py-1.5 text-foreground">
+                  {categorie.labelFr}{' '}
+                  <span className="text-xs text-muted-foreground">{categorie.code}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              type="text"
+              aria-label="Code de la catégorie fonctionnelle"
+              value={codeCategorie}
+              disabled={fige}
+              onChange={(event) => setCodeCategorie(event.target.value)}
+              placeholder="code (snake_case)"
+              className={classeChamp()}
+            />
+            <input
+              type="text"
+              aria-label="Libellé de la catégorie fonctionnelle"
+              value={labelCategorie}
+              disabled={fige}
+              maxLength={200}
+              onChange={(event) => setLabelCategorie(event.target.value)}
+              placeholder="libellé français"
+              className={classeChamp()}
+            />
+          </div>
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={fige || !categoriePrete}
+            onClick={() => void envoyer(
+              '/api/praticien/regles/categories',
+              { code: codeCategorie.trim(), labelFr: labelCategorie.trim() },
+              () => {
+                setSucces(`Catégorie « ${labelCategorie.trim()} » ajoutée.`);
+                setCodeCategorie('');
+                setLabelCategorie('');
+              },
+            )}
+          >
+            Ajouter la catégorie
+          </Button>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <h4 className="text-sm font-semibold text-foreground">
+            Alertes de sécurité ({alertes.length})
+          </h4>
+          {alertes.length > 0 && (
+            <ul className="max-h-32 overflow-y-auto rounded-lg border border-border text-sm">
+              {alertes.map((alerte) => (
+                <li key={alerte.id} className="px-3 py-1.5 text-foreground">
+                  <span className="text-xs text-muted-foreground">{alerte.code}</span>{' '}
+                  — {alerte.messageFr}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="grid gap-2 sm:grid-cols-2">
+            <input
+              type="text"
+              aria-label="Code de l’alerte de sécurité"
+              value={codeAlerte}
+              disabled={fige}
+              onChange={(event) => setCodeAlerte(event.target.value)}
+              placeholder="code (snake_case)"
+              className={classeChamp()}
+            />
+            {/* LE NIVEAU EST UN CHAMP LIBRE, et c'est délibéré : aucune échelle
+                n'est définie dans le dépôt, et en proposer une ici — une liste
+                déroulante « orange / rouge » — inventerait une gradation
+                clinique que rien ne source. */}
+            <input
+              type="text"
+              aria-label="Niveau de l’alerte"
+              value={niveauAlerte}
+              disabled={fige}
+              maxLength={50}
+              onChange={(event) => setNiveauAlerte(event.target.value)}
+              placeholder="niveau"
+              className={classeChamp()}
+            />
+          </div>
+          <textarea
+            aria-label="Message de l’alerte"
+            value={messageAlerte}
+            disabled={fige}
+            rows={2}
+            maxLength={1000}
+            onChange={(event) => setMessageAlerte(event.target.value)}
+            placeholder="message servi au praticien quand l’alerte refuse"
+            className={`${classeChamp()} w-full`}
+          />
+          <Button
+            variant="outline"
+            className="self-start"
+            disabled={fige || !alertePrete}
+            onClick={() => void envoyer(
+              '/api/praticien/regles/alertes',
+              {
+                code: codeAlerte.trim(),
+                messageFr: messageAlerte.trim(),
+                niveauAlerte: niveauAlerte.trim(),
+              },
+              () => {
+                setSucces(`Alerte « ${codeAlerte.trim()} » ajoutée au catalogue.`);
+                setCodeAlerte('');
+                setMessageAlerte('');
+                setNiveauAlerte('');
+              },
+            )}
+          >
+            Ajouter l’alerte
+          </Button>
+        </div>
+
+        {erreur && (
+          <p role="alert" className="rounded-lg border border-accent bg-status-warning/10 px-3 py-2 text-sm text-status-warning">
+            {erreur}
+          </p>
+        )}
+        {succes && (
+          <p role="status" className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+            {succes}
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
 // ─── Panneau principal ──────────────────────────────────────────────────────
 
 export function AtelierReglesPanel() {
@@ -1212,6 +1447,11 @@ export function AtelierReglesPanel() {
           la nouvelle source doit apparaître dans la liste déroulante sans
           recharger la page, sinon elle serait créée puis introuvable. */}
       <FormulaireSource desactive={enEnvoi} onAjoute={() => void chargerVocabulaire()} />
+      {/* Sécurité et catégories ([[D-132]]) : les deux derniers référentiels
+          gouvernés à la main que l'atelier sait écrire. Les seuils, eux,
+          attendent — ils comparent des doses à des bornes, et la comparaison ne
+          tient pas encore ses unités. */}
+      <EncartCatalogueC4 desactive={enEnvoi} />
 
       <div role="tablist" aria-label="Statut des règles" className="flex gap-2">
         {ONGLETS.map((onglet, index) => {

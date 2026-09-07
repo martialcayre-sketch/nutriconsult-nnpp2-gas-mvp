@@ -70,6 +70,20 @@ export const CITATION_MAX = 1000;
 export const LIEN_URL_MAX = 2000;
 
 /**
+ * Bornes des deux autres référentiels gouvernés à la main ([[D-132]]) :
+ * catégories fonctionnelles et alertes de sécurité.
+ *
+ * `NIVEAU_ALERTE_MAX` borne un champ dont AUCUNE échelle n'est définie : la
+ * colonne est un `TEXT` sans `CHECK`, et le moteur de décision ignore le
+ * niveau — toute alerte active refuse, quel qu'il soit. Fixer ici une échelle
+ * (« orange », « rouge »…) serait inventer une gradation clinique que rien ne
+ * source. La dette est nommée à [[D-132]] plutôt que comblée au jugé.
+ */
+export const DESCRIPTION_MAX = 1000;
+export const MESSAGE_ALERTE_MAX = 1000;
+export const NIVEAU_ALERTE_MAX = 50;
+
+/**
  * Borne du nombre d'ingrédients servis par le vocabulaire de l'atelier (C4-1c),
  * le référentiel Compl'Alim en versant ~2 000 d'un coup. Non réglable par le
  * client. Elle vit ICI et non dans la route : Next.js refuse tout export de
