@@ -1,7 +1,7 @@
 ### Supprimé
 
 - **La colonne `clinical_rules.condition_supplementaire` est retirée**
-  (`D-145`, migration `20260908000000_drop_condition_supplementaire`). Troisième
+  (`D-147`, migration `20260908000000_drop_condition_supplementaire`). Troisième
   et dernier temps de la séparation ouverte par `D-138` : les deux natures
   séparées, puis `D-142` coupant le dernier écrivain, puis ici le retrait de la
   colonne et de ses dernières lectures — **dans le même commit**, faute de quoi

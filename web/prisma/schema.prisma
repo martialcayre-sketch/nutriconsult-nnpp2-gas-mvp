@@ -697,7 +697,7 @@ model ClinicalRule {
   poids                   Int    @map("poids")
   justification           String @map("justification")
   // L'ancien champ à deux natures `condition_supplementaire` a été SUPPRIMÉ
-  // ([[D-145]], migration `20260908000000_drop_condition_supplementaire`) après
+  // ([[D-147]], migration `20260908000000_drop_condition_supplementaire`) après
   // que [[D-142]] eut coupé le dernier écrivain. Il portait indifféremment une
   // référence de critère `{ critereId }` — la seule forme que l'API sût écrire —
   // et une condition biologique `{ type: 'biologie', cible }` — la seule que le

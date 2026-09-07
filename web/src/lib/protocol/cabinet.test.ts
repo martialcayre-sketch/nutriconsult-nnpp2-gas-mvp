@@ -117,6 +117,7 @@ describe('repère de cabinet — une cohorte silencieuse ne sert aucune médiane
         ],
         reponses: [
           {
+            statutValidite: null,
             idQuestionnaire: 'Q_STR_02',
             dateReponse: new Date('2026-01-01T00:00:00.000Z'),
             scoresJson: { rawAnswers: RAW },

@@ -57,7 +57,7 @@ describe('ClinicalSnapshot', () => {
       assessmentEpisode: confirmedEpisode(responses), patientContext: context, responses,
     });
     const direct = calculerEquilibre(construireReponsesParQuestionnaire([
-      { idQuestionnaire: 'Q_STR_02', dateReponse: new Date(responses[0].observedAt), scoresJson: responses[0].scoresJson },
+      { statutValidite: null, idQuestionnaire: 'Q_STR_02', dateReponse: new Date(responses[0].observedAt), scoresJson: responses[0].scoresJson },
     ]));
 
     expect(snapshot.balanceAssessment.global).toEqual({

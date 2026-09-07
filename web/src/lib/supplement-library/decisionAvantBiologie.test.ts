@@ -193,7 +193,7 @@ describe('Compléments avant biologie — la condition de critère', () => {
   });
 
   // Le banc qui éprouvait que le moteur IGNORE l'ancienne colonne a été retiré
-  // avec elle ([[D-145]]) : le champ n'existe plus, il ne peut donc plus être
+  // avec elle ([[D-147]]) : le champ n'existe plus, il ne peut donc plus être
   // passé, et un banc qui ne peut plus rougir n'éprouve rien. Ce que garde
   // désormais l'invariant, c'est `conditionRegle.guard.test.ts` — aucune source
   // servie ne le nomme.

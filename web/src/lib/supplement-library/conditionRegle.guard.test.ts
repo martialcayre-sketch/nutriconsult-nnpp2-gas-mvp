@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
-// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-142]], ÉLARGIE PAR [[D-145]].
+// LA SENTINELLE QUI AURAIT ATTRAPÉ [[D-142]], ÉLARGIE PAR [[D-147]].
 //
 // `D-138` a séparé l'ancien champ à deux natures `condition_supplementaire` en
 // deux colonnes — `condition_critere_id` et `condition_biologie` — et a fait
@@ -13,7 +13,7 @@ import { join } from 'node:path';
 //
 // Ce banc était borné aux ROUTES, et pour une raison précise : l'atelier lisait
 // encore le champ pour MONTRER ce qu'une règle d'avant `D-138` portait, et une
-// sentinelle qui punit la bonne conduite finit désactivée. `D-145` a supprimé
+// sentinelle qui punit la bonne conduite finit désactivée. `D-147` a supprimé
 // la colonne ; plus personne ne la lit, cette raison a disparu, et le périmètre
 // devient TOUTE source servie. Une mention qui réapparaîtrait ne pourrait plus
 // être qu'un retour au défaut.
@@ -40,7 +40,7 @@ function sourcesServies(dossier: string, trouves: string[] = []): string[] {
   return trouves;
 }
 
-describe('condition de règle — le champ supprimé ne revient pas ([[D-145]])', () => {
+describe('condition de règle — le champ supprimé ne revient pas ([[D-147]])', () => {
   const fichiers = sourcesServies(RACINE);
 
   it('lit un corpus de sources non vide (sinon le banc passerait par vacuité)', () => {

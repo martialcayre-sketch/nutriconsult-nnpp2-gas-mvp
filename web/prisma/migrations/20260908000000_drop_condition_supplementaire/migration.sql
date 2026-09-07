@@ -1,4 +1,4 @@
--- D-145 — Retrait de `clinical_rules.condition_supplementaire`.
+-- D-147 — Retrait de `clinical_rules.condition_supplementaire`.
 --
 -- Troisième et dernier temps de la séparation ouverte par D-138 :
 --   1. D-138 : les deux natures sont séparées en colonnes propres ;
