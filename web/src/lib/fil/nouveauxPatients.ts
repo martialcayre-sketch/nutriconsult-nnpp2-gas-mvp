@@ -8,7 +8,9 @@
  *
  * 1. l'e-mail d'accès part à la CRÉATION DE LA CONSULTATION, pas à la
  *    création du compte (`api/praticien/consultations`) — un patient créé
- *    sans consultation n'a jamais rien reçu ;
+ *    sans consultation n'a rien reçu, sauf lien magique émis depuis sa fiche
+ *    (`api/praticien/token`, action `lien_magique`) ou redemandé par lui-même
+ *    (`api/portail/lien/demande`) ;
  * 2. le patient doit ENTRER dans le portail par l'un des deux chemins (lien
  *    magique ou Google) — l'e-mail parti ne dit rien de l'entrée ;
  * 3. le pack de base n'est assigné qu'à la VALIDATION de l'onboarding par le
@@ -54,10 +56,16 @@ export type SourceNouveauPatient = {
   /** Le praticien a révoqué l'accès au portail (`accessTokenRevoked`). Aucune
    * porte n'est à ouvrir : il vient de la fermer. */
   accesRevoque: boolean;
-  /** Dernier e-mail d'accès au portail effectivement parti (ISO), sinon null. */
+  /** Dernier e-mail d'OUVERTURE D'ACCÈS effectivement parti (ISO), sinon null.
+   * `acces_portail` et `lien_magique` indifféremment : les deux ouvrent le
+   * dossier, et n'en compter qu'un affichait « Accès non envoyé » à des
+   * dossiers déjà servis. */
   accesEnvoyeLe: string | null;
-  /** Une tentative d'envoi a échoué ou n'est jamais partie, et rien n'a abouti
-   * depuis. Distinct de « jamais tenté » : l'un se renvoie, l'autre se crée. */
+  /** Une tentative d'envoi a échoué ou n'est jamais partie, rien n'a abouti
+   * depuis, ET LE PATIENT N'EST PAS ENTRÉ. Distinct de « jamais tenté » : l'un
+   * se renvoie, l'autre se crée. La dernière condition est posée par la route :
+   * un échec d'envoi postérieur à l'entrée est un incident de correspondance,
+   * pas une porte restée fermée — et cette étape passe AVANT `connecteLe`. */
   accesEnEchec: boolean;
   /** Première entrée EFFECTIVE dans le portail (lien magique consommé ou
    * connexion Google aboutie), sinon null. */
