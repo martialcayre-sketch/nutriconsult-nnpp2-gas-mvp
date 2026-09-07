@@ -28,7 +28,6 @@ const LIGNE = {
   typeRegle: 'recommande',
   poids: 1,
   justification: 'Justification sourcée.',
-  conditionSupplementaire: null,
   doseCibleBasse: 100,
   doseCibleHaute: 300,
   gradePreuveScientifique: 'modere',

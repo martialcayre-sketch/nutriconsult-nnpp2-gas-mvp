@@ -1,7 +1,7 @@
 ### Corrigé
 
 - **Une demande de confirmation s'affichait comme un échec d'envoi** (`M03` de
-  l'audit du 2026-09-06, `D-147`). La ligne de correspondance était dérivée de
+  l'audit du 2026-09-06, `D-148`). La ligne de correspondance était dérivée de
   la ligne d'audit par un ternaire « tout ce qui n'est pas envoyé est une
   erreur ». Sur les 222 lignes du journal en production, les 5 seules `Erreur`
   qu'il ait jamais portées étaient 5 demandes de confirmation.

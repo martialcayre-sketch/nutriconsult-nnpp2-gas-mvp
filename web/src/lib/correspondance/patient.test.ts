@@ -63,7 +63,7 @@ describe('journaliserCorrespondancePatient', () => {
 // du booklet en a davantage. La traduction se faisait par un ternaire
 // « tout ce qui n'est pas Envoye est une Erreur » : au 2026-09-08, les cinq
 // seules lignes `Erreur` que ce journal ait jamais portées (sur 222) étaient
-// cinq demandes de confirmation. D-147.
+// cinq demandes de confirmation. D-148.
 describe('statutJournalDepuisAuditBooklet', () => {
   it('« Envoye » reste un envoi', () => {
     expect(statutJournalDepuisAuditBooklet('Envoye')).toBe('Envoye');

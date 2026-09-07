@@ -82,11 +82,6 @@ export type RegleResolue = {
   doseCibleHaute: number | null;
   gradePreuve: GradePreuveScientifique;
   justification: string;
-  /**
-   * ANCIEN champ à deux natures ([[D-138]]). Conservé le temps que plus aucun
-   * code ne l'écrive ; le moteur ne le lit plus. Ne rien en déduire.
-   */
-  conditionSupplementaire: unknown;
   /** Condition biologique, seule nature que `lireConditionBiologique` lit. */
   conditionBiologie: unknown;
   /**

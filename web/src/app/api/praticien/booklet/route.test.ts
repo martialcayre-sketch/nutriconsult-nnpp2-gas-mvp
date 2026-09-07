@@ -404,7 +404,7 @@ describe('POST /api/praticien/booklet — instantané de la note transmise', () 
 });
 
 // ---------------------------------------------------------------------------
-// M03 / D-147 — la ligne que le PRATICIEN voit sur la fiche.
+// M03 / D-148 — la ligne que le PRATICIEN voit sur la fiche.
 //
 // `booklet_envois` (l'audit) était juste ; `correspondances_patient` (ce qui
 // s'affiche) en dérivait par un ternaire qui rangeait tout non-`Envoye` en

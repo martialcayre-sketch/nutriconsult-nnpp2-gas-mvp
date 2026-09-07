@@ -39,7 +39,6 @@ const REGLE = {
   doseCibleHaute: 300,
   gradePreuve: 'modere',
   justification: 'Justification sourcée du magnésium.',
-  conditionSupplementaire: null,
   // Les deux natures séparées ([[D-138]]), servies par l'API ([[D-142]]).
   conditionCritere: { id: 'crit_1', code: 'sous_isrs', labelFr: 'Sous ISRS' },
   conditionBiologie: { type: 'biologie', cible: 'ferritine' },
@@ -122,7 +121,6 @@ const RESOLUTION_PREVIEW = {
             doseCibleHaute: 300,
             gradePreuve: 'modere',
             justification: REGLE.justification,
-            conditionSupplementaire: null,
             claim: REGLE.claim,
             source: REGLE.source,
             creeLe: REGLE.creeLe,

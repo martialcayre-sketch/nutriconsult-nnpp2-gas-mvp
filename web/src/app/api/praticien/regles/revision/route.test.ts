@@ -44,7 +44,6 @@ const CREEE = {
   typeRegle: 'recommande',
   poids: 7,
   justification: 'Justification révisée.',
-  conditionSupplementaire: null,
   doseCibleBasse: null,
   doseCibleHaute: null,
   gradePreuveScientifique: 'fort',
