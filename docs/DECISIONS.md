@@ -4,6 +4,63 @@
 
 ## Décisions actives
 
+### D-139 — Le React qui tourne n'est pas celui que `package.json` déclare
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session, APRÈS correction
+  de la prémisse : « laisser partir, fenêtre de surveillance »).
+- Domaine : socle applicatif, gouvernance des versions
+- Fait suite à : la marche `next@14.2.35 → 15.5.25` (#934), et **corrige la
+  base sur laquelle elle a été arbitrée**.
+
+**§1 — Le fait.** Next embarque son propre React et l'aliase sur les trois
+couches de l'App Router — `reactServerComponents`, `serverSideRendering` **et
+`appPagesBrowser`** (`next/dist/build/webpack-config.js`,
+`createVendoredReactAliases`). Le dépôt n'ayant pas de Pages Router, **toute
+l'application s'exécute sur cette copie**, serveur comme navigateur. Le
+`react: ^18.3.1` de `package.json` ne gouverne que le type-check et les bancs
+unitaires.
+
+| | React réellement exécuté |
+|---|---|
+| `next@14.2.35` | `18.3.0-canary-178c267a4e-20241218` |
+| `next@15.5.25` | `19.2.0-canary-0bdb9206-20250818` |
+
+Vérifié par extraction du tarball npm de la 14.2.35 et lecture du paquet
+installé, pas par documentation.
+
+**§2 — Pourquoi c'est une décision et pas une note.** L'option arbitrée pour
+#934 s'intitulait « React 18 conservé ». Elle était **fausse du runtime**.
+L'arbitrage a donc été rendu sur une prémisse erronée, et le corpus de preuve
+invoqué — 6708 bancs unitaires — est **structurellement aveugle** au
+changement : `vitest` n'aliase pas React et joue le `18.3.1` de
+`node_modules`. `@types/react` reste en `^18.3.3` : `tsc` ne le voit pas
+davantage.
+
+**§3 — Ce qui a réellement éprouvé React 19, et ce qui ne l'a pas fait.** Les
+183 E2E tournent sur un **build de production** — donc sur React 19 —, sur
+Chromium et WebKit, baselines visuelles comprises. C'est une preuve réelle, et
+c'est la seule. Aucun motif cassé par React 19 dans `src` (ni `defaultProps`
+sur fonction, ni `propTypes`, ni `findDOMNode`, ni string ref, ni ref callback à
+retour implicite) ; toutes les bibliothèques React du dépôt déclarent `^19` en
+peer.
+
+**§4 — La décision.** Le déploiement part, avec fenêtre de surveillance. La
+majeure React 19 est **arbitrée**, non subie.
+
+**§5 — Ce qui rend le fait durable.** `src/lib/observability/reactEmbarque.test.ts`
+lit `require('next/dist/compiled/react').version` et refuse tout changement de
+majeure. S'il rougit, la réponse n'est jamais d'ajuster la constante seule :
+c'est de consigner la décision, puis de l'ajuster. C'est le contrôle dont
+l'absence a coûté cet arbitrage.
+
+**§6 — Reste ouvert, décidé séparément.** `staleTimes.dynamic` passe de 30 s à
+**0** (`next/dist/server/config-shared.js`). Deux pages du rail praticien
+interrogent Postgres côté serveur (`dashboard/agenda`, `dashboard/copilote`) :
+chaque retour re-requête au lieu de réutiliser 30 s de cache client. Plus frais,
+plus lourd. Non mesuré. `experimental.staleTimes.dynamic = 30` annulerait le
+delta si la charge le justifie.
+
 ### D-138 — Un critère n'est pas calculé, il est constaté — et la condition de règle cesse de porter deux natures
 
 - Date : 2026-09-07
