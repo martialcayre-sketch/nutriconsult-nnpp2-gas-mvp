@@ -4,6 +4,68 @@
 
 ## Décisions actives
 
+### D-149 — Quinze passations détachées ne sont pas un import raté, mais une cohorte close — et la validité n'a jamais servi
+
+- Date : 2026-09-08
+- Statut : accepté (constat `M15` de l'audit du 2026-09-06 : réserve de méthode, levée par la mesure)
+- Domaine : passations, scoring, provenance des données de production
+
+**1. Ce que `M15` demandait de ne pas conclure trop vite.** L'audit relevait
+deux chiffres — « 61/145 passations avant entrée tracée », « 15 sans
+`id_assignation` », « 30 événements datés 21–27 j avant leur enregistrement » —
+et posait la bonne réserve : lire « la voix patient n'est pas le patient »
+comme un défaut enverrait corriger un mécanisme qui n'existe plus. La vraie
+question était la **provenance** de ces lignes et leur `statutValidite`,
+puisqu'elles alimentent le scoring. Elle est tranchée par la lecture du
+2026-09-08 (conteneur one-off, lecture seule, agrégats sans donnée nominative).
+
+**2. Les deux populations sont disjointes dans le temps.** Les 130 passations
+rattachées couvrent du 2026-07-07 au 2026-09-05, sur 14 patients et
+24 questionnaires. Les 15 détachées couvrent du **2026-06-10 au 2026-06-20**,
+sur **3 patients** et 13 questionnaires. Dix-sept jours séparent la dernière
+détachée de la première rattachée, et **rien** ne tombe entre les deux. Ce
+n'est pas un import raté ni un chemin fautif : c'est l'avant-mécanisme, clos.
+
+**3. L'écart de dates est la même cohorte, pas un phénomène vivant.** Quinze
+lignes seulement portent un `created_at` postérieur de plus d'un jour à leur
+`date_reponse` (dix au-delà de 20 jours, écart maximal 28 jours) — et ces
+quinze sont **exactement** les quinze détachées. Toute ligne vivante a
+`created_at ≈ date_reponse`, parce que les trois écrivains posent
+`dateReponse: now`. Le chiffre « 30 événements » de l'audit ne se retrouve pas ;
+la mesure en donne 15, toutes du même lot de juin.
+
+**4. Aucun chemin vivant ne peut re-détacher une passation.** Les trois seuls
+écrivains — `patient/submit` et les deux clôtures d'agenda — tirent tous
+`idAssignation` d'une assignation déjà résolue, qu'ils mettent à jour dans la
+foulée. Le champ reste NULLABLE au schéma (aucune migration n'est demandée
+ici) ; c'est donc un banc structurel qui tient la propriété,
+`passationRattachee.guard.test.ts`. Ce qu'il défend est concret : le
+rattachement est la seule jointure qui dise « cette assignation a sa réponse »
+(`idsAssignationsAvecPassation`, carte `assignation_en_retard` du Fil). Une
+passation détachée laisse le dossier réclamer un questionnaire déjà rempli.
+
+**5. LE FAIT LE PLUS IMPORTANT DE CETTE LECTURE : les 145 passations de
+production sont `VALID`. Toutes.** Zéro `INVALID`, zéro `SUPERSEDED`, zéro
+`HISTORICAL_ONLY`, zéro `AMBIGUOUS`. Le mécanisme n'est pourtant pas orphelin —
+`InboxQuestionnaires` poste bien vers `api/praticien/questionnaires/validite`,
+la commande existe et est câblée. Elle n'a simplement jamais été employée.
+
+**6. Ce que cela dit de [[D-146]], et qui corrige sa portée.** Le lot `A03` a
+rendu `statutValidite` obligatoire dans le type d'entrée du moteur et réparé
+trois adaptateurs qui le perdaient. Le mutant prouvait qu'une passation retirée
+rendait `{ tendance: 'stable', delta: 0 }`. Ce que la production ajoute :
+**aucune passation n'a jamais été retirée**, donc ce défaut était armé et n'a
+jamais tiré. `D-146` n'a réparé aucun dommage passé ; il a fermé la trappe
+avant le premier pas. La distinction compte pour qui relira le registre : ne
+pas la faire laisserait croire à un incident clinique qui n'a pas eu lieu.
+
+**7. Ce qui reste ouvert.** La date d'une passation d'agenda est celle de sa
+CLÔTURE, pas de la période mesurée (`dateReponse: now` dans les deux clôtures) —
+c'est `M13`, et c'est un arbitrage clinique qui n'est pas pris ici. Le banc
+exige seulement que chaque écrivain pose `dateReponse` explicitement, pour que
+le jour où l'un d'eux voudra dater la période, l'intention soit visible plutôt
+que déléguée au défaut de la base.
+
 ### D-148 — Un drapeau de confirmation qu'aucun écran ne pose est une décision annoncée, et impossible à prendre
 
 - Date : 2026-09-08
