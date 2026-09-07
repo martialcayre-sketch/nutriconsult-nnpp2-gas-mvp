@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { createPublicId } from '@/lib/ids';
 import { isMotifValide } from '@/lib/consultation/motifs';
 import { sendPortailLinkEmail, type EnvoiAcces } from '@/lib/consultation/email';
+import { emettreLienMagiquePourPraticien } from '@/lib/portail/emissionLienMagique';
 import { emailPraticien, verifierAppartenancePatient } from '@/lib/praticien/appartenance';
 import { journaliserAccesDossier } from '@/lib/praticien/journalAcces';
 import { accepteNouvelEnvoi, MESSAGE_DOSSIER_CLOS, RAISON_DOSSIER_CLOS } from '@/lib/patient/cycleDeVie';
@@ -208,6 +209,20 @@ export async function POST(req: Request): Promise<NextResponse<CreateConsultatio
       },
     });
 
+    // LE GESTE PAR DÉFAUT PORTE DÉSORMAIS LE LIEN QUI OUVRE. Avant ce lot, il
+    // ne portait que l'adresse de la page de connexion : le patient arrivait
+    // devant une porte, pas dans son espace. `null` drapeau éteint — l'e-mail
+    // redevient alors exactement celui d'avant, au caractère près.
+    const lienMagique = await emettreLienMagiquePourPraticien(
+      patient.idPatient,
+      (session.user?.email ?? '').toLowerCase(),
+    ).catch(() => null);
+    // Le `.catch` n'est pas décoratif : l'appelant a DÉJÀ créé sa consultation
+    // quand il arrive ici. Laisser remonter un rejet ferait rendre
+    // `success: false` sur un dossier bel et bien créé, et le praticien
+    // recommencerait. Le module ne rejette pas aujourd'hui — ceci le tient s'il
+    // régressait.
+
     // L'envoi ne conditionne PAS la consultation : elle est créée, la réponse
     // reste `success: true`. Ce que le `catch` avalait devient un champ, faute
     // de quoi l'écran annonce « envoyé » sur un envoi mort.
@@ -216,7 +231,13 @@ export async function POST(req: Request): Promise<NextResponse<CreateConsultatio
       // En serverless, on attend explicitement la promesse pour eviter que
       // l'envoi best-effort soit interrompu juste apres la reponse HTTP.
       // Le motif ne part plus dans l'e-mail (audit HDS) — il reste en base.
-      const statut = await sendPortailLinkEmail(patient.email, patient.prenom, patient.idPatient, patient.praticienEmail);
+      const statut = await sendPortailLinkEmail(
+        patient.email,
+        patient.prenom,
+        patient.idPatient,
+        patient.praticienEmail,
+        lienMagique ?? undefined,
+      );
       if (statut === 'Non_envoye') envoi = 'non_configure';
     } catch (e) {
       envoi = 'echoue';

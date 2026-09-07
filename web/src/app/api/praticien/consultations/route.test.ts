@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getServerSession, prisma, sendPortailLinkEmail } = vi.hoisted(() => ({
+const { getServerSession, prisma, sendPortailLinkEmail, emettreLienMagiquePourPraticien } = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   prisma: {
     patient: { findUnique: vi.fn(), update: vi.fn() },
@@ -8,12 +8,19 @@ const { getServerSession, prisma, sendPortailLinkEmail } = vi.hoisted(() => ({
     journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
   },
   sendPortailLinkEmail: vi.fn(),
+  emettreLienMagiquePourPraticien: vi.fn(),
 }));
 
 vi.mock('next-auth', () => ({ getServerSession }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/prisma', () => ({ prisma }));
 vi.mock('@/lib/consultation/email', () => ({ sendPortailLinkEmail }));
+// LE MODULE D'ÉMISSION EST MOCKÉ ICI, et éprouvé seul dans son propre fichier.
+// Sans ce mock, le vrai module serait chargé et irait chercher
+// `buildMagicLinkUrl` dans le factory PARTIEL ci-dessus : l'export absent ne
+// lève pas à l'import mais à l'accès, la levée tombe dans son `catch`, et ces
+// bancs mesureraient un `null` fabriqué plutôt que le chemin qu'ils visent.
+vi.mock('@/lib/portail/emissionLienMagique', () => ({ emettreLienMagiquePourPraticien }));
 vi.mock('@/lib/ids', () => ({ createPublicId: (prefix: string) => `${prefix}_TEST_12345678` }));
 
 import { GET, POST } from './route';
@@ -99,6 +106,8 @@ describe('POST /api/praticien/consultations', () => {
     prisma.patient.findUnique.mockResolvedValue(patient);
     prisma.consultation.create.mockResolvedValue({});
     sendPortailLinkEmail.mockResolvedValue('Envoye');
+    // Défaut : drapeau éteint — le module rend `null`, l'e-mail est celui d'avant.
+    emettreLienMagiquePourPraticien.mockResolvedValue(null);
   });
 
   it('refuse sans session (401)', async () => {
@@ -160,11 +169,16 @@ describe('POST /api/praticien/consultations', () => {
     // Le 4e argument porte le `Reply-To` : sans cette assertion, un remaniement
     // le perdrait sans qu'aucun banc ne rougisse, et le bouton « Répondre » du
     // patient viserait de nouveau `noreply@`.
+    // CINQ ARGUMENTS DEPUIS QUE LE GESTE PORTE UN LIEN QUI OUVRE. Le
+    // cinquième est `undefined` ici parce que `WN_G4_LIEN_MAGIQUE` n'est pas
+    // posé dans ce banc : l'e-mail redevient alors exactement celui d'avant.
+    // C'est cette assertion qui prouve l'inertie drapeau éteint.
     expect(sendPortailLinkEmail).toHaveBeenCalledWith(
       'sophie.nicola@example.test',
       'Sophie',
       'PAT_1',
       'p@wellneuro.fr',
+      undefined,
     );
   });
 
@@ -226,5 +240,45 @@ describe('POST /api/praticien/consultations', () => {
     expect(prisma.patient.update).not.toHaveBeenCalled();
     expect(prisma.consultation.create).not.toHaveBeenCalled();
     expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('drapeau allumé : le lien qui ouvre voyage dans l’e-mail, sans rien déplacer', async () => {
+    prisma.patient.findUnique.mockResolvedValue({ ...patient, accessTokenRevoked: false });
+    emettreLienMagiquePourPraticien.mockResolvedValue('https://app.wellneuro.fr/portail/lien/JETON');
+    const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+
+    expect(res.status).toBe(200);
+    expect(emettreLienMagiquePourPraticien).toHaveBeenCalledWith('PAT_1', 'p@wellneuro.fr');
+    // LES QUATRE PREMIERS ARGUMENTS SONT INCHANGÉS : le `Reply-To` du praticien
+    // notamment, que le correctif naïf aurait perdu en basculant d'e-mail.
+    expect(sendPortailLinkEmail).toHaveBeenCalledWith(
+      'sophie.nicola@example.test',
+      'Sophie',
+      'PAT_1',
+      'p@wellneuro.fr',
+      'https://app.wellneuro.fr/portail/lien/JETON',
+    );
+  });
+
+  it('une émission qui REJETTE ne fait pas échouer une consultation déjà créée', async () => {
+    // Le module ne rejette pas aujourd'hui — il dégrade vers `null`. Ce banc
+    // éprouve la route face à un module futur qui régresserait : sans le
+    // `.catch`, le rejet remonterait au `catch` externe et rendrait
+    // `reason: 'exception'` sur un dossier bel et bien créé.
+    prisma.patient.findUnique.mockResolvedValue({ ...patient, accessTokenRevoked: false });
+    emettreLienMagiquePourPraticien.mockRejectedValueOnce(new Error('base indisponible'));
+    const res = await POST(postRequest({ idPatient: 'PAT_1' }));
+    const json = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(json.success).toBe(true);
+    expect(prisma.consultation.create).toHaveBeenCalledOnce();
+    expect(sendPortailLinkEmail).toHaveBeenCalledWith(
+      'sophie.nicola@example.test',
+      'Sophie',
+      'PAT_1',
+      'p@wellneuro.fr',
+      undefined,
+    );
   });
 });

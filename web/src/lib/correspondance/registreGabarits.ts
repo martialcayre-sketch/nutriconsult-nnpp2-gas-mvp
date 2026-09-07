@@ -356,6 +356,51 @@ export const REGISTRE_GABARITS_PATIENT: readonly VersionGabaritPatient[] = Objec
     valideLe: '2026-09-04',
     hash: '565610165965e90f611d6f315e07a6392956cdcf0e48547c1b4391fb6a8153eb',
   },
+  // Le MÊME texte que `acces_portail@2`, augmenté du lien qui ouvre. Clé
+  // DISTINCTE et non version 3 : `getGabarit` rend la version la plus haute
+  // d'une clé, et une v3 serait servie aussi au chemin SANS lien, où le rendu
+  // lèverait sur `{{lien}}` manquant. Le type de correspondance journalisé
+  // reste `acces_portail` — c'est lui que lit l'encart des dossiers neufs.
+  {
+    key: 'acces_portail_lien',
+    version: 1,
+    titre: "Ouverture de l'accès à l'espace patient, avec lien direct",
+    sujet: 'Votre espace de suivi — Martial Cayre (Wellneuro)',
+    corps:
+      'Bonjour {{prenom}},\n\n' +
+      'Je vous ouvre l’accès à votre espace de suivi.\n\n' +
+      'Wellneuro est l’outil que j’utilise pour le suivi de mes patients, et ' +
+      'wellneuro.fr est mon site : ce message, et ceux qui suivront depuis ' +
+      'noreply@wellneuro.fr, viennent de mon cabinet. L’accès à cet espace et le ' +
+      'suivi qui s’y fait sont gratuits — il n’y a rien à payer, ni maintenant ni ' +
+      'plus tard.\n\n' +
+      'Pour entrer directement, ouvrez ce lien :\n{{lien}}\n\n' +
+      'Il est valable 24 heures et ne s’ouvre qu’une fois. Passé ce délai, ou si ' +
+      'vous l’avez déjà ouvert, votre page d’accès, elle, reste ouverte et ne ' +
+      'change jamais :\n{{connexion}}\n\n' +
+      'Vous pouvez taper cette adresse vous-même dans votre navigateur plutôt que de ' +
+      'cliquer : elle mène au même endroit. Vous vous y connecterez avec Google, ou ' +
+      'en demandant un lien d’accès par e-mail, à l’adresse à laquelle vous recevez ' +
+      'ce message.\n\n' +
+      'À la première connexion : votre consentement, une courte fiche de ' +
+      'renseignements, puis quelques questions sur ce qui vous amène. Vos ' +
+      'questionnaires sont mis à disposition ensuite, et vous avancez à votre ' +
+      'rythme ; si l’un d’eux porte une date limite, elle vous sera indiquée.\n\n' +
+      'On ne vous demandera jamais de coordonnées bancaires, de numéro de carte ni ' +
+      'de mot de passe. Une question, un doute sur un message reçu : écrivez-moi à ' +
+      'martialcayre@wellneuro.fr.\n\n' +
+      'Martial Cayre\n' +
+      'Docteur en Pharmacie — praticien en santé fonctionnelle\n' +
+      'Labellisé Neuro-Nutrition® (Institut SIIN)\n' +
+      'Wellneuro — wellneuro.fr',
+    variables: ['prenom', 'connexion', 'lien'],
+    // Ni instrument, ni domaine clinique, ni chiffre — comme la v2 dont il
+    // reprend le texte au caractère près, hors le paragraphe du lien.
+    donneesSante: { statut: 'conforme' },
+    redigeLe: '2026-09-07',
+    valideLe: '2026-09-07',
+    hash: '0e65572d94cc85966add63e7891136a552169d777a971e16319ec7e082694e86',
+  },
 ]);
 
 /** Le gabarit courant d'une clé : version la plus haute (les versions

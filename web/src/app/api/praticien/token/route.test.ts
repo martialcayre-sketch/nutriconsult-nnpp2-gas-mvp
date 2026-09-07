@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getServerSession, prisma, verifierAppartenancePatient } = vi.hoisted(() => ({
+const { getServerSession, prisma, verifierAppartenancePatient, emettreLienMagiquePourPraticien } = vi.hoisted(() => ({
   getServerSession: vi.fn(),
   prisma: {
     patient: { findUnique: vi.fn(), update: vi.fn() },
@@ -10,6 +10,12 @@ const { getServerSession, prisma, verifierAppartenancePatient } = vi.hoisted(() 
     $transaction: vi.fn(async (operations: unknown[]) => Promise.all(operations)),
   },
   verifierAppartenancePatient: vi.fn(),
+  // DÉFAUT DRAPEAU ÉTEINT, posé ici et non dans un `beforeEach` : le mock est
+  // partagé par tous les blocs du fichier, et `vi.clearAllMocks()` efface les
+  // APPELS sans toucher aux implémentations. Sans ce défaut, les blocs qui ne
+  // le posent pas recevraient `undefined`, sur quoi le `.catch` de la route
+  // lèverait — et ils mesureraient une exception en croyant mesurer un envoi.
+  emettreLienMagiquePourPraticien: vi.fn().mockResolvedValue(null),
 }));
 
 vi.mock('next-auth', () => ({ getServerSession }));
@@ -25,6 +31,10 @@ vi.mock('@/lib/praticien/appartenance', () => ({
 // Le gate G4 est éteint par défaut : sans ce mock, `lien_magique` répond 404
 // et les cas qui le visent passeraient au vert sans rien atteindre.
 vi.mock('@/lib/portail/featureFlag', () => ({ isG4LienMagiqueEnabled: () => true }));
+// Le module d'émission est mocké, et éprouvé seul dans son propre fichier :
+// sans cela ces bancs mesureraient un `null` fabriqué par le factory partiel
+// de `@/lib/consultation/email`.
+vi.mock('@/lib/portail/emissionLienMagique', () => ({ emettreLienMagiquePourPraticien }));
 vi.mock('@/lib/consultation/email', () => ({
   buildGoogleConnexionUrl: () => 'https://app.wellneuro.fr/portail/google',
   buildMagicLinkUrl: (jeton: string) => `https://app.wellneuro.fr/portail/lien/${jeton}`,
@@ -187,11 +197,16 @@ describe('DELETE /api/praticien/token — révocation d’accès', () => {
 
     await POST(postRequest({ idPatient: 'PAT_1', action: 'resend' }));
 
+    // CINQ ARGUMENTS DEPUIS QUE « Renvoyer le lien » porte une porte qui
+    // s'ouvre. Le cinquième est `undefined` ici parce que `WN_G4_LIEN_MAGIQUE`
+    // n'est pas posé dans ce banc : l'e-mail redevient alors exactement celui
+    // d'avant. C'est cette assertion qui prouve l'inertie drapeau éteint.
     expect(vi.mocked(sendPortailLinkEmail)).toHaveBeenCalledWith(
       'sophie.nicola@example.test',
       'Sophie',
       'PAT_1',
       'p@wellneuro.fr',
+      undefined,
     );
   });
 });
@@ -334,5 +349,49 @@ describe('POST /api/praticien/token — rétablissement d’accès', () => {
     const res = await POST(postRequest({ idPatient: 'PAT_1', action: 'lien_magique' }));
     expect(res.status).toBe(409);
     expect((await res.json()).reason).toBe('portal_revoked');
+  });
+});
+
+describe('POST /api/praticien/token — le renvoi porte le lien qui ouvre', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.stubEnv('NEXTAUTH_SECRET', 'secret-de-banc');
+    getServerSession.mockResolvedValue({ user: { email: 'p@wellneuro.fr' } });
+    verifierAppartenancePatient.mockResolvedValue('ok');
+    prisma.patient.findUnique.mockResolvedValue({
+      idPatient: 'PAT_SEED_03',
+      email: 'michel.dogne@fictif.wellneuro.fr',
+      prenom: 'Michel',
+      praticienEmail: 'p@wellneuro.fr',
+      actif: true,
+      accessTokenRevoked: false,
+    });
+    prisma.patient.update.mockResolvedValue({});
+    prisma.portailMagicLink.create.mockResolvedValue({});
+    vi.mocked(sendPortailLinkEmail).mockResolvedValue('Envoye');
+    emettreLienMagiquePourPraticien.mockResolvedValue('https://app.wellneuro.fr/portail/lien/JETON');
+  });
+
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('« Copier le lien » n’émet RIEN et n’envoie RIEN', async () => {
+    // C'EST CE CAS QUI INTERDIT DE REMONTER L'ÉMISSION au-dessus du test
+    // `action !== 'lien'` : sans lui, chaque clic sur « Copier » écrirait un
+    // jeton en base sans qu'aucun e-mail ne parte.
+    const res = await POST(postRequest({ idPatient: 'PAT_SEED_03', action: 'lien' }));
+    expect(res.status).toBe(200);
+    expect(emettreLienMagiquePourPraticien).not.toHaveBeenCalled();
+    expect(sendPortailLinkEmail).not.toHaveBeenCalled();
+  });
+
+  it('« Renvoyer le lien » porte le lien ET garde le Reply-To du praticien', async () => {
+    await POST(postRequest({ idPatient: 'PAT_SEED_03', action: 'resend' }));
+    expect(vi.mocked(sendPortailLinkEmail)).toHaveBeenCalledWith(
+      'michel.dogne@fictif.wellneuro.fr',
+      'Michel',
+      'PAT_SEED_03',
+      'p@wellneuro.fr',
+      'https://app.wellneuro.fr/portail/lien/JETON',
+    );
   });
 });
