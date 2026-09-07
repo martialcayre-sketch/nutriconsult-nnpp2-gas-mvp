@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-145 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
+### D-146 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
 
 - Date : 2026-09-08
 - Statut : accepté et exécuté.
@@ -63,6 +63,72 @@ null` explicitement — même comportement qu'avant, mais dit. C'est exactement 
 prix qui achète l'impossibilité de l'oublier, et `adaptateursValidite.test.ts`
 prend les deux adaptateurs par leur seule sortie observable pour que le champ ne
 se reperde pas.
+
+### D-145 — Un destinataire vivant que quinze mois de dossier n'avaient jamais nommé
+
+- Date : 2026-09-07
+- Statut : **constat établi et consigné ; l'arbitrage appartient au responsable de traitement et n'est pas pris ici.**
+- Domaine : RGPD, sous-traitants, corpus
+
+- Contexte : la rubrique 6 du dossier RGPD est reprise pour y inscrire Sentry
+  (`D-141`). L'inventaire des tiers est refait **depuis le code** plutôt que
+  depuis les documents, et il en rend un que personne n'attendait.
+
+**1. Le fait.** `web/src/lib/rag/embeddings.ts:20-34` envoie à `api.openai.com`
+le texte libre saisi par le praticien dans la recherche de corpus, ainsi que le
+texte des chunks à indexer. Les deux drapeaux qui commandent ce chemin sont
+posés en production : `WN_RECHERCHE_CORPUS_ENABLED` depuis le 2026-08-22
+(`D-081`) et `RAG_PGVECTOR_ENABLED`, relue `true` sur Scalingo le 2026-09-07
+(`env-get` — valeur de drapeau, non secrète). **Le flux est armé.**
+
+**2. Ce qui rend le constat sévère, ce n'est pas le flux, c'est le silence.**
+Au 2026-09-07, « OpenAI » n'apparaît **dans aucune pièce de conformité** : ni
+`docs/DOSSIER_RGPD.md`, ni `docs/GATES_GO_NO_GO.md`, ni le module
+`web/src/lib/trust/`, ni **aucune des 144 décisions** du registre — compté, pas
+supposé, et recompté à chaque fusion concurrente (`D-142` et `D-143`, arrivées
+pendant l'attente du CI, ne le nomment pas davantage). Un tiers reçoit des requêtes depuis la production, et le corpus
+documentaire qui prétend décrire les destinataires ne le connaît pas.
+
+**3. Le rapprochement avec Sentry, et la différence.** C'est le même écart que
+le trou 3 de la rubrique 6, tranché le matin même : un sous-traitant de fait non
+déclaré. Une différence compte, et elle joue dans le mauvais sens — **Sentry
+n'émettait rien** (aucun DSN, SDK non initialisé), **celui-ci émet**. L'écart
+Sentry était une dette de papier ; celui-ci est un flux.
+
+**4. Ce que le constat ne dit PAS.** Il ne dit pas qu'une donnée de santé est
+partie. Par construction, ces chemins portent une recherche documentaire et le
+corpus scientifique, pas un dossier : aucun appelant ne leur passe de données
+patient. Mais **le champ est libre**, et rien dans le code n'empêche un
+praticien d'y écrire une situation clinique pour chercher ce qui s'en approche —
+c'est même l'usage qu'on attend d'une recherche de corpus. Le risque est
+d'usage, pas d'architecture, et c'est pourquoi il ne se corrige pas par une
+garde technique seule.
+
+**5. L'arbitrage, dans les mêmes termes que Sentry, et il n'est pas pris ici.**
+Soit ce flux ne porte aucune donnée personnelle et **cela s'écrit**, avec la
+garde qui le rend vrai ; soit la liste montrée au patient est incomplète et
+**elle se corrige**, comme elle vient de l'être pour Sentry. Le choix engage
+l'information des personnes et un contrat de sous-traitance : il appartient au
+responsable du traitement.
+
+**6. Pourquoi le constat a mis quinze mois à sortir.** Les inventaires
+précédents partaient des documents et se recopiaient l'un l'autre — la rubrique 6
+a énuméré Vercel et Supabase seize jours après le cutover, six jours après leur
+fermeture. Celui-ci part du code. Deux gardes sont posés pour que la question ne
+se repose pas dans ces termes : `registre.dossier.test.ts` tient la rubrique 6 et
+le document patient sur les mêmes noms, et `gouvernance.ts` ne recopie plus la
+liste, il la dérive.
+
+**7. Note de numérotation.** Cette décision a porté successivement `D-142`, `D-143` tous deux puis `D-144`, tous pris entre-temps par
+des sessions parallèles pendant que sa PR attendait son CI. Renumérotée TROIS
+fois à la fusion, sans aucun changement de contenu.
+
+Ce n'est pas un incident isolé mais la conséquence d'une règle : le numéro se
+choisit à l'ÉCRITURE, alors qu'il ne devient acquis qu'au MERGE. Trois sessions
+ouvertes le même soir suffisent à le montrer. Le banc
+`decisions-numerotation.mjs` attrape la collision à tous les coups — c'est
+exactement son office — mais il l'attrape APRÈS, et le coût est une
+renumérotation manuelle par course perdue.
 
 ### D-144 — Un refus qui ne dit pas lequel des onze contrôles a mordu ne se diagnostique pas
 

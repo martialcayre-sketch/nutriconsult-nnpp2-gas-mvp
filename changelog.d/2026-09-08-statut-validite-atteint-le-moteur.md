@@ -1,7 +1,7 @@
 ### Corrigé
 
 - **Une passation retirée du raisonnement par le praticien pesait encore sur ce
-  qu'il lit** (`A03` de l'audit du 2026-09-06, `D-145`). Deux adaptateurs
+  qu'il lit** (`A03` de l'audit du 2026-09-06, `D-146`). Deux adaptateurs
   sélectionnaient `statutValidite` en base puis le perdaient en reconstruisant
   l'objet passé au moteur de trajectoire. Le moteur porte pourtant le filtre —
   il n'était jamais atteint.
@@ -37,7 +37,7 @@
 
 - L'instruction affirmait qu'une passation invalidée « peut ancrer T0 ».
   **C'est faux** — `resoudreDateT0` est inatteignable par ces chemins. La
-  démonstration est consignée en `D-145` §5 pour que l'affirmation ne revienne
+  démonstration est consignée en `D-146` §5 pour que l'affirmation ne revienne
   pas : c'était le point le plus alarmant du dossier, et il ne tenait pas.
 - Portée bornée : le défaut est inerte sans épisode d'ancre confirmé et ne mord
   que sur onze questionnaires sur soixante-cinq. Le nombre de passations

@@ -133,17 +133,50 @@ aucune donnée personnelle.
 
 ## 6. Destinataires et sous-traitants
 
-**Source.** La liste **montrée au patient** est celle du document
-`DONNEES_CONFIDENTIALITE_V1` (`web/src/lib/trust/contenus/registre.ts`), servi
-par les pages du portail. Elle est identique à celle de G-TRUST-02 :
+**Source.** La liste **montrée au patient** est celle du document courant
+`donnees_confidentialite` (`web/src/lib/trust/contenus/registre.ts`), servi par
+les pages du portail — **v5 depuis le 2026-09-07** (`D-141`).
 
-| Sous-traitant | Rôle |
+> **Ce tableau a été faux du 2026-08-22 au 2026-09-07**, et personne ne l'a vu :
+> il énumérait Vercel et Supabase comme sous-traitants **seize jours après le
+> cutover du 2026-08-22 et six jours après leur fermeture définitive**, ne nommait pas
+> Scalingo, et reprenait la négation « Google — connexion du praticien
+> uniquement, jamais des patients » que `D-137` a établie fausse. Il est
+> désormais **aligné sur le document servi**, et un banc les tient ensemble
+> (`web/src/lib/trust/contenus/registre.dossier.test.ts`) : les modifier
+> séparément rougit.
+
+| Sous-traitant | Rôle tel qu'il est dit au patient |
 |---|---|
-| Vercel | hébergement de l'application |
-| Supabase | hébergement de la base de données |
+| Scalingo | hébergement de l'application et de la base de données (HDS, France) |
 | Anthropic | assistance d'IA pour la préparation des synthèses |
-| Fournisseur d'envoi d'e-mails | acheminement des e-mails |
-| Google | connexion du praticien **uniquement** — jamais des patients |
+| Google Workspace | acheminement des e-mails Wellneuro, **y compris les documents adressés au patient** (bilan, comptes rendus) |
+| Google | connexion du praticien, **et du patient s'il la choisit** (seule l'adresse e-mail est transmise) |
+| Sentry | détection des erreurs techniques, région européenne — jamais les réponses, les documents ni l'identité |
+
+**DESTINATAIRE NON DÉCLARÉ, CONSTATÉ LE 2026-09-07 — OpenAI.** Le chemin
+d'embeddings du corpus (`web/src/lib/rag/embeddings.ts:20-34`) envoie à
+`api.openai.com` le **texte libre saisi par le praticien** dans la recherche de
+corpus, ainsi que le texte des chunks à indexer. Il est **armé en production** :
+`WN_RECHERCHE_CORPUS_ENABLED` posée le 2026-08-22 (`D-081`) et
+`RAG_PGVECTOR_ENABLED` relue `true` sur Scalingo le 2026-09-07 (`env-get`, valeur
+non secrète). Aucune donnée patient ne transite par ces chemins **par
+construction** — la requête est une recherche documentaire —, mais le champ est
+libre et rien n'empêche un praticien d'y écrire une situation clinique.
+
+OpenAI n'apparaissait, au 2026-09-07, **dans aucune pièce** : ni dans ce
+dossier, ni dans `GATES_GO_NO_GO.md`, ni dans le module `trust/`, ni dans
+aucune des 141 décisions du registre. C'est le même écart que celui de Sentry
+(trou 3), à une différence près : **Sentry n'émettait rien, celui-ci émet**. À
+trancher par le responsable, dans les mêmes termes — soit ce flux ne porte
+aucune donnée personnelle et cela s'écrit avec sa garde, soit la liste patient
+est incomplète et se corrige.
+
+**Destinataire de build, sans donnée applicative.** `checkpoint.prisma.io` —
+télémétrie de version de l'outil Prisma, déclenchée au `prisma generate` du
+build (`web/scripts/build.sh:33`). Aucune donnée patient ni source ; aucun
+`CHECKPOINT_DISABLE` n'est posé dans le dépôt. Mentionné pour l'exhaustivité de
+l'inventaire, pas comme sous-traitant au sens de l'article 28.
 
 Aucun autre destinataire : « votre praticien, dans le cadre de votre
 accompagnement ; personne d'autre n'y accède au sein de Wellneuro », et aucun
