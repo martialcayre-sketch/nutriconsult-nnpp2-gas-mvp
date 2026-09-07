@@ -5,6 +5,7 @@ import {
   cartesJalons,
   cartesReprise,
   cartesSignalementsTrust,
+  cartesT0AConfirmer,
   cartesSynthesesAGenerer,
   cartesSynthesesAValider,
   construireFil,
@@ -415,5 +416,122 @@ describe('identité des cartes (clé)', () => {
     // l'ancre, pas l'ancienneté calculée.
     expect(aout[0].pourquoi).not.toBe(juillet[0].pourquoi);
     expect(aout[0].cle).toBe(juillet[0].cle);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M08 / D-150 — « ce dossier attend son T0 ».
+//
+// Production au 2026-09-08 : quatre épisodes T0, quatre patients, confirmés en
+// moyenne 43 jours après leur `targetAt` (27 à 56 jours). La tolérance est de
+// ±8 jours. AUCUN des quatre n'est dans la fenêtre.
+// ---------------------------------------------------------------------------
+describe('cartesT0AConfirmer', () => {
+  const RIDEAU = ['Q_MOD_03', 'Q_MOD_01', 'Q_INF_03', 'Q_ALI_01'];
+  const T0 = new Date('2026-06-01T09:00:00');
+
+  function rideauComplet(idPatient: string, statutValidite: string | null = null) {
+    return RIDEAU.map((idQuestionnaire, i) => ({
+      idPatient,
+      idQuestionnaire,
+      dateReponse: new Date(T0.getTime() + i * 60_000),
+      statutValidite,
+    }));
+  }
+
+  it('rideau complet et aucun épisode T0 : une carte, datée de la première passation du dossier', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'),
+      new Map([['P-SOPHIE', T0]]),
+      new Set<string>(),
+      4,
+      NOMS,
+      MAINTENANT,
+    );
+    expect(cartes).toHaveLength(1);
+    expect(cartes[0].type).toBe('t0_a_confirmer');
+    expect(cartes[0].patient).toBe('Sophie Nicola');
+    expect(cartes[0].date).toBe(T0.toISOString());
+  });
+
+  it('le dépassement de la fenêtre est compté et dit, avec sa conséquence', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+    );
+    // 2026-06-01 -> 2026-07-15 = 44 jours ; tolérance 8 -> 36 jours de dépassement.
+    expect(cartes[0].pourquoi).toContain('36 jours');
+    expect(cartes[0].pourquoi).toContain('réincluses une à une');
+  });
+
+  it('dans la fenêtre, la carte appelle sans alarmer : elle donne la date de fin', () => {
+    const recent = new Date(MAINTENANT.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', recent]]), new Set<string>(), 4, NOMS, MAINTENANT,
+    );
+    expect(cartes[0].pourquoi).toContain('court jusqu');
+    expect(cartes[0].pourquoi).not.toContain('dépassée');
+  });
+
+  it('un épisode T0 déjà consigné retire la carte', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set(['P-SOPHIE']), 4, NOMS, MAINTENANT,
+    );
+    expect(cartes).toEqual([]);
+  });
+
+  it('un rideau incomplet n’appelle rien : la carte ne réclame pas ce qui manque encore', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE').slice(0, 3), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+    );
+    expect(cartes).toEqual([]);
+  });
+
+  // La carte ne dit jamais « confirmable » : les préconditions dures (anamnèse,
+  // synthèse validée) s'évaluent par dossier et gardent leur propre écran.
+  it('la carte appelle, elle ne promet pas que la confirmation aboutira', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+    );
+    expect(cartes[0].pourquoi).not.toMatch(/confirmable|vous pouvez confirmer/i);
+    expect(cartes[0].actionLabel).toBe('Ouvrir la fiche');
+  });
+
+  it('le plus en retard passe devant', () => {
+    const vieux = new Date('2026-05-01T09:00:00');
+    const cartes = cartesT0AConfirmer(
+      [...rideauComplet('P-SOPHIE'), ...rideauComplet('P-MICHEL')],
+      new Map([['P-SOPHIE', T0], ['P-MICHEL', vieux]]),
+      new Set<string>(),
+      4,
+      NOMS,
+      MAINTENANT,
+    );
+    expect(cartes.map(c => c.idPatient)).toEqual(['P-MICHEL', 'P-SOPHIE']);
+  });
+
+  // Le filtre de validité est GATÉ : drapeau éteint, une passation INVALID
+  // compte encore — `validite.ts` l'exige, le LOT-00 s'étant engagé à ne rien
+  // faire disparaître tant que le drapeau ne l'autorise pas ([[D-146]]).
+  it('drapeau allumé, une passation retirée ne complète plus le rideau', () => {
+    process.env.WN_ENABLE_VALIDITE_PASSATIONS = '1';
+    try {
+      const passations = rideauComplet('P-SOPHIE');
+      passations[0].statutValidite = 'INVALID';
+      const cartes = cartesT0AConfirmer(
+        passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      );
+      expect(cartes).toEqual([]);
+    } finally {
+      delete process.env.WN_ENABLE_VALIDITE_PASSATIONS;
+    }
+  });
+
+  it('drapeau éteint, la même passation compte encore : rien ne disparaît sans le drapeau', () => {
+    const passations = rideauComplet('P-SOPHIE');
+    passations[0].statutValidite = 'INVALID';
+    const cartes = cartesT0AConfirmer(
+      passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+    );
+    expect(cartes).toHaveLength(1);
   });
 });

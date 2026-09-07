@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlarmClock, CalendarClock, Flag, FlaskConical, PenLine, RotateCcw, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react';
+import { AlarmClock, CalendarClock, Flag, FlagTriangleRight, FlaskConical, PenLine, RotateCcw, ShieldCheck, Sparkles, type LucideIcon } from 'lucide-react';
 import type { FilApiResponse } from '@/app/api/praticien/fil/route';
 import type { MeteoAdhesionApiResponse } from '@/app/api/praticien/meteo-adhesion/route';
 import { indexCarteImminente, resumeFil, type CarteFil, type TypeCarteFil } from '@/lib/fil/cartes';
@@ -18,6 +18,7 @@ const TYPE_CARTE: Record<TypeCarteFil, { libelle: string; icon: LucideIcon }> = 
   synthese_a_valider: { libelle: 'À valider', icon: Sparkles },
   synthese_a_generer: { libelle: 'À générer', icon: PenLine },
   jalon_j21: { libelle: 'Jalon', icon: Flag },
+  t0_a_confirmer: { libelle: 'T0 à confirmer', icon: FlagTriangleRight },
   biologie_arbitree: { libelle: 'Biologie arbitrée', icon: FlaskConical },
   assignation_en_retard: { libelle: 'En retard', icon: AlarmClock },
   reprise: { libelle: 'Reprise', icon: RotateCcw },

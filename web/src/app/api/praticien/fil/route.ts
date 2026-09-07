@@ -6,6 +6,7 @@ import { emailPraticien, filtrePatientsDuPraticien } from '@/lib/praticien/appar
 import { construireFil, type CarteFil } from '@/lib/fil/cartes';
 import { clesRefusees, filtrerCartesRefusees } from '@/lib/fil/refus';
 import { jalonsSansDecision } from '@/lib/fil/jalonsJ21';
+import { RIDEAU_T0 } from '@/lib/clinical-engine/preconditionsT0';
 import { arbitragesSansRevision } from '@/lib/fil/biologieArbitree';
 import { isCbEnabled } from '@/lib/biology-library/featureFlag';
 import { momentumJalonsParPatient } from '@/lib/fil/momentumJ21';
@@ -61,6 +62,9 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
       rdvs,
       lecturesGroupBy,
       dernieresSynthesesGroupBy,
+      passationsRideau,
+      episodesT0,
+      premieresPassationsGroupBy,
     ] = await Promise.all([
       prisma.trustAdverseEffectReport.findMany({ where: filtreNonTraite, select: selectSignalement, take: 10 }),
       prisma.trustPrivacyIncident.findMany({ where: filtreNonTraite, select: selectSignalement, take: 10 }),
@@ -110,6 +114,29 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
         by: ['idPatient'],
         _max: { dateGeneration: true },
       }),
+      // T0 à confirmer (`M08`, [[D-150]]) : trois lectures d'ENSEMBLE, jamais
+      // une évaluation par patient. Les préconditions dures se calculent par
+      // dossier et ont leur propre écran ; les appeler ici ferait un N+1 sur
+      // l'écran d'accueil du praticien.
+      //
+      // `statutValidite` est SÉLECTIONNÉ, pas filtré en SQL : le filtre est
+      // gaté par drapeau et vit dans `validite.ts` (cf. [[D-146]]).
+      prisma.questionnaireReponse.findMany({
+        where: { idQuestionnaire: { in: [...RIDEAU_T0] } },
+        select: { idPatient: true, idQuestionnaire: true, dateReponse: true, statutValidite: true },
+      }),
+      prisma.assessmentEpisode.findMany({
+        where: { milestone: 'T0' },
+        select: { idPatient: true },
+      }),
+      // `targetAt` du T0 = PREMIÈRE réponse du dossier, toutes sources
+      // confondues — c'est ce que pose `dateDeReference` dans
+      // `runtimeFromPrisma`, et la carte doit dater la même chose que
+      // l'épisode qu'elle appelle.
+      prisma.questionnaireReponse.groupBy({
+        by: ['idPatient'],
+        _min: { dateReponse: true },
+      }),
     ]);
 
     const lectures = lecturesGroupBy
@@ -158,6 +185,7 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
         ...rdvs.map(r => r.idPatient),
         ...lectures.map(l => l.idPatient),
         ...biologiesArbitreesBrutes.map(b => b.idPatient),
+        ...passationsRideau.map(p => p.idPatient),
       ]),
     ];
     // Toute carte dont le patient n'est pas dans ce résultat est écartée
@@ -190,6 +218,14 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
       lectures: lectures.filter(l => actifs.has(l.idPatient)),
       dernieresSyntheses,
       jalons,
+      passationsRideau: passationsRideau.filter(p => actifs.has(p.idPatient)),
+      premieresPassations: new Map(
+        premieresPassationsGroupBy
+          .filter((r): r is typeof r & { _min: { dateReponse: Date } } => r._min.dateReponse !== null)
+          .map(r => [r.idPatient, r._min.dateReponse]),
+      ),
+      patientsAvecEpisodeT0: new Set(episodesT0.map(e => e.idPatient)),
+      tailleRideauT0: RIDEAU_T0.length,
       biologiesArbitrees: biologiesArbitreesBrutes.filter(b => actifs.has(b.idPatient)),
       assignations: assignations.filter(a => actifs.has(a.idPatient)),
       activites: activites
