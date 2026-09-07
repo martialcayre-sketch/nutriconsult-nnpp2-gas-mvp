@@ -86,6 +86,11 @@ function ReponsesDetaillees({
  * LOT-02) : une ligne PAR PATIENT — nombre, dernière date, derniers titres —
  * jamais une ligne par questionnaire. Remplace les cartes « Reçu » du Fil
  * (décision propriétaire 2026-07-23). */
+/** Total des réponses écartées par l'ancre, tous dossiers confondus. */
+function nbEcartees(ecartees: InboxQuestionnairesApiResponse['ecartees']): number {
+  return (ecartees ?? []).reduce((total, e) => total + e.nb, 0);
+}
+
 export function InboxQuestionnaires() {
   const [data, setData] = useState<InboxQuestionnairesApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -206,8 +211,13 @@ export function InboxQuestionnaires() {
           L&apos;inbox est momentanément indisponible. Rechargez la page.
         </p>
       ) : data.lignes.length === 0 ? (
+        // L'ÉCRAN NE DIT PLUS CE QU'IL NE SAIT PAS. « tout a été vu en
+        // consultation » était une affirmation, fondée sur un geste du PATIENT
+        // (`Consultation.dateValidation`, saisi au portail au moment de son
+        // anamnèse) qui ne prouve aucune lecture. Ce que l'accueil sait est
+        // plus étroit : rien n'est arrivé DEPUIS la dernière consultation.
         <p className="mt-3 text-sm text-muted-foreground">
-          Aucun questionnaire en attente — tout a été vu en consultation.
+          Aucune réponse reçue depuis la dernière consultation.
         </p>
       ) : (
         <div className="mt-3 flex flex-col gap-1.5">
@@ -233,6 +243,37 @@ export function InboxQuestionnaires() {
           ))}
         </div>
       )}
+
+      {/* CE QUE L'ANCRE A ÉCARTÉ, replié. Rien n'est perdu — la fiche patient
+          affiche l'intégralité des réponses d'un dossier, sans ancre ni filtre —
+          mais l'accueil taisait ce silence. Il le nomme désormais, et pointe
+          l'écran qui montre tout. Replié, parce que le cas courant est vide et
+          que la décision du 2026-07-23 tient : l'accueil est une liste courte. */}
+      {!loading && data && !data.unavailable && (data.ecartees?.length ?? 0) > 0 && (
+        <details className="mt-3 rounded-lg border border-border px-3 py-2">
+          <summary className="cursor-pointer list-none text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring">
+            {nbEcartees(data.ecartees)} réponse{nbEcartees(data.ecartees) > 1 ? 's' : ''} reçue
+            {nbEcartees(data.ecartees) > 1 ? 's' : ''} avant la dernière consultation du dossier —
+            {' '}les voir
+          </summary>
+          <ul className="mt-2 flex flex-col gap-1">
+            {(data.ecartees ?? []).map(e => (
+              <li key={e.idPatient} className="text-xs">
+                <a
+                  href={`/dashboard/patients/${encodeURIComponent(e.idPatient)}`}
+                  className="text-solar-ink underline underline-offset-2 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring"
+                >
+                  {e.patient}
+                </a>
+                <span className="text-muted-foreground">
+                  {' '}— {e.nb} avant le {new Date(e.ancre).toLocaleDateString('fr-FR')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+
       <Dialog.Root open={detail !== null} onOpenChange={open => { if (!open) { setRetrait(null); setDetail(null); } }}>
         <Dialog.Portal>
           <Dialog.Overlay data-theme="praticien" className="fixed inset-0 z-50 bg-foreground/35" />

@@ -39,10 +39,43 @@ describe('InboxQuestionnaires', () => {
     expect(screen.getByRole('button', { name: /Sophie Nicola/ })).toBeTruthy();
   });
 
-  it('un fil vide dit qu’il n’y a rien à consulter, sans crier à l’erreur', async () => {
+  it('un fil vide dit ce qu’il SAIT, et n’affirme pas que tout a été vu', async () => {
+    // L'ANCIEN LIBELLÉ ÉTAIT UNE AFFIRMATION FAUSSE : « tout a été vu en
+    // consultation », sur la foi de `Consultation.dateValidation` — dont
+    // l'unique écrivain est le geste du PATIENT au portail. Rien n'y prouvait
+    // une lecture praticien.
     stubInbox({ ok: true, lignes: [] });
     render(<InboxQuestionnaires />);
-    await waitFor(() => expect(screen.getByText(/Aucun questionnaire en attente/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/Aucune réponse reçue depuis la dernière consultation/i)).toBeTruthy());
+    expect(screen.queryByText(/tout a été vu/i)).toBeNull();
+  });
+
+  it('les réponses écartées par l’ancre sont comptées et pointées, repliées', async () => {
+    // RIEN N'EST PERDU — la fiche patient affiche tout —, mais l'accueil
+    // taisait ce silence. Il le nomme, et pointe l'écran qui montre tout.
+    stubInbox({
+      ok: true,
+      lignes: [],
+      ecartees: [
+        { idPatient: 'PAT_SEED_03', patient: 'Michel Dogné', nb: 3, ancre: '2026-09-04T10:00:00.000Z' },
+        { idPatient: 'PAT_SEED_01', patient: 'Sophie Nicola', nb: 1, ancre: '2026-09-02T10:00:00.000Z' },
+      ],
+    });
+    render(<InboxQuestionnaires />);
+
+    await waitFor(() => expect(screen.getByText(/4 réponses reçues avant la dernière consultation/i)).toBeTruthy());
+    const lien = screen.getByRole('link', { name: 'Michel Dogné' });
+    expect(lien.getAttribute('href')).toBe('/dashboard/patients/PAT_SEED_03');
+    expect(screen.getByText(/3 avant le 04\/09\/2026/)).toBeTruthy();
+  });
+
+  it('sans écart, aucun repli ne s’affiche', async () => {
+    // Le cas courant. La décision du 2026-07-23 tient : l'accueil reste une
+    // liste courte, et n'ajoute rien quand il n'a rien à dire.
+    stubInbox({ ok: true, lignes: [], ecartees: [] });
+    render(<InboxQuestionnaires />);
+    await waitFor(() => expect(screen.getByText(/Aucune réponse reçue/i)).toBeTruthy());
+    expect(screen.queryByText(/avant la dernière consultation du dossier/i)).toBeNull();
   });
 
   it('ouvre la fenêtre de lecture et confirme les questionnaires lus', async () => {

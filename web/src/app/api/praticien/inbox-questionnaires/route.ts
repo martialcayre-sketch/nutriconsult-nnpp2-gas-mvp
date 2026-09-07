@@ -3,7 +3,7 @@ import { authOptions } from '@/lib/auth';
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { emailPraticien, filtrePatientsDuPraticien } from '@/lib/praticien/appartenance';
-import { lignesInbox, type LigneInbox } from '@/lib/fil/inbox';
+import { lignesEcarteesParAncre, lignesInbox, type LigneEcartee, type LigneInbox } from '@/lib/fil/inbox';
 import { getSubScoreRanges, type ScoreRange } from '@/lib/scoring/ranges';
 import { resolveDefinition } from '@/lib/instruments';
 import { QUESTIONNAIRE_PLAINTES_LECTURE } from '@/lib/plaintes';
@@ -42,6 +42,12 @@ export type InboxQuestionnaireDetail = {
 export type InboxQuestionnairesApiResponse = {
   ok: boolean;
   lignes: LigneInbox[];
+  /* Ce que l'ancre a ÉCARTÉ, et que l'écran taisait. Rien n'est perdu — la
+   * fiche patient affiche toujours l'intégralité des réponses — mais l'inbox
+   * affirmait « tout a été vu en consultation » sur la foi d'un geste du
+   * PATIENT (`Consultation.dateValidation`, saisi au portail), qui ne prouve
+   * aucune lecture. Elle dit désormais ce qu'elle sait, et rien de plus. */
+  ecartees?: LigneEcartee[];
   patient?: { idPatient: string; nom: string };
   reponses?: InboxQuestionnaireDetail[];
   /* Le retrait praticien n'est proposé que si le filtre de validité est actif :
@@ -182,6 +188,15 @@ export async function GET(req: Request): Promise<NextResponse<InboxQuestionnaire
       scoresJson: 'scoresJson' in r ? r.scoresJson : null,
       scorePrincipal: 'scorePrincipal' in r ? r.scorePrincipal : null,
       interpretation: 'interpretation' in r ? r.interpretation : null,
+      // DEUX CHAMPS QUE CETTE NORMALISATION LAISSAIT TOMBER. Ils sont
+      // sélectionnés en base et recopiés à la sortie — mais ils ne traversaient
+      // pas cet objet intermédiaire, donc `r.statutValidite` valait toujours
+      // `undefined` et retombait sur `'VALID'`. Le bandeau « Retirée du
+      // raisonnement clinique » ne pouvait JAMAIS s'afficher : une passation
+      // que le praticien avait retirée lui revenait valide, avec son bouton
+      // « Retirer » intact.
+      statutValidite: 'statutValidite' in r ? r.statutValidite : undefined,
+      motifInvalidation: 'motifInvalidation' in r ? r.motifInvalidation : null,
     }));
     const lectures = reponses.length > 0
       ? await prisma.questionnaireLecturePraticien.findMany({
@@ -261,7 +276,11 @@ export async function GET(req: Request): Promise<NextResponse<InboxQuestionnaire
       });
     }
 
-    return NextResponse.json({ ok: true, lignes: lignesInbox(reponsesNormalisees, ancres, noms, lues) });
+    return NextResponse.json({
+      ok: true,
+      lignes: lignesInbox(reponsesNormalisees, ancres, noms, lues),
+      ecartees: lignesEcarteesParAncre(reponsesNormalisees, ancres, noms, lues),
+    });
   } catch (err) {
     console.error('[inbox-questionnaires GET]', err instanceof Error ? err.message : String(err));
     return NextResponse.json({ ...INDISPONIBLE, error: 'Erreur technique.' }, { status: 500 });

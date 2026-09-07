@@ -4,6 +4,63 @@
 
 ## Décisions actives
 
+### D-135 — L'inbox dit ce qu'elle sait, et n'affirme plus qu'un patient a été lu
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session, option « l'écran cesse d'affirmer ce qu'il ignore ») et exécuté.
+- Domaine : accueil praticien, inbox des questionnaires, validité des passations
+
+- Contexte : l'inbox écarte une réponse dès qu'elle précède la dernière
+  consultation VALIDÉE du patient, et affichait alors « Aucun questionnaire en
+  attente — tout a été vu en consultation ».
+
+**1. L'ancre est un geste du PATIENT, et elle ne prouve aucune lecture.**
+`Consultation.dateValidation` n'a qu'un seul écrivain dans tout le dépôt : la
+validation d'anamnèse au portail. Un dossier rouvert, une consultation créée,
+le patient qui valide — et à cette seconde toutes ses réponses antérieures
+quittent l'accueil, y compris celles que personne n'a ouvertes. L'écran
+affirmait le contraire de ce qu'il savait.
+
+**2. Rien n'est perdu, et c'est ce qui a décidé de l'option retenue.**
+`api/praticien/reponses` lit TOUTES les réponses d'un dossier, sans ancre et
+sans filtre ; la fiche patient les affiche. Ce que l'ancre coupe est le SIGNAL,
+jamais la pièce. Le défaut n'était donc pas une perte de donnée mais une
+assertion fausse — et `DC-24` (« une donnée absente n'est jamais zéro ni
+normale ») est opposable exactement à cela.
+
+**3. L'ancre ne change pas ; l'écran cesse de conclure.** L'état vide dit
+« Aucune réponse reçue depuis la dernière consultation », ce que l'accueil
+sait. Un repli compte ce que l'ancre a retiré, par dossier, et pointe la fiche
+patient — l'écran qui montre tout. Replié, parce que le cas courant est vide et
+que la décision du 2026-07-23 tient : l'accueil est une liste courte.
+
+**4. Ce que cette décision N'A PAS retenu, et pourquoi.** Faire de l'accusé de
+lecture praticien la seule horloge est juste sur le fond, mais le POST qui
+enregistre « j'ai lu » filtre ce qu'il a le droit d'écrire AVEC LA MÊME ANCRE :
+une réponse antérieure en est écartée, le serveur répond `{ ok: true }` sans
+rien écrire, et l'écran recharge une liste inchangée. Le praticien clique, ça
+dit oui, rien ne bouge. Aucun banc ne couvre ce cas. Si cette option est
+reprise, **le POST doit changer dans le même lot que l'affichage, jamais
+après**.
+
+**5. Un défaut vivant corrigé au passage, indépendant de l'arbitrage.** La
+normalisation intermédiaire de la route laissait tomber `statutValidite` et
+`motifInvalidation` : sélectionnés en base, recopiés à la sortie, mais absents
+de l'objet qui les relie. Le champ retombait donc toujours sur `'VALID'`, le
+bandeau « Retirée du raisonnement clinique » ne pouvait jamais s'afficher, et
+une passation retirée revenait valide avec son bouton « Retirer » intact.
+
+**6. Trois items voisins ne se règlent PAS par cette décision**, contrairement
+au cadrage initial. `A04` n'est pas une question d'horloge : le Fil reçoit un
+`Set` d'`idPatient` construit sans date, donc un patient ayant *un jour*
+confirmé un J21 n'aura plus jamais de carte — problème d'identité de cycle.
+`M08` est un champ à remplir, à faire après pour hériter du bon vocabulaire.
+`M13` est un choix sur ce que `dateReponse` signifie sur une clôture d'agenda,
+et il doit passer par un champ distinct : rétrodater ferait lire le même
+recueil de 21 nuits comme un point J42, privant le cycle de sa lecture J21.
+
+Aucune migration, aucun seuil de scoring.
+
 ### D-134 — Un banc qui fabrique l'erreur qu'il attend ne prouve pas qu'elle arrive
 
 - Date : 2026-09-07

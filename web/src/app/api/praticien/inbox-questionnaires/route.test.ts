@@ -114,6 +114,62 @@ describe('GET /api/praticien/inbox-questionnaires', () => {
     ]);
   });
 
+  it('le détail rend le statut de validité RÉEL, jamais un « VALID » de repli', async () => {
+    // LE DÉFAUT : les deux champs étaient sélectionnés en base ET recopiés à la
+    // sortie, mais ne traversaient pas la normalisation intermédiaire. Ils
+    // retombaient donc systématiquement sur `'VALID'` — et le bandeau
+    // « Retirée du raisonnement clinique » ne pouvait JAMAIS s'afficher. Une
+    // passation que le praticien avait retirée lui revenait valide, avec son
+    // bouton « Retirer » intact.
+    prisma.patient.findMany.mockResolvedValue([{ idPatient: 'PAT_SEED_01', prenom: 'Sophie', nom: 'Nicola' }]);
+    prisma.questionnaireReponse.findMany.mockResolvedValue([
+      {
+        idReponse: 'R1',
+        idPatient: 'PAT_SEED_01',
+        idAssignation: 'ASS1',
+        idQuestionnaire: 'Q_NEU_06',
+        titre: 'Questionnaire sommeil',
+        dateReponse: new Date('2026-07-15T08:00:00.000Z'),
+        scoresJson: { total: 7 },
+        scorePrincipal: 7,
+        interpretation: 'Vigilance',
+        statutValidite: 'INVALID',
+        motifInvalidation: 'Passation interrompue',
+      },
+    ]);
+    const payload = await (await GET(getRequest('/api/praticien/inbox-questionnaires?idPatient=PAT_SEED_01'))).json();
+    expect(payload.reponses[0].statutValidite).toBe('INVALID');
+    expect(payload.reponses[0].motifInvalidation).toBe('Passation interrompue');
+  });
+
+  it('la liste compte ce que l’ancre a écarté, au lieu de le taire', async () => {
+    // L'accueil affirmait « tout a été vu en consultation » sur la foi d'un
+    // geste du PATIENT. Il dit désormais combien de réponses il a retirées, et
+    // depuis quelle consultation.
+    prisma.patient.findMany.mockResolvedValue([{ idPatient: 'PAT_SEED_01', prenom: 'Sophie', nom: 'Nicola' }]);
+    prisma.consultation.groupBy.mockResolvedValue([
+      { idPatient: 'PAT_SEED_01', _max: { dateValidation: new Date('2026-07-20T10:00:00.000Z') } },
+    ]);
+    prisma.questionnaireReponse.findMany.mockResolvedValue([
+      {
+        idReponse: 'R1',
+        idPatient: 'PAT_SEED_01',
+        titre: 'Questionnaire sommeil',
+        dateReponse: new Date('2026-07-15T08:00:00.000Z'),
+      },
+    ]);
+    const payload = await (await GET(getRequest('/api/praticien/inbox-questionnaires'))).json();
+    expect(payload.lignes).toEqual([]);
+    expect(payload.ecartees).toEqual([
+      {
+        idPatient: 'PAT_SEED_01',
+        patient: 'Sophie Nicola',
+        nb: 1,
+        ancre: '2026-07-20T10:00:00.000Z',
+      },
+    ]);
+  });
+
   it('le détail retire score et interprétation d’une passation non interprétable, et garde les réponses', async () => {
     // Le Fil est l'écran où le praticien DÉCOUVRE la passation : c'est là que
     // « Fatigue notable » se lisait pour la première fois sur une somme sans
