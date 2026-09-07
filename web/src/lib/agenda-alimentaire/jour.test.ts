@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CODES_JOUR_ALIMENTAIRE,
+  CODE_JOUR_LONGUEUR_MAX,
+  ErreurJourAlimentaire,
   decalerDate,
   dureeMinutes,
   ensureJourReponses,
@@ -430,5 +433,58 @@ describe('ensureJourReponses — `soirPlusCopieux` n’a PAS d’abstention', ()
   it('conserve un booléen', () => {
     const out = ensureJourReponses({ ...JOUR_VALIDE, soirPlusCopieux: true });
     expect(out.soirPlusCopieux).toBe(true);
+  });
+});
+
+
+// ─── Codes de domaine ([[D-144]]) ────────────────────────────────────────────
+
+describe('codes de domaine', () => {
+  // LE BANC QUI A ATTRAPÉ LE DÉFAUT, et qui le garde. `sanitizeString` remplace
+  // tout mot de 24 caractères ou plus par `[id]` : trois des onze codes
+  // sortaient anonymisés du journal à la première écriture — soit exactement
+  // l'absence de diagnostic qu'ils existent pour combler.
+  it.each(CODES_JOUR_ALIMENTAIRE.map(code => [code] as const))(
+    'le code « %s » traverse la journalisation sans être anonymisé',
+    (code) => {
+      expect(code.length, `« ${code} » sortirait « [id] » du journal`)
+        .toBeLessThanOrEqual(CODE_JOUR_LONGUEUR_MAX);
+    },
+  );
+
+  it('les codes sont distincts — deux contrôles ne se confondent jamais', () => {
+    expect(new Set(CODES_JOUR_ALIMENTAIRE).size).toBe(CODES_JOUR_ALIMENTAIRE.length);
+  });
+
+  // La classe ÉTEND `TypeError` : la route branche son 400 sur
+  // `err instanceof TypeError`, et changer de base changerait le statut rendu
+  // au patient. Ce banc épingle cet héritage, qui n'est pas un détail.
+  it('l’erreur de domaine reste une TypeError, et porte son code', () => {
+    const erreur = new ErreurJourAlimentaire('heure_invalide', 'Heure invalide pour « x ».');
+    expect(erreur).toBeInstanceOf(TypeError);
+    expect(erreur.code).toBe('heure_invalide');
+    expect(erreur.name).toBe('ErreurJourAlimentaire');
+  });
+
+  // Chaque contrôle lève SON code : sans ce terme, tous pourraient lever le même
+  // et les bancs de la route passeraient encore.
+  it.each([
+    ['réponses illisibles', 'pas un objet', {}, 'reponses_illisibles'],
+    ['heure hors pas', { prises: [{ heure: '08:07', nature: 'repas' }] }, {}, 'heure_invalide'],
+    ['nature inconnue', { prises: [{ heure: '08:00', nature: 'inconnue' }] }, {}, 'nature_prise_invalide'],
+    ['prise illisible', { prises: ['pas un objet'] }, {}, 'prise_illisible'],
+    ['aucune prise', { prises: [] }, {}, 'aucune_prise_declaree'],
+    ['sans prise mais des prises', { aucunePrise: true, prises: [{ heure: '08:00', nature: 'repas' }] },
+      { exigerObligatoires: true }, 'sans_prise_avec_prises'],
+    ['sans prise mais une observation', { aucunePrise: true, ultraTransformes: true },
+      { exigerObligatoires: true }, 'sans_prise_observee'],
+  ])('« %s » lève le code %s', (_libelle, entree, options, code) => {
+    try {
+      ensureJourReponses(entree, options as { exigerObligatoires?: boolean });
+      throw new Error('aucune erreur levée');
+    } catch (err) {
+      expect(err).toBeInstanceOf(ErreurJourAlimentaire);
+      expect((err as ErreurJourAlimentaire).code).toBe(code);
+    }
   });
 });

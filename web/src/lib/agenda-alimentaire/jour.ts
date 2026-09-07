@@ -1,6 +1,7 @@
 // Validation et chaînage des journées (domaine PUR). Patron `agenda-sommeil/nuit.ts` :
-// `ensureJourReponses` rejette (TypeError → 400 côté route), `resolveJoursActifs`
-// résout la tête de chaîne par date, `estDateSaisissable` borne la saisie.
+// `ensureJourReponses` rejette (`ErreurJourAlimentaire`, qui étend `TypeError` →
+// 400 côté route), `resolveJoursActifs` résout la tête de chaîne par date,
+// `estDateSaisissable` borne la saisie.
 
 import {
   ANCRE_JOURNEE_MIN,
@@ -15,6 +16,81 @@ import {
 
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const RE_HEURE = /^([01]\d|2[0-3]):(00|15|30|45)$/; // HH:MM au pas de 15 min
+
+// ─── Codes de domaine ────────────────────────────────────────────────────────
+
+/**
+ * Un code par contrôle — la piste consignée à [[D-015]], posée ici ([[D-144]]).
+ *
+ * LE DÉFAUT QU'ILS FERMENT. La route d'écriture masque le message de toute
+ * erreur avant de la journaliser, parce qu'un `PrismaClientValidationError`
+ * recopie l'invocation fautive dans son message, `data.reponses` COMPRISE — les
+ * horaires de prises du patient, c'est-à-dire de la donnée de santé, partiraient
+ * en clair dans les journaux. Le prix payé : un refus de domaine ne disait plus
+ * LEQUEL des onze contrôles avait mordu. Un `400` sans motif ne se diagnostique
+ * pas ; il s'accumule.
+ *
+ * POURQUOI UN CODE ET NON UN DÉMASQUAGE. Le `catch` de la route n'attrape pas
+ * que ce module : il attrape aussi les `TypeError` levées par la persistance et
+ * par la lecture de contrat, dont certains messages interpolent une valeur reçue
+ * ou relue. Démasquer les messages au motif que CEUX-CI sont sûrs ouvrirait donc
+ * la porte à ceux qui ne le sont pas. Un code énuméré, lui, est sûr PAR
+ * CONSTRUCTION : c'est une constante de ce fichier, jamais une donnée.
+ */
+export const CODES_JOUR_ALIMENTAIRE = [
+  'reponses_illisibles',
+  'heure_invalide',
+  'booleen_attendu',
+  'booleen_ou_abstention',
+  'prise_illisible',
+  'nature_prise_invalide',
+  'sans_prise_avec_prises',
+  'sans_prise_observee',
+  'aucune_prise_declaree',
+  'trop_de_prises',
+  'prises_desordonnees',
+] as const;
+
+export type CodeJourAlimentaire = (typeof CODES_JOUR_ALIMENTAIRE)[number];
+
+/**
+ * LONGUEUR MAXIMALE D'UN CODE, ET CE N'EST PAS UNE COQUETTERIE.
+ *
+ * Le code voyage dans `metadata`, qui traverse `sanitizeMetadata` →
+ * `sanitizeAny` → `sanitizeString`, dont la dernière règle remplace tout mot de
+ * **24 caractères ou plus** par `[id]` — elle vise les identifiants longs. Trois
+ * des onze codes de ce fichier la franchissaient à la première écriture et
+ * sortaient anonymisés : le journal disait `erreurCode: "[id]"`, soit
+ * exactement l'absence de diagnostic que ces codes existent pour combler.
+ *
+ * C'est le même piège qui avait déjà coûté la trace des classes d'erreur Prisma
+ * (voir `traceErreur`, route de l'agenda alimentaire). Il se referme ici par un
+ * banc, pas par une note.
+ */
+export const CODE_JOUR_LONGUEUR_MAX = 23;
+
+/**
+ * L'erreur de DOMAINE de l'agenda alimentaire — et le marqueur qui la distingue
+ * d'une panne ([[D-144]]).
+ *
+ * ELLE ÉTEND `TypeError` À DESSEIN : la route branche son `400` sur
+ * `err instanceof TypeError`, et changer de base changerait le statut rendu au
+ * patient. Ce qu'elle ajoute est un `code`, que `traceErreur` sait déjà lire et
+ * journaliser — le chemin existait, il n'avait rien à y mettre.
+ *
+ * LA CLASSE EST LE MARQUEUR, LE CODE EST LA CHARGE. Une `TypeError` nue venue
+ * d'ailleurs dans la pile ne porte pas de `code` et reste donc masquée, sans
+ * qu'aucun tri au cas par cas n'ait à être écrit ni tenu à jour.
+ */
+export class ErreurJourAlimentaire extends TypeError {
+  constructor(readonly code: CodeJourAlimentaire, message: string) {
+    super(message);
+    // Le `name` traverse `sanitizeError` VERBATIM (il n'est pas soumis à la
+    // règle des 24 caractères, qui ne frappe que `metadata`). Le journal
+    // distingue donc d'un coup d'œil un refus de domaine d'une panne.
+    this.name = 'ErreurJourAlimentaire';
+  }
+}
 
 // ─── Primitives de temps ─────────────────────────────────────────────────────
 
@@ -69,14 +145,14 @@ export function estDateSaisissable(dateJour: string, aujourdHui: string): boolea
 
 function ensureHeure(value: unknown, champ: string): string {
   if (typeof value !== 'string' || !RE_HEURE.test(value)) {
-    throw new TypeError(`Heure invalide pour « ${champ} ».`);
+    throw new ErreurJourAlimentaire('heure_invalide', `Heure invalide pour « ${champ} ».`);
   }
   return value;
 }
 
 function ensureBooleen(value: unknown, champ: string): boolean {
   if (typeof value !== 'boolean') {
-    throw new TypeError(`Réponse invalide pour « ${champ} ».`);
+    throw new ErreurJourAlimentaire('booleen_attendu', `Réponse invalide pour « ${champ} ».`);
   }
   return value;
 }
@@ -94,19 +170,19 @@ function ensureBooleen(value: unknown, champ: string): boolean {
 function ensureBooleenOuNull(value: unknown, champ: string): boolean | null {
   if (value === null) return null;
   if (typeof value !== 'boolean') {
-    throw new TypeError(`Réponse invalide pour « ${champ} ».`);
+    throw new ErreurJourAlimentaire('booleen_ou_abstention', `Réponse invalide pour « ${champ} ».`);
   }
   return value;
 }
 
 function ensurePrise(value: unknown, index: number): PriseJour {
   if (!value || typeof value !== 'object') {
-    throw new TypeError(`Prise n° ${index + 1} illisible.`);
+    throw new ErreurJourAlimentaire('prise_illisible', `Prise n° ${index + 1} illisible.`);
   }
   const v = value as Record<string, unknown>;
   const nature = v.nature;
   if (typeof nature !== 'string' || !(NATURES_PRISE as readonly string[]).includes(nature)) {
-    throw new TypeError(`Nature invalide pour la prise n° ${index + 1}.`);
+    throw new ErreurJourAlimentaire('nature_prise_invalide', `Nature invalide pour la prise n° ${index + 1}.`);
   }
   return {
     heure: ensureHeure(v.heure, `heure de la prise n° ${index + 1}`),
@@ -131,7 +207,7 @@ export function ensureJourReponses(
   options: { exigerObligatoires?: boolean } = {},
 ): JourReponses {
   if (!value || typeof value !== 'object') {
-    throw new TypeError('Réponses de journée illisibles.');
+    throw new ErreurJourAlimentaire('reponses_illisibles', 'Réponses de journée illisibles.');
   }
   const v = value as Record<string, unknown>;
 
@@ -146,7 +222,8 @@ export function ensureJourReponses(
     // sans quoi une seule ligne rendrait tout l'agenda du patient illisible
     // (leçon `agenda-sommeil/nuit.ts`).
     if (exiger && Array.isArray(prisesBrutes) && prisesBrutes.length > 0) {
-      throw new TypeError('Une journée sans prise ne peut pas porter de prises.');
+      throw new ErreurJourAlimentaire('sans_prise_avec_prises',
+        'Une journée sans prise ne peut pas porter de prises.');
     }
     for (const champ of exiger ? ([
       'premierePriseProteines',
@@ -156,17 +233,19 @@ export function ensureJourReponses(
       'ultraTransformes',
     ] as const) : []) {
       if (v[champ] !== undefined && v[champ] !== null) {
-        throw new TypeError('Une journée sans prise ne porte aucune observation de contenu.');
+        throw new ErreurJourAlimentaire('sans_prise_observee',
+          'Une journée sans prise ne porte aucune observation de contenu.');
       }
     }
     return { aucunePrise: true };
   }
 
   if (!Array.isArray(prisesBrutes) || prisesBrutes.length === 0) {
-    throw new TypeError('Renseignez au moins une prise, ou déclarez une journée sans prise.');
+    throw new ErreurJourAlimentaire('aucune_prise_declaree',
+      'Renseignez au moins une prise, ou déclarez une journée sans prise.');
   }
   if (exiger && prisesBrutes.length > NB_PRISES_MAX) {
-    throw new TypeError(`Au plus ${NB_PRISES_MAX} prises par journée.`);
+    throw new ErreurJourAlimentaire('trop_de_prises', `Au plus ${NB_PRISES_MAX} prises par journée.`);
   }
 
   const prises = prisesBrutes.map((p, i) => ensurePrise(p, i));
@@ -178,7 +257,8 @@ export function ensureJourReponses(
   for (let i = 1; i < prises.length; i += 1) {
     if (minutesDepuisAncre(prises[i].heure) <= minutesDepuisAncre(prises[i - 1].heure)) {
       if (exiger) {
-        throw new TypeError('Les prises doivent être renseignées dans l’ordre, sans doublon d’heure.');
+        throw new ErreurJourAlimentaire('prises_desordonnees',
+          'Les prises doivent être renseignées dans l’ordre, sans doublon d’heure.');
       }
       prises.sort((a, b) => minutesDepuisAncre(a.heure) - minutesDepuisAncre(b.heure));
       break;
