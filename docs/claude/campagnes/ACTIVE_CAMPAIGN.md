@@ -12,6 +12,6 @@
 Aucune campagne parallèle active.
 
 **Statut global** : active
-**Mise à jour** : 2026-09-07
+**Mise à jour** : 2026-09-08
 
 > La source de vérité machine est `.wn/state.json`. Cette vue est générée ; elle ne doit pas être modifiée manuellement.
