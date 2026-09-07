@@ -234,6 +234,9 @@ function EncartPrevisualisation({ desactive }: { desactive: boolean }) {
   const [resolution, setResolution] = useState<
     Extract<ReglesPrevisualisationApiResponse, { ok: true }>['resolution'] | null
   >(null);
+  const [verdicts, setVerdicts] = useState<
+    Extract<ReglesPrevisualisationApiResponse, { ok: true }>['verdicts']
+  >([]);
 
   const tester = async () => {
     const liste = codes.split(',').map((code) => code.trim()).filter(Boolean);
@@ -253,6 +256,9 @@ function EncartPrevisualisation({ desactive }: { desactive: boolean }) {
         return;
       }
       setResolution(payload.resolution);
+      // `?? []` : une réponse servie par une version antérieure du serveur ne
+      // doit pas casser l'écran — elle n'a simplement rien à dire du moteur.
+      setVerdicts(payload.verdicts ?? []);
       setEtat('chargee');
     } catch {
       setErreur('La prévisualisation n’a pas pu être lue.');
@@ -302,6 +308,36 @@ function EncartPrevisualisation({ desactive }: { desactive: boolean }) {
           )}
           {resolution.intentions.length === 0 && resolution.codesInconnus.length === 0 && (
             <p className="text-sm text-muted-foreground">Aucune intention résolue.</p>
+          )}
+          {/* CE QUE LE MOTEUR DÉCIDERAIT ([[D-133]]). Il n'avait aucun
+              appelant ; il en a un ici, et ses refus disent LEQUEL des
+              obstacles mord en premier — le catalogue vide, les alertes non
+              publiées, l'absence de seuil. Invisible jusqu'ici : l'atelier
+              montrait les règles résolues sans dire qu'aucune n'irait plus
+              loin. Hors dossier, le déclencheur clinique n'est pas évalué. */}
+          {verdicts.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-lg border border-border px-3 py-2">
+              <p className="text-sm font-medium text-foreground">Décision avant biologie</p>
+              <ul className="flex flex-col gap-1">
+                {verdicts.map((verdict, index) => (
+                  <li
+                    key={`${verdict.regleId ?? 'global'}-${index}`}
+                    className="text-sm text-muted-foreground"
+                  >
+                    {verdict.verdict === 'refus'
+                      ? <><Badge variant="warning">refus</Badge> {verdict.motif}</>
+                      : <>
+                          <Badge variant="warning">
+                            {verdict.statut === 'conditionnelle_biologie'
+                              ? 'en attente du bilan'
+                              : 'intention'}
+                          </Badge>{' '}
+                          {verdict.motif}
+                        </>}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {resolution.intentions.map(({ intention, regles }) => (
             <div key={intention.id} className="rounded-lg border border-border bg-muted/40 px-3 py-2">
