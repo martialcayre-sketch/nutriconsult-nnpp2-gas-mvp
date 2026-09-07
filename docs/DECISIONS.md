@@ -4,6 +4,89 @@
 
 ## Décisions actives
 
+### D-138 — Un critère n'est pas calculé, il est constaté — et la condition de règle cesse de porter deux natures
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage praticien explicite en session : « les deux — le champ porte deux natures distinctes », puis « ouvrir l'évaluateur de critères en même temps »). Migration livrée ; le code qui la consomme suit en PR séparée (`D-087`).
+- Domaine : moteur d'intention clinique C4, schéma, gouvernance du vocabulaire
+
+**§1 — Le défaut : un champ à deux natures, et elles ne se rencontraient jamais.**
+`clinical_rules.condition_supplementaire` (jsonb) était lue et écrite par deux
+codes aux contrats **disjoints** :
+
+- `validerContenuRegle` (gouvernance) n'accepte que `{ critereId }` — tout le
+  reste est refusé `condition_invalide` (400). C'est la **seule** forme que
+  l'outil sache écrire, et l'atelier n'en produit pas d'autre.
+- `lireConditionBiologique` (`decisionAvantBiologie.ts`) n'accepte que
+  `{ type: 'biologie', cible }` — tout le reste est **illisible**, et une
+  condition illisible vaut **refus**, jamais règle inconditionnelle. Sa JSDoc
+  le dit et a raison de le dire : « se tromper de sens ici ferait naître
+  “active” une intention que sa règle voulait suspendre ».
+
+Conséquence : une règle conditionnée à un critère — la seule que l'outil sache
+produire — **refusait son intention**, en la disant illisible. Le refus était du
+bon côté ; sa raison était fausse.
+
+Étiquette (`D-125`) : **démontré dans le code, sans occurrence observée**.
+Lecture de production du 2026-09-07 (one-off-442) : `clinical_rules` 0 ligne,
+`clinical_criteria` 0 ligne. Le chemin est pourtant atteignable — l'écrivain de
+critères existe (`POST /api/praticien/regles/vocabulaire`, `type: 'critere'`) et
+le vocabulaire est simplement encore vide. Le défaut mordrait au **premier**
+critère créé, puis à la première règle qui s'y conditionne.
+
+**§2 — La séparation, et pourquoi une clé étrangère.** Deux colonnes :
+`condition_critere_id` (TEXT, FK `RESTRICT` vers `clinical_criteria`, indexée) et
+`condition_biologie` (JSONB). Jusqu'ici `clinical_criteria` n'avait **aucune
+relation entrante** : la référence vivait dans un JSON, et rien n'empêchait une
+règle de pointer un critère supprimé. `condition_supplementaire` est
+**conservée** — sa suppression est destructive et demandera sa propre
+confirmation, une fois que plus aucun code ne l'écrit.
+
+**§3 — Le piège de la séparation, et l'arbitrage qu'il a forcé.** Séparer seul
+aurait **aggravé** le défaut : une règle à critère, n'ayant plus de condition
+biologique, serait passée de « illisible → refus » à « pas de condition → on
+applique ». Sa condition n'aurait alors été évaluée par **personne** — un
+fail-open que `DC-24` interdit. Trois issues étaient sur la table (refus
+explicite nommé, application silencieuse, ouverture de l'évaluateur) ;
+l'arbitrage a retenu la troisième.
+
+**§4 — Ce qu'un critère est, et ce qu'il n'est pas.** `clinical_criteria` porte
+un `code`, un libellé, une catégorie. **Rien**, ni dans le schéma, ni dans
+`MOTEUR_INTENTION_CLINIQUE_CONTEXTE.md` §4, ni ailleurs dans le dépôt, ne dit ce
+qu'un critère lit chez un patient. Le doter d'une dérivation — d'un score, d'une
+réponse de questionnaire, d'un marqueur — serait inventer de la sémantique
+clinique (`DC-19`, `DC-20`).
+
+Donc : **un critère ne se calcule pas, il se constate.** Table
+`criteres_dossier_constates` — un praticien déclare qu'un mot du vocabulaire
+s'applique ou non à un dossier, et il signe. Même patron que
+`panels_biologie_documentes` (déclaration d'un fait hors outil) et
+`arbitrages_biologiques` (verdict tracé, jamais silencieux). La ligne ne porte
+aucune mesure, aucun score, aucune valeur — la liste blanche de colonnes du
+contrat SQL en fait un invariant.
+
+**§5 — Trois états, pas deux.** L'absence de ligne signifie **inconnu**, jamais
+« absent ». Un critère constaté absent porte sa ligne, avec `present = false`.
+Le moteur distinguera donc « le praticien a constaté que non » de « personne ne
+s'est prononcé » : les deux refusent, mais un seul est une dette, et ils ne se
+disent pas de la même façon. `present` est **NOT NULL** — un NULL y serait un
+troisième état muet, indiscernable du constat d'absence ; le contrat SQL le
+verrouille nommément.
+
+**§6 — Ce que cette PR ne fait pas.** Elle ne livre que le schéma, la migration,
+le contrat SQL et l'effacement IDP2. Les routes, l'écran et le moteur suivent en
+PR séparée, après application **constatée** de la migration par conteneur
+(`D-087`). Tant que cette seconde PR n'est pas là, `condition_critere_id` et
+`criteres_dossier_constates` n'ont **aucun écrivain** — c'est assumé et borné :
+la colonne conservée fait que rien ne change de comportement d'ici là.
+
+**§7 — Coût nommé.** Entre le déploiement du code de cette PR et l'approbation
+de `release-db`, un effacement de dossier échouerait sur une table absente. Il
+échoue **fermé** (transaction annulée, rien de supprimé à moitié) et redevient
+possible après la release. Le reporter à la PR de code n'était pas une option :
+`effacement.test.ts` se dérive du **schéma** et rougit dès que le modèle
+apparaît — `arbitrages_biologiques` l'a tenté (#680) et a dû revenir sur ses pas.
+
 ### D-137 — Le document d'information cesse de nier la connexion patient par Google
 
 - Date : 2026-09-07
