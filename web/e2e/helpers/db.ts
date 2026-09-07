@@ -905,3 +905,93 @@ export async function nettoyerDossierBiologie(idPatient: string): Promise<void> 
     where: { idPatient, idReponse: { startsWith: ID_REPONSE_BIO_E2E_PREFIX } },
   });
 }
+
+// ─── Contrat d'unicité : `23505` → `P2002` ([[D-134]]) ──────────────────────
+//
+// POURQUOI CETTE SONDE EXISTE. Trois routes traduisent `P2002` en 409 lisible —
+// `selection_stale` de la sélection de priorité ([[D-127]] §3bis),
+// `code_deja_pris` des catégories et des alertes ([[D-132]]). Leurs bancs
+// SIMULENT ce `P2002` : aucun ne prouvait que PostgreSQL le produise, ni que
+// Prisma le traduise. Et la garde la plus load-bearing porte sur un index
+// PARTIEL vivant dans la migration SEULE — `c1_selection_priorite_racine_unique`,
+// que Prisma ne connaît donc pas. Si un adaptateur cessait de le classer en
+// violation d'unicité, le refus de course tomberait en 500 sans qu'un seul banc
+// bouge.
+//
+// ELLE VIT ICI, ET PAS EN CONTRAT SQL : `prisma/checks/*.sql` prouve ce que la
+// BASE refuse — le contrat de `D-127` le fait déjà. Ce qui restait à prouver est
+// la TRADUCTION, qui appartient au client Prisma. Aucune lane n'existe pour un
+// contrat de niveau client, et en ouvrir une demanderait de recopier une étape
+// dans `ci.yml` ET dans `wn-test-worktree.sh` — la divergence silencieuse que
+// ces deux fichiers refusent explicitement.
+
+export type SondeUnicite = {
+  code: string | null;
+  originalCode: string | null;
+  contrainte: string | null;
+};
+
+function decrireErreurUnicite(err: unknown): SondeUnicite {
+  const erreur = err as {
+    code?: string;
+    meta?: { driverAdapterError?: { cause?: { originalCode?: string; constraint?: unknown } } };
+  };
+  const cause = erreur?.meta?.driverAdapterError?.cause;
+  const contrainte = cause?.constraint;
+  return {
+    code: erreur?.code ?? null,
+    originalCode: cause?.originalCode ?? null,
+    contrainte:
+      typeof contrainte === 'string'
+        ? contrainte
+        : (contrainte as { fields?: string[] } | undefined)?.fields?.join(',') ?? null,
+  };
+}
+
+/**
+ * Pose une racine, puis tente une SECONDE racine et un SECOND successeur de la
+ * même tête. Rend ce que le client a levé pour chacune, et NETTOIE ses lignes.
+ *
+ * `decisionCardId` est propre à la sonde : le ramassage du rayon biologie borne
+ * le sien au préfixe `runtime-decision-`, les deux ne se croisent pas.
+ */
+export async function sonderUniciteSelectionPriorite(
+  idPatient: string,
+  decisionCardId: string,
+): Promise<{ racine: SondeUnicite; successeur: SondeUnicite }> {
+  const poser = (supersedesSelectionId: string | null) =>
+    prisma.decisionPrioritySelection.create({
+      data: {
+        idPatient,
+        decisionCardId,
+        decisionCardInputHash: 'a'.repeat(64),
+        candidateId: 'priority:CONTRAT_P2002',
+        rationale: 'Contrat technique d’unicité — aucune portée clinique.',
+        selectedByEmail: PRATICIEN_EMAIL,
+        supersedesSelectionId,
+      },
+      select: { id: true },
+    });
+
+  const vide: SondeUnicite = { code: null, originalCode: null, contrainte: null };
+  try {
+    const racine = await poser(null);
+    let verdictRacine = vide;
+    try {
+      await poser(null);
+    } catch (err) {
+      verdictRacine = decrireErreurUnicite(err);
+    }
+
+    await poser(racine.id);
+    let verdictSuccesseur = vide;
+    try {
+      await poser(racine.id);
+    } catch (err) {
+      verdictSuccesseur = decrireErreurUnicite(err);
+    }
+    return { racine: verdictRacine, successeur: verdictSuccesseur };
+  } finally {
+    await prisma.decisionPrioritySelection.deleteMany({ where: { idPatient, decisionCardId } });
+  }
+}

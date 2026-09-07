@@ -4,6 +4,59 @@
 
 ## Décisions actives
 
+### D-134 — Un banc qui fabrique l'erreur qu'il attend ne prouve pas qu'elle arrive
+
+- Date : 2026-09-07
+- Statut : accepté (arbitrage du responsable, rendu en session le 2026-09-06 —
+  « 1, 2 puis 3 », le troisième point comprenant ce harnais)
+- Domaine : contrats de base, traduction des violations d'unicité.
+  **Aucun code de production modifié, aucune migration, aucun seuil.**
+- Porte sur : `D-127` §3bis, `D-132`, `D-123`, `D-125` pour l'étiquetage
+
+**Le défaut de preuve.** Trois routes traduisent `P2002` en 409 lisible —
+`selection_stale` (sélection de priorité), `code_deja_pris` (catégories,
+alertes). Leurs bancs unitaires **fabriquent** l'erreur `P2002` pour vérifier la
+traduction. Aucun ne prouvait que la base la produise, ni que le client la rende
+sous ce code : ils simulent l'erreur qu'ils attendent.
+
+**Le cas qui portait le risque.** `c1_selection_priorite_racine_unique` est un
+index **partiel** (`WHERE supersedes_selection_id IS NULL`) qui vit dans la
+**migration seule** — Prisma ne le déclare pas et ne le connaît pas. C'est
+pourtant lui qui arbitre la course de deux premières sélections. Si un
+adaptateur cessait de classer `23505` en violation d'unicité, `selection_stale`
+tomberait en **500** au lieu de 409, sans qu'un seul banc bouge.
+
+**Ce que la sonde a établi, sur base réelle** (worktree, PostgreSQL 15) :
+
+```
+racine     : code=P2002  originalCode=23505  contrainte=id_patient,decision_card_id
+successeur : code=P2002  originalCode=23505  contrainte=supersedes_selection_id
+```
+
+L'adaptateur classe `23505` en `UniqueConstraintViolation` **avant** que Prisma
+ne le rende en `P2002`, index modélisé ou non. La traduction tient donc pour
+l'index déclaré comme pour l'index inconnu — c'était l'hypothèse, elle est
+désormais un fait.
+
+**Arbitrage — le contrat vit dans la lane E2E, sans navigateur.**
+`prisma/checks/*.sql` prouve ce que la BASE refuse, et le contrat de `D-127` le
+fait déjà ; ce qui restait à prouver est la **traduction**, qui appartient au
+client Prisma. Aucune lane n'existe pour un contrat de niveau client, et en
+ouvrir une aurait demandé de recopier une étape dans `ci.yml` **et** dans
+`wn-test-worktree.sh` — la divergence silencieuse que ces deux fichiers
+refusent explicitement, et que l'extraction `sed` des deux listes existe pour
+empêcher. La suite E2E est la seule lane disposant d'une vraie base en T2, T3 et
+CI ; un spec sans écran y est assumé, et son en-tête dit pourquoi.
+
+**Le témoin fait la preuve.** La sonde éprouve AUSSI
+`@@unique([supersedesSelectionId])`, déclaré au schéma. Sans lui, un `P2002` sur
+la racine ne dirait pas si la traduction vaut également pour l'inconnu : c'est
+la comparaison des deux qui établit le fait, pas le premier cas seul.
+
+**Portée.** Le contrat ne dit rien de la BONNE traduction en 409 — c'est le
+travail des bancs de route, qui reste entier. Il dit que l'entrée qu'ils
+simulent existe réellement.
+
 ### D-133 — Le moteur C4 avait tout pour décider, et personne pour l'appeler
 
 - Date : 2026-09-07
