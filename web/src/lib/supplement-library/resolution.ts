@@ -21,7 +21,6 @@ type LigneRegle = {
   intentTagId: string;
   typeRegle: string;
   justification: string;
-  conditionSupplementaire: unknown;
   conditionBiologie: unknown;
   conditionCritere: { id: string; code: string; labelFr: string } | null;
   // NULLABLES ICI ALORS QUE LA BASE LES EXIGE ([[D-140]]) : le code se déploie
@@ -79,7 +78,6 @@ function versRegleResolue(regle: LigneRegle): RegleResolue {
     doseCibleHaute: regle.doseCibleHaute,
     gradePreuve: parseGradePreuveScientifique(regle.gradePreuveScientifique),
     justification: regle.justification,
-    conditionSupplementaire: regle.conditionSupplementaire ?? null,
     conditionBiologie: regle.conditionBiologie ?? null,
     conditionCritere: regle.conditionCritere
       ? {
@@ -148,7 +146,6 @@ export async function resoudreIntentions(
         intentTagId: true,
         typeRegle: true,
         justification: true,
-        conditionSupplementaire: true,
         conditionBiologie: true,
         // Le critère est JOINT, pas seulement son identifiant : un refus doit
         // pouvoir NOMMER le critère au praticien ([[D-138]]).

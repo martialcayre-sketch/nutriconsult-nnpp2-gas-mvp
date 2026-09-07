@@ -1804,8 +1804,7 @@ export function AtelierReglesPanel() {
                           endroit. Une garde clinique qui ne s'affiche pas ne se
                           vérifie pas. */}
                       {Boolean(regle.conditionCritere
-                        || lireConditionBiologiqueAffichable(regle.conditionBiologie)
-                        || regle.conditionSupplementaire) && (
+                        || lireConditionBiologiqueAffichable(regle.conditionBiologie)) && (
                         <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
                           {regle.conditionCritere && (
                             <li>
@@ -1822,12 +1821,6 @@ export function AtelierReglesPanel() {
                               </li>
                             ) : null;
                           })()}
-                          {regle.conditionSupplementaire ? (
-                            <li className="text-status-warning">
-                              Cette règle porte encore une condition à l&apos;ancien format, que le
-                              moteur ne lit plus. Rouvrez-la en révision pour la reposer.
-                            </li>
-                          ) : null}
                         </ul>
                       )}
 

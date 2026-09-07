@@ -4,6 +4,77 @@
 
 ## Décisions actives
 
+### D-147 — Une colonne ne se supprime pas sur une lecture de la veille, mais sur une garde qui s'applique avec elle
+
+- Date : 2026-09-08
+- Statut : accepté (arbitrage praticien explicite en session : « oui — lot complet, prod relue d'abord »)
+- Domaine : moteur d'intention clinique C4, schéma, gouvernance des règles
+
+**§1 — Le troisième et dernier temps.** [[D-138]] a séparé l'ancien champ à deux
+natures `condition_supplementaire` en deux colonnes propres et a fait lire les
+NEUVES au moteur. [[D-142]] a coupé le dernier écrivain — les routes écrivaient
+encore le JSON hérité que le moteur ne lisait plus, si bien qu'une règle créée
+avec un critère naissait **inconditionnelle**. Restait le troisième temps de
+l'ordre `D-087` : *plus personne n'écrit* ✅ → *plus personne ne lit* → *la
+colonne part*. C'est ce lot.
+
+Les deux derniers temps voyagent **ensemble, dans le même commit**, et ce n'est
+pas un raccourci : séparés, soit la dérive schéma↔migrations rougit, soit
+l'avertissement d'atelier disparaît avant la garde qui le remplace.
+
+**§2 — La garde, écrite précisément parce qu'elle ne doit pas mordre.** La
+lecture de production du 2026-09-08 (conteneur `one-off-209`) donne
+`clinical_rules` = **0 ligne**, dont **0** portant une condition héritée. La
+migration pourrait donc se contenter du `DROP`. Elle ne s'en contente pas : elle
+compte d'abord, et `RAISE EXCEPTION` s'il reste une ligne.
+
+La distinction est celle-ci — **une suppression qui repose sur ce qu'on a lu la
+veille repose sur une lecture ; celle-ci repose sur l'état au moment où elle
+s'applique**. Entre la lecture et l'approbation `release-db` s'écoule un délai
+pendant lequel l'atelier reste ouvert. Ce que la garde protège n'est pas
+rattrapable : le JSON hérité est la SEULE trace de la condition clinique d'une
+telle règle. La perdre transformerait une règle conditionnée en règle
+inconditionnelle — exactement le défaut que `D-142` vient de fermer, mais dans
+l'autre sens et sans retour (`DC-19`, `DC-20`, `DC-24`).
+
+**§3 — Ce que ce lot retire et qui était utile.** L'atelier affichait un
+avertissement sur toute règle portant encore l'ancien format : « Cette règle
+porte encore une condition à l'ancien format, que le moteur ne lit plus. » Cet
+avertissement **disparaît**, et il faut le dire : c'était le seul objet du dépôt
+qui aurait signalé une règle héritée à un humain.
+
+Il n'est pas perdu pour rien — il est **remplacé par plus strict**. Un
+avertissement d'écran suppose que quelqu'un regarde le bon écran au bon moment ;
+la garde de migration, elle, refuse. L'ordre importe : la garde arrive **dans le
+même commit** que le retrait de l'avertissement, jamais après.
+
+**§4 — La sentinelle s'élargit, et sa borne d'origine s'explique.**
+`conditionRegle.guard.test.ts` était volontairement bornée aux ROUTES : l'atelier
+lisait encore le champ pour le montrer, et une sentinelle qui punit la bonne
+conduite finit désactivée. Cette raison disparaît avec la colonne. Le périmètre
+devient **toute source servie** (client généré et bancs exclus — un banc doit
+pouvoir nommer le champ retiré pour éprouver qu'il ne revient pas). Une mention
+qui réapparaîtrait ne serait plus seulement un retour au défaut de `D-142` :
+elle serait la lecture d'une colonne absente.
+
+**§5 — Un banc a été retiré, et c'est délibéré.** `decisionAvantBiologie.test.ts`
+éprouvait que le moteur IGNORE l'ancienne colonne. Le champ n'existe plus, il ne
+peut donc plus être passé : **un banc qui ne peut plus rougir n'éprouve rien**.
+Le supprimer plutôt que le laisser vert par vacuité, et laisser la sentinelle
+élargie tenir l'invariant à sa place.
+
+**§6 — Portée.** Étiquette `D-125` : **démontré dans le code, sans occurrence
+observée**. `clinical_rules` n'a jamais porté de ligne en production — ni avant
+ni après `D-142`. Rien n'a donc été perdu, et rien ne pouvait l'être : le défaut
+de `D-138`→`D-142` n'a produit aucune règle inconditionnelle **parce qu'il n'a
+produit aucune règle**. C'est la seule raison, et elle tient du calendrier, pas
+d'une garde.
+
+**§7 — Ordre d'application.** `D-087` : le code se déploie AVANT que la
+migration soit approuvée. La direction est un *contract*, donc sûre — un
+déploiement où la colonne existe encore et où plus rien ne la lit est
+parfaitement valide, et c'est même l'état attendu pendant la fenêtre
+d'approbation. L'inverse ne le serait pas.
 ### D-146 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
 
 - Date : 2026-09-08
