@@ -21,6 +21,9 @@ const VARIANTE: Record<EtapeNouveauPatient, BadgeVariant> = {
   dossier_desactive: 'neutral',
   acces_revoque: 'neutral',
   acces_non_envoye: 'danger',
+  // Le lien a été présenté et la porte n'a pas cédé : ce n'est plus une
+  // attente, c'est un incident — même registre que `acces_non_envoye`.
+  entree_refusee: 'danger',
   jamais_connecte: 'warning',
   onboarding_a_finir: 'warning',
   // Anomalie, pas attente : l'onboarding validé aurait dû assigner le pack.
