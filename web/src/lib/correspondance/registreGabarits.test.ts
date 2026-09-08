@@ -61,7 +61,7 @@ describe('registre des gabarits patient — intégrité', () => {
     expect(REGISTRE_GABARITS_PATIENT.filter(g => g.key === 'acces_portail')).toHaveLength(2);
   });
 
-  it('les deux validations formelles sont datées — le reste du registre ne l’est pas', () => {
+  it('les trois validations formelles sont datées — le reste du registre ne l’est pas', () => {
     // `valideLe` a existé huit versions durant sans jamais être renseigné. Ce
     // banc échoue si une validation est posée ailleurs sans décision.
     const valides = REGISTRE_GABARITS_PATIENT.filter(g => g.valideLe !== null);
@@ -70,8 +70,14 @@ describe('registre des gabarits patient — intégrité', () => {
       // Validé par le praticien le 2026-09-07, sur lecture de la seule prose
       // neuve : le reste est le texte de la v2 au caractère près.
       'acces_portail_lien@1',
+      // Validé le 2026-09-08, le jour de sa rédaction, sur demande explicite du
+      // responsable — première validation du registre posée APRÈS l'entrée du
+      // gabarit ([[D-154]] §7). Son `hash` est inchangé au même commit : c'est
+      // ce que le hash-lock ci-dessus prouve, et c'est pour cela que la
+      // validation n'est pas une v2.
+      'objectif_propose@1',
     ]);
-    expect(valides.map(g => g.valideLe)).toEqual(['2026-09-04', '2026-09-07']);
+    expect(valides.map(g => g.valideLe)).toEqual(['2026-09-04', '2026-09-07', '2026-09-08']);
   });
 
   it('les segments partagés sont figés', () => {
