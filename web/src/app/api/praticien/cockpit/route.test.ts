@@ -147,13 +147,24 @@ describe('/api/praticien/cockpit', () => {
     });
   });
 
-  it('propose T0 par défaut et J21 sur demande avec réponses dans et hors fenêtre', async () => {
+  // RÉÉCRIT PAR [[D-156]], ET NON AJUSTÉ. Le banc affirmait que le `T0` laisse
+  // dehors une réponse arrivée trois semaines plus tard. C'était le
+  // comportement, et c'était le défaut : les QUATRE T0 de production ont été
+  // confirmés en rouvrant à la main 5 à 17 réponses hors fenêtre — sans
+  // exception. L'ancre initiale ne mesure pas un instant, elle constate un
+  // état d'entrée qui se constitue en deux rideaux ; la borne haute tombe.
+  // Un jalon de MESURE, lui, garde sa fenêtre — c'est la seconde moitié du banc.
+  it('T0 embarque tout l’état d’entrée ; J21 reste fenêtré sur son instant', async () => {
     const t0Response = await GET(getRequest());
     const t0 = await t0Response.json();
     expect(t0Response.status).toBe(200);
     expect(t0).toMatchObject({
       status: 'proposal_required',
-      proposal: { milestone: 'T0', inWindowResponseIds: ['REP_T0'], outOfWindowResponseIds: ['REP_J21'] },
+      proposal: {
+        milestone: 'T0',
+        inWindowResponseIds: ['REP_J21', 'REP_T0'],
+        outOfWindowResponseIds: [],
+      },
     });
     expect(t0.proposalHash).toHaveLength(64);
 
@@ -755,7 +766,10 @@ describe('/api/praticien/cockpit — ouverture d’un cycle (`D-113`)', () => {
 
   async function propositionAncre(milestone: string) {
     const response = await GET(getRequest(`idPatient=PAT_TEST&milestone=${milestone}`));
-    return response.json() as Promise<{ proposalHash: string; proposal: { inWindowResponseIds: string[] } }>;
+    return response.json() as Promise<{
+      proposalHash: string;
+      proposal: { inWindowResponseIds: string[]; outOfWindowResponseIds: string[] };
+    }>;
   }
 
   it('accepte `T1` comme jalon : la porte de forme n’est plus une liste fermée', async () => {
@@ -797,15 +811,21 @@ describe('/api/praticien/cockpit — ouverture d’un cycle (`D-113`)', () => {
   });
 
   it('la fenêtre d’une ancre qui ROUVRE un suivi se centre sur la dernière réponse', async () => {
-    // `T0` se centre sur la PREMIÈRE réponse du dossier — un dossier qui
-    // s'ouvre. `T1` sur la DERNIÈRE : reprendre la première aurait centré la
-    // fenêtre du nouveau cycle sur un état vieux de plusieurs mois, et
-    // l'épisode d'ouverture aurait été confirmé vide.
+    // `T0` s'ancre sur la PREMIÈRE réponse du dossier — un dossier qui s'ouvre.
+    // `T1` sur la DERNIÈRE : reprendre la première aurait centré la fenêtre du
+    // nouveau cycle sur un état vieux de plusieurs mois, et l'épisode
+    // d'ouverture aurait été confirmé vide.
     const ancre = await propositionAncre('T1');
     expect(ancre.proposal.inWindowResponseIds).toEqual(['REP_J21']);
+    // ET LA BORNE HAUTE OUVERTE DE [[D-156]] NE FUIT PAS JUSQU'ICI : `T1`
+    // laisse dehors la réponse d'ouverture du dossier. Rouvrir un suivi n'est
+    // pas constater une entrée — sans quoi chaque réouverture embarquerait tout
+    // l'historique.
+    expect(ancre.proposal.outOfWindowResponseIds).toEqual(['REP_T0']);
 
+    // `T0`, lui, prend les deux : c'est l'état d'entrée, en deux rideaux.
     const premiere = await propositionAncre('T0');
-    expect(premiere.proposal.inWindowResponseIds).toEqual(['REP_T0']);
+    expect(premiere.proposal.inWindowResponseIds).toEqual(['REP_J21', 'REP_T0']);
   });
 });
 

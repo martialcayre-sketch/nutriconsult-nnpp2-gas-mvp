@@ -37,12 +37,32 @@ function dateRange(refs: AssessmentResponseRef[]): SourceDateRange | null {
   return { min: dates[0], max: dates[dates.length - 1] };
 }
 
+/**
+ * Comment l'épisode choisit les réponses qu'il embarque.
+ *
+ * `fenetre` — la règle historique, et celle de TOUT jalon de mesure : `targetAt`
+ * ± `TOLERANCE_JOURS_JALON`. Un J21 mesure un instant, et ce qui est arrivé
+ * trois semaines plus tard n'en fait pas partie.
+ *
+ * `etat_entree` — la borne haute tombe : tout ce qui est arrivé DEPUIS l'entrée
+ * du dossier entre. Réservé à l'ancre initiale, dont l'objet n'est pas de
+ * mesurer un instant mais de constater un ÉTAT DE DÉPART, lequel se constitue
+ * en plusieurs temps ([[D-156]]).
+ *
+ * La borne basse reste `targetAt - tolérance` dans les deux modes : elle ne
+ * refuse rien sur une ancre initiale (`targetAt` EST la première réponse), et
+ * elle garde son sens le jour où un appelant l'emploierait autrement.
+ */
+export type ModeInclusionEpisode = 'fenetre' | 'etat_entree';
+
 export function proposeAssessmentEpisode(input: {
   assessmentEpisodeId: string;
   patientId: string;
   milestone: JalonMomentum;
   targetAt: string;
   responses: QuestionnaireResponseInput[];
+  /** Défaut `fenetre` : le mode élargi se DEMANDE, il ne se déduit pas d'ici. */
+  inclusion?: ModeInclusionEpisode;
 }): ProposedAssessmentEpisode {
   if (!input.assessmentEpisodeId.trim() || !input.patientId.trim()) {
     throw new TypeError('assessmentEpisodeId et patientId sont requis.');
@@ -55,12 +75,20 @@ export function proposeAssessmentEpisode(input: {
     throw new TypeError('Les identifiants de réponse doivent être uniques.');
   }
 
+  const etatEntree = input.inclusion === 'etat_entree';
+  const debutMs = targetMs - toleranceMs;
+  const finMs = targetMs + toleranceMs;
   const inWindowResponseIds = candidateResponses
-    .filter(ref => Math.abs(new Date(ref.observedAt).getTime() - targetMs) <= toleranceMs)
+    .filter(ref => {
+      const observeMs = new Date(ref.observedAt).getTime();
+      if (observeMs < debutMs) return false;
+      return etatEntree || observeMs <= finMs;
+    })
     .map(ref => ref.responseId);
   const inWindow = new Set(inWindowResponseIds);
   const outOfWindowResponseIds = candidateResponses.filter(ref => !inWindow.has(ref.responseId)).map(ref => ref.responseId);
   const includedRefs = candidateResponses.filter(ref => inWindow.has(ref.responseId));
+  const plageIncluse = dateRange(includedRefs);
 
   return {
     assessmentEpisodeId: input.assessmentEpisodeId,
@@ -68,15 +96,23 @@ export function proposeAssessmentEpisode(input: {
     milestone: input.milestone,
     targetAt,
     window: {
-      start: new Date(targetMs - toleranceMs).toISOString(),
-      end: new Date(targetMs + toleranceMs).toISOString(),
+      start: new Date(debutMs).toISOString(),
+      // EN MODE `etat_entree`, LA BORNE HAUTE EST LA DERNIÈRE RÉPONSE INCLUSE,
+      // JAMAIS UNE HORLOGE. `targetAt` et les identifiants inclus entrent dans
+      // `proposalHash`, que le POST recompare à celui du GET : une borne
+      // « maintenant » périmerait la proposition à la seconde, avec un 409
+      // impossible à résorber (même raison qu'en tête de `dateDeReference`).
+      // Sans aucune réponse, la fenêtre nominale stabilise l'enveloppe vide.
+      end: etatEntree
+        ? (plageIncluse?.max ?? new Date(finMs).toISOString())
+        : new Date(finMs).toISOString(),
       toleranceDays: TOLERANCE_JOURS_JALON,
     },
     candidateResponses,
     inWindowResponseIds,
     outOfWindowResponseIds,
     includedResponseIds: inWindowResponseIds,
-    sourceDateRange: dateRange(includedRefs),
+    sourceDateRange: plageIncluse,
     status: 'proposed',
   };
 }
