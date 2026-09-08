@@ -72,6 +72,33 @@ jobs:
         working-directory: web
         run: npx playwright install --with-deps chromium webkit
 
+      # BUILD DE PRODUCTION, COMME `verify` — et ce n'est pas un alignement de
+      # confort. `playwright.config.ts` fait défaut à `PLAYWRIGHT_WEB_SERVER=dev`
+      # quand la variable est absente : ce workflow servait donc les captures
+      # depuis `next dev`, quand `ci.yml` les compare contre `next start`
+      # (`PLAYWRIGHT_WEB_SERVER: start`). L'écart n'est pas théorique — le
+      # serveur de développement dessine l'INDICATEUR NEXT.JS, un disque sombre
+      # en bas à gauche de chaque page, que la production ne rend jamais.
+      #
+      # Constaté le 2026-09-09 (PR #965) : les deux baselines iPhone
+      # régénérées échouaient dans `verify` par 122 et 896 pixels, tous
+      # contenus dans une boîte de 24×31 px au coin inférieur gauche — cet
+      # indicateur, et rien d'autre. La référence portait un artefact que le
+      # comparateur ne pouvait pas retrouver.
+      #
+      # Les mêmes drapeaux que `ci.yml` : un build qui les ignorerait rendrait
+      # des écrans que le comparateur ne verra jamais dans cet état.
+      - name: Build de production
+        working-directory: web
+        env:
+          WN_CB_ENABLED: 'true'
+          WN_CB_PROPOSITION: 'true'
+          WN_CB_RESULTS_ENABLED: 'true'
+          WN_CE_QUI_COMPTE: 'true'
+          WN_COMPREHENSION: 'true'
+          WN_DOSSIER_DEUX_VOIX: 'true'
+        run: npm run build
+
       - name: Générer les baselines (suite visuelle seule)
         working-directory: web
         env:
@@ -79,6 +106,9 @@ jobs:
           # même sans baseline — combiné à --update-snapshots, il ÉCRIT la
           # baseline au lieu de comparer.
           WN_VISUAL_UPDATE: '1'
+          # Le serveur du build ci-dessus, comme `ci.yml`. Sans cette ligne, le
+          # défaut de `playwright.config.ts` est `dev`.
+          PLAYWRIGHT_WEB_SERVER: start
         # `=all` ET NON LE DRAPEAU NU. Sans valeur, `--update-snapshots` prend
         # le préréglage `changed` : Playwright ne réécrit que les baselines
         # qu'il juge DIFFÉRENTES — jugement rendu avec les options du matcher
