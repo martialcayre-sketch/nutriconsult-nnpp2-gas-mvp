@@ -71,7 +71,7 @@ beforeEach(() => {
     actif: true,
   });
   prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE]);
-  // Par défaut AUCUNE plage publiée ([[D-156]]) : c'est l'état de la
+  // Par défaut AUCUNE plage publiée ([[D-157]]) : c'est l'état de la
   // production (2 plages fonctionnelles pour 47 analytes), et un défaut qui
   // en servirait une ferait passer au vert des bancs qui doivent éprouver le
   // silence.
@@ -665,7 +665,7 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
   });
 });
 
-// LA PLAGE SOURCÉE SERVIE AVEC LA SÉRIE ([[D-156]]).
+// LA PLAGE SOURCÉE SERVIE AVEC LA SÉRIE ([[D-157]]).
 describe('GET — les plages fonctionnelles servies avec la série', () => {
   const PLAGE = {
     analyteCode: 'BIO_FERRITINE',

@@ -576,13 +576,13 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
   });
 });
 
-// LA PLAGE SOURCÉE À CÔTÉ DE LA MESURE ([[D-156]]).
+// LA PLAGE SOURCÉE À CÔTÉ DE LA MESURE ([[D-157]]).
 //
 // L'arbitrage praticien a tranché : juxtaposer une plage FONCTIONNELLE SOURCÉE
 // à côté d'une mesure, sans écart calculé ni couleur ni « hors plage », est de
 // l'AFFICHAGE DOCUMENTAIRE, pas une interprétation au sens `DC-19`/`DC-20`.
 // Ces bancs gardent la frontière : ce qui s'affiche, et surtout ce qui se tait.
-describe('EstimeMesurePanel — la plage sourcée juxtaposée ([[D-156]])', () => {
+describe('EstimeMesurePanel — la plage sourcée juxtaposée ([[D-157]])', () => {
   const MESURE = {
     id: 'r1',
     analyteCode: 'BIO_FERRITINE',

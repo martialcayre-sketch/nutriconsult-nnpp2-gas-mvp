@@ -43,7 +43,7 @@ type ResultatAffiche = {
 };
 
 /**
- * Une plage fonctionnelle sourcée, telle que la route la sert ([[D-156]]).
+ * Une plage fonctionnelle sourcée, telle que la route la sert ([[D-157]]).
  * L'écran la JUXTAPOSE à la série, il ne la compare à aucune mesure.
  */
 type PlageAffichee = {
@@ -66,7 +66,7 @@ function formatBornes(min: number | null, max: number | null, unite: string): st
 }
 
 /**
- * LES PLAGES D'UNE SÉRIE, OU AUCUNE — la règle d'unité ([[D-156]]).
+ * LES PLAGES D'UNE SÉRIE, OU AUCUNE — la règle d'unité ([[D-157]]).
  *
  * Une plage ne s'affiche que si son unité est celle de TOUTES les mesures de
  * la série. Dès qu'une unité diverge — la mesure a été consignée avant que le
@@ -339,7 +339,7 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   const resultsEnabled = useCbResultsEnabled();
   const [resultats, setResultats] = useState<ResultatAffiche[]>([]);
   /**
-   * Les plages fonctionnelles servies avec la série ([[D-156]]). Vide tant
+   * Les plages fonctionnelles servies avec la série ([[D-157]]). Vide tant
    * qu'aucune lecture n'a abouti — et une absence de plage ne s'affiche pas :
    * un analyte sans plage publiée ne montre RIEN à cet endroit (`DC-24`), il
    * n'annonce pas « aucune plage », ce qui serait une information sur le
@@ -529,7 +529,7 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
           {[...parAnalyte.entries()].map(([code, serie]) => (
             <li key={code} className="rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{serie[0].analyteLibelle}</p>
-              {/* LA PLAGE SOURCÉE, JUXTAPOSÉE — JAMAIS UN VERDICT ([[D-156]]).
+              {/* LA PLAGE SOURCÉE, JUXTAPOSÉE — JAMAIS UN VERDICT ([[D-157]]).
                   Aucun écart n'est calculé, aucune couleur d'état n'est posée,
                   aucun tri par « anormalité » n'existe : ce bloc rend ce que le
                   corpus porte, à côté de ce que le dossier porte, et laisse au

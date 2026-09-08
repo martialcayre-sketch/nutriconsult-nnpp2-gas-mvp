@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-156 — Juxtaposer une plage sourcée à une mesure est documentaire ; la comparer serait interpréter
+### D-157 — Juxtaposer une plage sourcée à une mesure est documentaire ; la comparer serait interpréter
 
 - Date : 2026-09-08
 - Statut : accepté (arbitrage praticien explicite en session — question d'ouverture du LOT-04, posée le 2026-09-04 et restée sans réponse jusqu'ici)
@@ -74,6 +74,81 @@ référence, 0 résultat biologique**, et `WN_CB_RESULTS_ENABLED` n'est pas pos�
 la surface entière est fail-closed. Le lot ne change donc rien à ce qui
 s'affiche aujourd'hui ; il fixe ce qui s'affichera quand l'étage 2 s'ouvrira,
 et surtout ce qui ne s'affichera jamais.
+### D-156 — L'ancre initiale constate un état d'entrée, elle ne mesure pas un instant : sa borne haute tombe
+
+- Date : 2026-09-08
+- Statut : accepté — **arbitrage du responsable rendu en session le 2026-09-08**
+- Domaine : clinique, épisode d'évaluation, composition de l'ancre T0
+- Amende : [[D-052]] §3, clause d'INCLUSION seulement. La date de référence de
+  `targetAt` — la première passation du dossier — est **inchangée**, comme le
+  reste de `D-052`, de [[D-113]] et de [[D-150]] §4.
+- Porte sur : la demande du responsable de ne valider `T0` **qu'après un second
+  rideau de questionnaires**, assigné après la première synthèse. Ce lot n'écrit
+  PAS cette condition : il rend d'abord possible qu'un `T0` retardé embarque ce
+  qu'il attend. La condition suit, séparément.
+
+**1. LA MESURE QUI DÉCIDE.** Les quatre — et seuls — épisodes `T0` confirmés en
+production, lus par conteneur le 2026-09-08 :
+
+| dossier | cible | confirmé | candidates | incluses | hors fenêtre |
+|---|---|---|---|---|---|
+| A | 08-03 | 08-30 | 13 | **13** | 6 |
+| B | 07-24 | 08-29 | 19 | **19** | 5 |
+| C | 07-07 | 08-30 | 14 | **14** | 5 |
+| D | 07-10 | 09-04 | 25 | **25** | 17 |
+
+Les quatre ont embarqué **la totalité** des réponses du dossier, alors que 5 à
+17 d'entre elles tombaient hors de la fenêtre ±`TOLERANCE_JOURS_JALON`. Le
+praticien les a donc rouvertes **une à une, à chaque fois, sans exception** —
+trente-trois réinclusions manuelles pour quatre actes. La borne haute ne
+protégeait rien : elle imposait un travail, et son seul effet possible était
+l'oubli. Aucune de ces lignes n'est retouchée par ce lot.
+
+**2. CE QUE `T0` EST, ET QUI N'EST PAS UNE MESURE.** Un `J21` répond à « où en
+est ce patient trois semaines après ». La question a une date, et ce qui arrive
+trois semaines plus tard n'y répond pas : sa fenêtre est juste. `T0` répond à
+« de quoi partons-nous ». Cet état ne s'observe pas à un instant — il se
+constitue en plusieurs temps, et le responsable vient précisément de demander
+qu'il en compte deux. Une fenêtre symétrique appliquée à un état de départ n'est
+pas une garde : c'est un jalon de mesure appliqué à un objet qui n'en est pas un.
+
+**3. LA BORNE HAUTE TOMBE, LA BORNE BASSE TIENT.** `proposeAssessmentEpisode`
+reçoit un mode d'inclusion : `fenetre` (défaut, tout jalon de mesure) ou
+`etat_entree`. En `etat_entree`, seule la borne `targetAt + tolérance` disparaît.
+La borne basse est conservée — elle ne refuse rien sur une ancre initiale, dont
+`targetAt` EST la première réponse, et elle garde son sens si un appelant
+l'employait autrement. Le mode se **demande** ; il ne se déduit pas du jalon à
+l'intérieur du module, qui reste une primitive de fenêtrage.
+
+**4. `T0` SEUL, ET LE SECOND TERME N'EST PAS DÉCORATIF.** `estAncreInitiale` =
+`estAncreDeCycle` **et** `indexDeCycle === 0`. [[D-113]] a fait de l'ouverture
+d'un `T1` le même acte que celle d'un `T0` pour la porte des préconditions ; ce
+n'est PAS le même acte pour la composition. Une ancre qui rouvre un suivi se
+fenêtre sur la réponse la plus récente ([[D-052]] via `dateDeReference`, cas 3) :
+lui ouvrir la borne haute lui ferait embarquer tout l'historique du dossier, et
+l'épisode de reprise cesserait de décrire une reprise.
+
+**5. AUCUNE HORLOGE DANS LA BORNE, ET C'EST STRUCTUREL.** La borne haute rendue
+est la date de la **dernière réponse incluse**, jamais `maintenant`. `targetAt`
+et les identifiants inclus entrent dans `proposalHash`, que le POST recompare à
+celui du GET : une borne d'horloge périmerait la proposition à la seconde, avec
+un `409 proposal_stale` que rien ne résorbe. C'est la même raison qui interdit
+déjà une horloge dans `dateDeReference`. Sans aucune réponse, la fenêtre
+nominale stabilise l'enveloppe vide.
+
+**6. CE QUE CE LOT NE FAIT PAS.** Il n'exige pas le second rideau — cette
+condition est un lot distinct, parce qu'une condition qui bloque et une
+composition qui change ne se relisent pas ensemble. **L'ordre est délibéré** :
+livrer la composition d'abord garantit qu'aucun `T0` confirmé entre les deux
+lots ne soit composé sur le premier rideau seul. Il ne touche ni
+`TOLERANCE_JOURS_JALON`, seuil clinique partagé par les jalons praticien,
+patient et les lectures de momentum ; ni `targetAt` ; ni `confirmedAt`, qui reste
+l'origine à sens unique de J21/J42/J90 ; ni les quatre épisodes déjà en base.
+
+**7. RÉSERVE NOMMÉE.** Les propositions en cours au moment du déploiement
+changent d'empreinte : un praticien à mi-parcours prendra un `409` et devra
+recharger. C'est le prix connu de tout changement de composition, et il se
+résorbe par un rechargement — contrairement au `409` d'horloge qu'écarte le §5.
 
 ### D-155 — Une absence d'observation ne referme pas [[D-049]] : seule une cause racine le peut
 

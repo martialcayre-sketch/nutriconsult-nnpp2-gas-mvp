@@ -82,7 +82,7 @@ export type ResultatConsigne = {
 
 /**
  * Une plage fonctionnelle ACTIVE, servie telle que le catalogue la porte
- * ([[D-156]]). JUXTAPOSITION, JAMAIS VERDICT : aucun écart n'est calculé ici,
+ * ([[D-157]]). JUXTAPOSITION, JAMAIS VERDICT : aucun écart n'est calculé ici,
  * aucun état n'est déduit, et la borne n'est jamais comparée à la mesure —
  * l'écran non plus ne le fera pas. Ce que cette structure transporte est un
  * FAIT du corpus, pas une lecture du dossier.
@@ -243,7 +243,7 @@ export async function GET(req: Request) {
     );
 
     // Les plages fonctionnelles des SEULS analytes présents au dossier
-    // ([[D-156]]). Pas le catalogue entier : une route qui sert des données de
+    // ([[D-157]]). Pas le catalogue entier : une route qui sert des données de
     // santé nommées n'a pas à verser en plus un référentiel que l'écran ne
     // montrera pas. `analyteCode` d'une ligne n'est jamais nul (colonne NOT
     // NULL) ; l'ensemble peut être vide, et alors la requête ne part pas.

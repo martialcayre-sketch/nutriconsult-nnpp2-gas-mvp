@@ -197,6 +197,10 @@ function identifiantEpisode(
  * 2. `T0` — la toute première ancre : la PREMIÈRE réponse du dossier. C'est le
  *    repli historique, inchangé ; sans aucune réponse, la date de création du
  *    dossier stabilise l'enveloppe vide, sans devenir une mesure.
+ *    L'ANCRE N'A PAS BOUGÉ AVEC [[D-156]], et il faut le lire ainsi : c'est la
+ *    borne HAUTE de son INCLUSION qui tombe (`estAncreInitiale` ci-dessous), pas
+ *    sa date de référence. `targetAt` reste ce que `D-052` §3 et `D-150` §4 ont
+ *    signé — la carte du Fil date le même instant que l'épisode qu'elle appelle.
  * 3. `T1`, `T2`, … — une ancre qui ROUVRE un suivi : la réponse la plus
  *    RÉCENTE. Reprendre la première réponse du dossier, comme au cas 2, aurait
  *    centré la fenêtre du nouveau cycle sur un état vieux de plusieurs mois :
@@ -221,6 +225,20 @@ function dateDeReference(
     return inputs.responses[0]?.observedAt ?? repliDossier;
   }
   return inputs.responses.at(-1)?.observedAt ?? repliDossier;
+}
+
+/**
+ * `T0` — l'ancre du PREMIER cycle, la seule dont la fenêtre couvre tout l'état
+ * d'entrée ([[D-156]]).
+ *
+ * DEUX TERMES, ET LE SECOND N'EST PAS DÉCORATIF : `estAncreDeCycle` écarte les
+ * jalons de mesure, `indexDeCycle === 0` écarte `T1`, `T2`… Rouvrir un suivi
+ * n'est PAS constater un état de départ : l'ancre d'un cycle qui reprend se
+ * fenêtre sur la réponse la plus récente (`dateDeReference`, cas 3), et lui
+ * ouvrir la borne haute lui ferait embarquer tout l'historique du dossier.
+ */
+function estAncreInitiale(milestone: JalonMomentum): boolean {
+  return estAncreDeCycle(milestone) && (indexDeCycle(milestone) ?? 0) === 0;
 }
 
 export function proposeRuntimeEpisode(
@@ -251,6 +269,7 @@ export function proposeRuntimeEpisode(
     milestone,
     targetAt,
     responses: inputs.responses,
+    inclusion: estAncreInitiale(milestone) ? 'etat_entree' : 'fenetre',
   });
   const proposalHash = canonicalSha256({
     patientId: inputs.patient.idPatient,

@@ -1,6 +1,6 @@
 ### Ajouté
 
-- **La plage fonctionnelle sourcée s'affiche à côté de la mesure** (`D-156`,
+- **La plage fonctionnelle sourcée s'affiche à côté de la mesure** (`D-157`,
   LOT-04 du rayon biologie). L'arbitrage praticien a tranché la question
   d'ouverture, posée le 2026-09-04 et restée sans réponse : juxtaposer une
   plage **sourcée** à une mesure, sans écart calculé, sans couleur, sans « hors

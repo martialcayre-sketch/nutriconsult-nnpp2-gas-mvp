@@ -31,6 +31,41 @@ describe('AssessmentEpisode', () => {
     expect(episode.outOfWindowResponseIds).toEqual(['hors']);
   });
 
+  // [[D-156]] — l'ancre initiale constate un ÉTAT DE DÉPART, qui se constitue
+  // en plusieurs temps (premier rideau, puis second rideau assigné après la
+  // synthèse). La borne HAUTE tombe ; la borne basse reste.
+  it('mode `etat_entree` : la borne haute tombe, la borne basse tient', () => {
+    const episode = proposeAssessmentEpisode({
+      assessmentEpisodeId: 'episode-T0',
+      patientId: 'patient-test',
+      milestone: 'T0',
+      targetAt: target.toISOString(),
+      responses: [response('avant', -9), response('borne-moins', -8), response('tard', 40)],
+      inclusion: 'etat_entree',
+    });
+
+    expect(episode.inWindowResponseIds).toEqual(['borne-moins', 'tard']);
+    expect(episode.outOfWindowResponseIds).toEqual(['avant']);
+    // La borne haute est la DERNIÈRE RÉPONSE INCLUSE, jamais une horloge : deux
+    // appels sur les mêmes entrées doivent rendre la même empreinte.
+    expect(episode.window.end).toBe(response('tard', 40).observedAt);
+    expect(episode.window.start).toBe(new Date(target.getTime() - 8 * DAY_MS).toISOString());
+  });
+
+  it('mode `etat_entree` sans aucune réponse : la fenêtre nominale stabilise l’enveloppe vide', () => {
+    const episode = proposeAssessmentEpisode({
+      assessmentEpisodeId: 'episode-T0',
+      patientId: 'patient-test',
+      milestone: 'T0',
+      targetAt: target.toISOString(),
+      responses: [],
+      inclusion: 'etat_entree',
+    });
+
+    expect(episode.window.end).toBe(new Date(target.getTime() + 8 * DAY_MS).toISOString());
+    expect(episode.includedResponseIds).toEqual([]);
+  });
+
   it('permet au praticien de corriger la composition avec une réponse hors fenêtre', () => {
     const proposal = proposeAssessmentEpisode({
       assessmentEpisodeId: 'episode-j21',

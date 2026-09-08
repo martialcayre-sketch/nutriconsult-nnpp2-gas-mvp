@@ -39,6 +39,49 @@ describe('runtime clinique depuis Prisma', () => {
     expect(first.proposal.inWindowResponseIds).toEqual(['REP_J21']);
   });
 
+  // [[D-156]] — LA MESURE QUI A MOTIVÉ CE LOT : les QUATRE T0 confirmés en
+  // production embarquaient CHACUN la totalité des réponses du dossier, alors
+  // que 5 à 17 d'entre elles étaient hors de la fenêtre ±8 j. Le praticien les
+  // rouvrait donc une à une, à chaque fois, sans exception. La fenêtre haute ne
+  // protégeait rien : elle faisait un travail manuel obligatoire.
+  describe('ancre initiale : la fenêtre couvre tout l’état d’entrée', () => {
+    const inputs = adaptRuntimeInputs(patient, [
+      { idReponse: 'REP_RIDEAU_1', idQuestionnaire: 'Q_1', dateReponse: new Date('2026-01-01T00:00:00.000Z'), scoresJson: {} },
+      // Second rideau, assigné après la synthèse : 40 jours plus tard, très
+      // au-delà des ±8 j.
+      { idReponse: 'REP_RIDEAU_2', idQuestionnaire: 'Q_2', dateReponse: new Date('2026-02-10T00:00:00.000Z'), scoresJson: {} },
+    ], null);
+
+    it('`T0` embarque le second rideau sans réinclusion manuelle', () => {
+      const { proposal } = proposeRuntimeEpisode(inputs, 'T0');
+      expect(proposal.inWindowResponseIds).toEqual(['REP_RIDEAU_1', 'REP_RIDEAU_2']);
+      expect(proposal.outOfWindowResponseIds).toEqual([]);
+      // L'ancre ne bouge pas : `targetAt` reste la première réponse du dossier
+      // (`D-052` §3, `D-150` §4) — c'est la borne HAUTE qui tombe, pas l'ancre.
+      expect(proposal.targetAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('`T1` ne l’embarque pas : rouvrir un suivi n’est pas constater une entrée', () => {
+      const { proposal } = proposeRuntimeEpisode(inputs, 'T1');
+      // Ancre de réouverture : fenêtrée sur la réponse la plus RÉCENTE, ±8 j.
+      expect(proposal.targetAt).toBe('2026-02-10T00:00:00.000Z');
+      expect(proposal.outOfWindowResponseIds).toEqual(['REP_RIDEAU_1']);
+    });
+
+    it('`J21` ne l’embarque pas non plus : un jalon de mesure mesure un instant', () => {
+      const { proposal } = proposeRuntimeEpisode(inputs, 'J21', { ancre: 'T0', confirmedAt: '2026-01-01T00:00:00.000Z' });
+      // Fenêtré au 22 janvier ±8 j : les DEUX réponses en sortent, celle du
+      // second rideau comprise. La borne haute ouverte ne fuit pas hors de
+      // l'ancre initiale — c'est tout l'objet de `estAncreInitiale`.
+      expect(proposal.inWindowResponseIds).toEqual([]);
+      expect(proposal.outOfWindowResponseIds).toContain('REP_RIDEAU_2');
+    });
+
+    it('deux appels rendent la même proposition — aucune horloge dans la borne haute', () => {
+      expect(proposeRuntimeEpisode(inputs, 'T0')).toEqual(proposeRuntimeEpisode(inputs, 'T0'));
+    });
+  });
+
   // CE BANC DÉFEND UNE CLÉ PRIMAIRE (`D-113`, revue P0-1). L'identifiant valait
   // `runtime-episode-<patient>-<jalon>` : le `J21` du deuxième cycle y prenait
   // le MÊME identifiant que celui du premier. Les deux points de persistance

@@ -453,10 +453,18 @@ export const REGISTRE_GABARITS_PATIENT: readonly VersionGabaritPatient[] = Objec
     // de l'objectif, qui reste dans l'espace.
     donneesSante: { statut: 'conforme' },
     redigeLe: '2026-09-08',
-    // `null` : le responsable a arbitré QU'UN e-mail parte, il n'a pas validé
-    // CE texte. Le registre le dit au lieu de l'inventer — comme il l'a fait
-    // huit versions durant.
-    valideLe: null,
+    // VALIDÉ LE JOUR MÊME, sur demande explicite du responsable en session.
+    // [[D-154]] §7 avait laissé le geste ouvert et en avait nommé la forme :
+    // « elle se pose en changeant `valideLe`, sans toucher l'empreinte ».
+    //
+    // PREMIÈRE VALIDATION DU REGISTRE POSÉE APRÈS COUP : les deux autres
+    // (`acces_portail@2`, `acces_portail_lien@1`) sont nées validées. Que le
+    // `hash` ci-dessous ne bouge pas EST la preuve — il couvre
+    // `{key, version, sujet, corps, variables}` et rien d'autre, donc le texte
+    // servi au patient est au caractère près celui qui a été relu. Une
+    // validation qui aurait exigé de recalculer l'empreinte aurait été, par
+    // définition, une v2.
+    valideLe: '2026-09-08',
     hash: 'c784b2257263dfce984bc370dc54af3b9e31cba3ec537fd52116bcab0b111f16',
   },
 ]);
