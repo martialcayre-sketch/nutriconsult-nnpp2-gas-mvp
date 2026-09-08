@@ -56,6 +56,30 @@ export function indexDeCycle(milestone: string): number | null {
 }
 
 /**
+ * L'ancre INITIALE — celle par laquelle on ENTRE dans un suivi, et pas celle
+ * par laquelle on le rouvre.
+ *
+ * DEUX TERMES, ET LE SECOND N'EST PAS DÉCORATIF. [[D-113]] a fait de
+ * l'ouverture d'un `T1` le même acte que celle d'un `T0` pour le rideau
+ * d'entrée, et c'était juste : ouvrir un cycle est ouvrir un cycle. Deux règles
+ * ont pourtant besoin de la distinction, parce qu'elles portent sur l'ENTRÉE
+ * dans le dossier et non sur l'ouverture d'un cycle :
+ *   · [[D-156]] — la fenêtre de l'ancre initiale couvre tout l'état d'entrée ;
+ *     l'ouvrir pour un `T1` lui ferait embarquer tout l'historique.
+ *   · [[D-157]] — le second rideau se compte depuis la première synthèse
+ *     validée du dossier ; appliqué à un `T1` posé des mois plus tard, il
+ *     compterait comme « second rideau » tout ce qui a été assigné depuis,
+ *     jalons de suivi compris.
+ *
+ * Elle vit ICI, avec ses deux termes, plutôt qu'en double chez ses deux
+ * appelants : `numeroEpisodeDeCycle` documente déjà ce que coûtent deux copies
+ * d'un même décalage.
+ */
+export function estAncreInitiale(milestone: string): boolean {
+  return estAncreDeCycle(milestone) && indexDeCycle(milestone) === 0;
+}
+
+/**
  * Le numéro d'ÉPISODE affiché pour un cycle — `T0` → « épisode 1 », `T2` → 3.
  *
  * Rang affiché = rang d'ancre + 1 : le praticien compte à partir de un, la

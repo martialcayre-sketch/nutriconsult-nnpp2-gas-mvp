@@ -7,6 +7,9 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
+    // Second rideau ([[D-157]]) : assignations du dossier, et ancre déjà
+    // posée s'il y en a une (la borne haute de ce rideau).
+    assignation: { findMany: vi.fn() },
     decisionPrioritySelection: { findMany: vi.fn(), create: vi.fn() },
     journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
   },
@@ -16,7 +19,7 @@ vi.mock('next-auth', () => ({ getServerSession }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/prisma', () => ({ prisma }));
 
-import { SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
+import { SECOND_RIDEAU_RENDU_FIXTURE, SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
 import {
   ANAMNESE_C1_FIXTURE,
   CANDIDAT_RANG_1,
@@ -70,6 +73,7 @@ describe('POST /api/praticien/cockpit/priorite', () => {
     prisma.questionnaireReponse.findMany.mockResolvedValue(passationsC1Fixture());
     prisma.consultation.findFirst.mockResolvedValue(ANAMNESE_C1_FIXTURE);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
+    prisma.assignation.findMany.mockResolvedValue(SECOND_RIDEAU_RENDU_FIXTURE);
     prisma.decisionPrioritySelection.findMany.mockResolvedValue([]);
     prisma.decisionPrioritySelection.create.mockResolvedValue({
       id: 'SEL_1',

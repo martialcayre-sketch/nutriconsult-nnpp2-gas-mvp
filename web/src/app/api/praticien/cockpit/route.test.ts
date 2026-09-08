@@ -27,6 +27,9 @@ const { getServerSession, prisma, writes } = vi.hoisted(() => {
       decisionPrioritySelection: { findMany: vi.fn() },
       // Préconditions de confirmation T0 (D-052).
       syntheseIA: { findFirst: vi.fn() },
+      // Second rideau ([[D-157]]) : assignations du dossier, et ancre déjà
+      // posée s'il y en a une (la borne haute de ce rideau).
+      assignation: { findMany: vi.fn() },
       // Journal des accès (G-TRUST-04) : écriture d'audit, pas clinique.
       journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
     },
@@ -42,6 +45,7 @@ import {
   DATE_RIDEAU_FIXTURE,
   PLAINTES_DIGESTIF_ET_PONDERAL,
   SYNTHESE_VALIDEE_FIXTURE,
+  SECOND_RIDEAU_RENDU_FIXTURE,
   passationsRideauT0,
   reponsesRuntimeRideauT0,
 } from '@/lib/clinical-engine/dossierT0Fixture';
@@ -112,6 +116,7 @@ describe('/api/praticien/cockpit', () => {
     prisma.assessmentEpisode.updateMany.mockResolvedValue({ count: 1 });
     brancherPassations(responses);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
+    prisma.assignation.findMany.mockResolvedValue(SECOND_RIDEAU_RENDU_FIXTURE);
     prisma.consultation.findFirst.mockResolvedValue({
       anamnese: { motif_principal: 'Fatigue', objectif_prioritaire: 'Énergie', attentes: ['Comprendre'] },
     });
@@ -356,7 +361,7 @@ describe('/api/praticien/cockpit', () => {
   it('la checklist voyage avec la proposition, jamais en lecture d’un état passé', async () => {
     const present = await (await GET(getRequest())).json();
     expect(present.preconditions.bloquant).toBe(false);
-    expect(present.preconditions.dures).toHaveLength(3);
+    expect(present.preconditions.dures).toHaveLength(4);
 
     prisma.assessmentEpisode.findMany.mockResolvedValue([]);
     // Le 400 « date inconnue » rendrait ce cas vert pour la mauvaise raison :

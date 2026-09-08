@@ -142,17 +142,23 @@ export function EpisodeConfirmationPanel({
 
           {/* Dit plutôt que passé sous silence : sans cette ligne, l'absence de
               la biologie et des agendas se lirait comme un oubli. Q_SOM_09 est
-              au pack de base et volontairement hors du rideau d'entrée
+              au pack de base et volontairement hors du rideau d'ENTRÉE
               (D-052). Le jalon est NOMMÉ : depuis `D-113` ce rideau garde
               l'ouverture de tout cycle, et « un T0 » serait faux devant un
               panneau qui confirme un T1. */}
           {/* Le nom métier suffit au praticien — l'identifiant Q_SOM_09
               relevait de la fuite dev (audit 2026-09-02) ; il reste dans le
               code et les contrats, pas à l'écran. */}
+          {/* RÉÉCRIT PAR [[D-157]] : « les agendas ne sont pas requis » est
+              devenu faux le jour où le second rideau est entré dans les
+              conditions dures. Un agenda que vous assignez après la synthèse
+              EST attendu. La phrase distingue donc les deux rideaux, au lieu
+              d'énoncer une dispense générale qui n'existe plus. */}
           <p className="text-sm text-muted-foreground">
-            Biologie, agendas et journal alimentaire ne sont <strong>pas requis</strong> pour confirmer un {jalon}
-            (phase 1). L’agenda du sommeil, bien qu’il figure au pack de base, court sur 21 nuits :
-            il ne peut pas conditionner une décision prise au jour 0 du cycle.
+            Biologie, agendas et journal alimentaire ne sont <strong>pas requis au premier rideau</strong>
+            {' '}pour confirmer un {jalon} : l’agenda du sommeil, bien qu’il figure au pack de base, court sur
+            21 nuits, et ne peut pas conditionner l’entrée dans le dossier. Ce que vous assignez
+            <strong> après la synthèse</strong>, en revanche, est attendu — agendas compris.
           </p>
         </div>
       )}

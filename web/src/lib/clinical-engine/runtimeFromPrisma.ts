@@ -1,5 +1,5 @@
 import { joursDepuisAncre } from '../protocol/fenetreJalon';
-import { estAncreDeCycle, estJalonMomentum, indexDeCycle } from '../protocol/cycles';
+import { estAncreDeCycle, estAncreInitiale, estJalonMomentum, indexDeCycle } from '../protocol/cycles';
 import type { JalonMomentum } from '../equilibre/types';
 import { proposeAssessmentEpisode } from './assessmentEpisode';
 import { canonicalSha256 } from './canonical';
@@ -225,20 +225,6 @@ function dateDeReference(
     return inputs.responses[0]?.observedAt ?? repliDossier;
   }
   return inputs.responses.at(-1)?.observedAt ?? repliDossier;
-}
-
-/**
- * `T0` — l'ancre du PREMIER cycle, la seule dont la fenêtre couvre tout l'état
- * d'entrée ([[D-156]]).
- *
- * DEUX TERMES, ET LE SECOND N'EST PAS DÉCORATIF : `estAncreDeCycle` écarte les
- * jalons de mesure, `indexDeCycle === 0` écarte `T1`, `T2`… Rouvrir un suivi
- * n'est PAS constater un état de départ : l'ancre d'un cycle qui reprend se
- * fenêtre sur la réponse la plus récente (`dateDeReference`, cas 3), et lui
- * ouvrir la borne haute lui ferait embarquer tout l'historique du dossier.
- */
-function estAncreInitiale(milestone: JalonMomentum): boolean {
-  return estAncreDeCycle(milestone) && (indexDeCycle(milestone) ?? 0) === 0;
 }
 
 export function proposeRuntimeEpisode(

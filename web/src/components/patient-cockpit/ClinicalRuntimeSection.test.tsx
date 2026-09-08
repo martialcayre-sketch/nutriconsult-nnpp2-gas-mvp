@@ -328,8 +328,13 @@ describe('EpisodeConfirmationPanel', () => {
     );
     // Le nom MÉTIER, jamais l'identifiant d'instrument — Q_SOM_09 relevait de
     // la fuite dev à l'écran (audit du cockpit 2026-09-02).
-    expect(screen.getByText(/L’agenda du sommeil, bien qu’il figure au pack de base/)).toBeTruthy();
+    expect(screen.getByText(/agenda du sommeil, bien qu’il figure au pack de base/)).toBeTruthy();
     expect(screen.queryByText(/Q_SOM_09/)).toBeNull();
+    // [[D-157]] — LA DISPENSE EST BORNÉE AU PREMIER RIDEAU, et la phrase le dit
+    // dans les deux sens. « Les agendas ne sont pas requis » tout court est
+    // devenu faux : un agenda assigné après la synthèse EST attendu.
+    expect(screen.getByText(/pas requis au premier rideau/)).toBeTruthy();
+    expect(screen.getByText(/après la synthèse/)).toBeTruthy();
   });
 });
 
