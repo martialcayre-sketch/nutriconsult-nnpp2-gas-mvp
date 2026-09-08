@@ -7,7 +7,6 @@
  */
 
 import { bornesJourParis, formatHeureParis } from './fuseau';
-import { TOLERANCE_JOURS_JALON } from '@/lib/equilibre/constants';
 import { filtrerPassationsExploitables } from '@/lib/scoring/validite';
 
 // `reponse_recente` a été retiré (accueil-observatoire LOT-02, décision
@@ -333,20 +332,27 @@ export function cartesT0AConfirmer(
       instruments.size === tailleRideau && !patientsAvecEpisodeT0.has(idPatient))
     .map(([idPatient]) => ({ idPatient, cible: premieresPassations.get(idPatient) ?? null }))
     .filter((x): x is { idPatient: string; cible: Date } => x.cible !== null)
-    // Le plus en retard d'abord : c'est celui dont le plus de réponses sont
-    // déjà tombées hors fenêtre.
+    // Le plus ancien d'abord : c'est le dossier qui attend son T0 depuis le
+    // plus longtemps.
     .sort((x, y) => x.cible.getTime() - y.cible.getTime())
     .slice(0, MAX_CARTES_PAR_TYPE)
     .map(({ idPatient, cible }) => {
       const jours = Math.floor((maintenant.getTime() - cible.getTime()) / JOUR_MS);
-      const depassement = jours - TOLERANCE_JOURS_JALON;
-      const pourquoi = depassement > 0
-        ? `Les quatre instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
-          + `La fenêtre de tolérance (±${TOLERANCE_JOURS_JALON} j autour du ${formatDateFr(cible)}) est dépassée `
-          + `depuis ${depassement} jour${depassement > 1 ? 's' : ''} : les réponses arrivées depuis devront être `
-          + `réincluses une à une.`
-        : `Les quatre instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
-          + `La fenêtre de tolérance court jusqu'au ${formatDateFr(new Date(cible.getTime() + TOLERANCE_JOURS_JALON * JOUR_MS))}.`;
+      // LA TOLÉRANCE A DISPARU DE CE TEXTE AVEC [[D-156]], et ce n'était pas
+      // une reformulation : la carte annonçait que « les réponses arrivées
+      // depuis devront être réincluses une à une ». C'était vrai — c'est
+      // précisément ce que le praticien a fait trente-trois fois — et ça ne
+      // l'est plus : l'ancre initiale embarque tout l'état d'entrée. Une carte
+      // qui promet un travail supprimé apprend à se méfier de la carte.
+      //
+      // LE DÉLAI RESTE LE SIGNAL, lui, et c'est ce que [[D-150]] a mesuré
+      // (43 jours en moyenne entre la cible et l'acte). Il se dit désormais
+      // pour ce qu'il est — un dossier qui attend —, sans emprunter à une
+      // fenêtre qui ne gouverne plus rien ici.
+      const pourquoi =
+        `Les ${tailleRideau} instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
+        + `La première passation date du ${formatDateFr(cible)}, il y a ${jours} jour${jours > 1 ? 's' : ''}. `
+        + `Toutes les réponses du dossier entreront dans l'épisode.`;
       return {
         type: 't0_a_confirmer' as const,
         idPatient,

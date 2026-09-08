@@ -454,21 +454,29 @@ describe('cartesT0AConfirmer', () => {
     expect(cartes[0].date).toBe(T0.toISOString());
   });
 
-  it('le dépassement de la fenêtre est compté et dit, avec sa conséquence', () => {
+  // RÉÉCRIT PAR [[D-156]], ET NON AJUSTÉ. Ce banc figeait deux phrases devenues
+  // fausses le jour où l'ancre initiale a cessé d'avoir une borne haute : le
+  // « dépassement de la fenêtre » ne gouverne plus rien pour un T0, et les
+  // réponses tardives ne sont plus « à réinclure une à une ». Le DÉLAI, lui,
+  // reste le signal que [[D-150]] a mesuré — il est simplement dit pour ce
+  // qu'il est.
+  it('le délai d’attente est compté et dit, sans emprunter à la tolérance', () => {
     const cartes = cartesT0AConfirmer(
       rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
     );
-    // 2026-06-01 -> 2026-07-15 = 44 jours ; tolérance 8 -> 36 jours de dépassement.
-    expect(cartes[0].pourquoi).toContain('36 jours');
-    expect(cartes[0].pourquoi).toContain('réincluses une à une');
+    // 2026-06-01 -> 2026-07-15 = 44 jours depuis la première passation.
+    expect(cartes[0].pourquoi).toContain('44 jours');
+    expect(cartes[0].pourquoi).toContain('Toutes les réponses du dossier entreront');
+    expect(cartes[0].pourquoi).not.toContain('réincluses');
+    expect(cartes[0].pourquoi).not.toContain('tolérance');
   });
 
-  it('dans la fenêtre, la carte appelle sans alarmer : elle donne la date de fin', () => {
+  it('un dossier récent obtient le même texte : la carte ne connaît plus de seuil', () => {
     const recent = new Date(MAINTENANT.getTime() - 2 * 24 * 60 * 60 * 1000);
     const cartes = cartesT0AConfirmer(
       rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', recent]]), new Set<string>(), 4, NOMS, MAINTENANT,
     );
-    expect(cartes[0].pourquoi).toContain('court jusqu');
+    expect(cartes[0].pourquoi).toContain('2 jours');
     expect(cartes[0].pourquoi).not.toContain('dépassée');
   });
 
