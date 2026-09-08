@@ -4,6 +4,68 @@
 
 ## Décisions actives
 
+### D-155 — Une absence d'observation ne referme pas [[D-049]] : seule une cause racine le peut
+
+- Date : 2026-09-08
+- Statut : accepté (arbitrage praticien explicite en session)
+- Domaine : validation, gouvernance des PR
+- Amende : [[D-049]], clause « condition de sortie ». Le reste de `D-049` est inchangé.
+
+**§1 — La clause qui vient d'être remplie, et pourquoi elle ne conclut rien.**
+`D-049` nomme sa propre sortie : « le blocage cesse d'être observé sur **deux
+séquences complètes consécutives**, ou une cause racine est identifiée ». Le
+2026-09-08, cette clause est **littéralement remplie** — trois séquences T3
+complètes, `EXIT 0` chacune, 194 E2E, aucune signature de blocage.
+
+Elle ne referme pourtant rien, et le motif est déjà écrit ailleurs dans le
+dépôt. La panne est **intermittente et dépendante de la charge machine** : le
+2026-09-07, QUATRE runs consécutifs ont échoué sur le même spec avec la même
+signature, puis le cinquième est passé. On en avait tiré, à raison, que *quatre
+échecs d'affilée ne font pas une reproductibilité*.
+
+**La symétrie est exacte, et c'est tout l'arbitrage : trois succès ne font pas
+une disparition.** Une clause qui compte des séquences propres mesure une
+**absence d'observation**, pas une résolution — sur une panne dont on sait
+qu'elle dépend d'un paramètre extérieur au dépôt, elle mesure surtout la charge
+de la machine ce jour-là.
+
+**§2 — La décision.** La clause « deux séquences complètes consécutives » est
+**neutralisée**. `D-049` ne se referme désormais que par **identification d'une
+cause racine**. Le reste de `D-049` — le périmètre exact, ce qu'elle ne fait
+pas, le garde-fou de classement — tient sans changement.
+
+Conséquence assumée : `D-049` n'a plus de porte de sortie automatique. C'est
+voulu. Une décision qui se referme sur un compteur de runs verts se rouvre au
+premier run rouge, et l'aller-retour coûte plus que l'état stable qu'il
+prétend rétablir.
+
+**§3 — La règle ferme qui manquait.** [[D-049]] interdit déjà de « rejouer une
+suite jusqu'au vert ». La note du 2026-09-07 ajoutée sous cette décision
+consigne que je l'ai pourtant fait, sur le rouge CI de #943 — et que rien ne
+m'a arrêté, `wn-diagnostic-e2e.mjs` ne connaissant que le symptôme local. La
+règle est donc explicitée ici, sans exception :
+
+> **Un rouge WebKit du CI ne se relance JAMAIS.** Il se rapporte — spec,
+> projet, message exact — comme un rouge non tranché.
+
+Elle est plus stricte que pour un rouge local, et pour une raison précise :
+depuis le 2026-09-07 il n'existe **plus d'arbitre au-dessus du CI**. Un rouge
+local se laisse arbitrer par le CI ; un rouge du CI ne se laisse arbitrer par
+rien, et le relancer ne produit pas une information, seulement un silence.
+
+**§4 — Ce que cette décision ne fait pas.** Elle n'instruit pas la cause racine
+et ne prétend pas que les deux symptômes n'en font qu'un — l'expiration locale
+à trace réseau vide et l'`internal error` du CI restent **inconnus faute de
+preuve** ([[D-125]]). Elle ne touche pas non plus au périmètre de `D-049` : le
+reste de T3 local — contrats SQL, dérive schéma↔migrations, certification
+scoring, suite unitaire — demeure exigé.
+
+**§5 — Écarté : apprendre le symptôme du CI à `wn-diagnostic-e2e.mjs`.** L'outil
+classerait automatiquement « blocage connu, bénin » un échec dont on ignore
+s'il l'est. Il automatiserait le mauvais raisonnement que la note du
+2026-09-07 vient de constater, au lieu de l'empêcher. Le silence de l'outil sur
+un rouge CI est une information juste : il n'a rien à en dire.
+
 ### D-154 — L'objectif rédigé atteint le patient par le seul canal dont la production prouve qu'il fonctionne
 
 - Date : 2026-09-08
@@ -363,6 +425,13 @@ le jour où l'un d'eux voudra dater la période, l'intention soit visible plutô
 que déléguée au défaut de la base.
 
 ### D-148 — Un drapeau de confirmation qu'aucun écran ne pose est une décision annoncée, et impossible à prendre
+
+> **Le commit de fusion (#950) porte « (D-147) » dans son sujet.** `D-147`
+> désigne une décision sans rapport (le retrait de `condition_supplementaire`).
+> Même mécanisme que pour [[D-142]] et [[D-147]] : le sujet d'un squash vient du
+> **commit** de branche, pas du titre de la PR, et une renumérotation tardive ne
+> l'atteint pas. Détail et levier (`gh pr merge --squash --subject`) : note sous
+> [[D-142]] et `docs/claude/REGLES_PR_MERGE.md`. Le registre fait foi.
 
 - Date : 2026-09-08
 - Statut : accepté (constat `M03` de l'audit du 2026-09-06, requalifié par une lecture de production)
@@ -8742,6 +8811,15 @@ commente une synthèse, elle ne la re-valide pas.
 - **Condition de sortie, nommée** : le blocage cesse d'être observé sur deux
   séquences complètes consécutives, **ou** une cause racine est identifiée.
   L'un ou l'autre referme cette décision et rétablit `CLAUDE.md` à l'identique.
+  > **AMENDÉE le 2026-09-08 par [[D-155]] — la première branche est
+  > neutralisée.** Elle a été littéralement remplie ce jour-là (trois séquences
+  > T3 complètes vertes) sans rien conclure : la panne dépend de la **charge
+  > machine**, et compter des séquences propres mesure une absence
+  > d'observation, pas une résolution. Le pendant est déjà écrit plus haut —
+  > quatre échecs d'affilée ne font pas une reproductibilité ; trois succès ne
+  > font pas une disparition. **Seule une cause racine referme désormais cette
+  > décision.** `D-155` ajoute aussi la règle ferme qui manquait : un rouge
+  > WebKit **du CI** ne se relance jamais.
 - Ce que cette décision **ne fait pas** : elle n'autorise pas à rejouer une
   suite jusqu'au vert, ni à ajouter des `retries` à Playwright — un réessai
   transformerait ce blocage en succès silencieux et emporterait avec lui les
