@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-152 — Le niveau d'alerte documente ; il ne décide pas, et une sentinelle le tient
+### D-153 — Le niveau d'alerte documente ; il ne décide pas, et une sentinelle le tient
 
 - Date : 2026-09-08
 - Statut : accepté (arbitrage praticien explicite en session, question posée par [[D-143]] §2 : « documenter — il s'affiche, ne commande rien »)
@@ -48,6 +48,70 @@ désactivée, comme le rappelle [[D-147]] §4.
 aucun chemin et aucun écran ne lit ce niveau. Étiquette [[D-125]] : **démontré
 dans le code, sans occurrence observée**. Ce lot ne change aucun comportement ;
 il fixe ce que le champ a le droit de devenir.
+### D-152 — Une mesure d'agenda vaut pour la période observée, pas pour le geste qui la clôt
+
+- Date : 2026-09-08
+- Statut : accepté — **arbitrage du responsable rendu en session le 2026-09-08**, sur les chiffres de production ci-dessous
+- Domaine : agendas sommeil et alimentaire, datation des passations, jalons
+- Porte sur : `M13` de l'audit du 2026-09-06 ; [[D-146]] (le momentum compare des dates)
+
+**1. Le défaut.** Les deux clôtures d'agenda écrivaient `dateReponse: now` :
+la passation portait la date du GESTE de clôture, jamais celle de la période
+mesurée. `M13` était classé P3, « occurrence aujourd'hui inconnue ».
+
+**2. La mesure, faite avant l'arbitrage.** Onze clôtures existent en
+production (agenda du sommeil ; l'agenda alimentaire n'en a produit AUCUNE,
+pour 8 jours saisis sur 3 patients). Deux régimes :
+
+| clôtures | période couverte | journées | écart à la dernière | écart à la première |
+|---|---|---|---|---|
+| 5, du 18 au 27 août | 20 à 29 j | 5 à 18 | 0 | **20 à 29 j** |
+| 6, le 29 août (en lot) | 1 à 3 j | 1 à 3 | **3 à 31 j** | 3 à 31 j |
+
+Une nuit unique du **29 juillet** porte la date du **29 août**. La tolérance de
+jalon étant de **8 jours**, un déplacement de 31 jours ne décale pas la
+mesure : **il la sort de toute fenêtre**. Six clôtures sur onze sont déplacées
+de plus de trois jours. `M13` n'est donc pas « inconnu » : il est constaté, et
+sa gravité tenait à un chiffre que personne n'avait lu.
+
+**3. L'arbitrage.** Quatre datations étaient possibles — dernière journée,
+date de clôture (statu quo), première journée, milieu de période. Le
+responsable a retenu la **dernière journée mesurée** : la mesure vaut pour la
+période qu'elle couvre, et le momentum comme les fenêtres de jalon se calculent
+alors sur une date que le patient a réellement vécue. Le milieu de période a
+été écarté comme une date que rien n'a produite ; la première journée daterait
+une mesure de trois semaines par son point de départ.
+
+**4. L'instant retenu dans la journée est minuit UTC.** Une journée d'agenda ne
+porte pas d'heure ; lui en inventer une serait une précision que la saisie n'a
+pas. Minuit est la borne basse — celle qui ne fait jamais franchir à une mesure
+la limite d'un jour qu'elle n'a pas atteint.
+
+**5. Un piège que le banc a trouvé et que l'intuition manquait.** Une date
+syntaxiquement correcte mais impossible ne produit PAS d'`Invalid Date` :
+`new Date('2026-02-30T00:00:00Z')` est **silencieusement reportée au 2 mars**.
+Une passation datée d'un jour que personne n'a vécu est pire qu'une passation
+datée de sa clôture, parce que rien ne la signale. Le repère exige donc
+l'aller-retour — la date reconstruite doit être celle qu'on a lue — et retombe
+sinon sur l'instant de clôture, c'est-à-dire sur le comportement d'avant :
+moins juste, jamais indéfini.
+
+**6. Le geste garde sa date.** `dateDerniereModification` de l'assignation
+reste `now` : il date le verrouillage, pas la mesure. Les deux dates existent
+et disent deux choses différentes ; c'est leur confusion qui était le défaut.
+
+**7. LES ONZE PASSATIONS EXISTANTES NE SONT PAS REPRISES.** Aucune migration,
+aucune écriture rétroactive : le correctif vaut pour les clôtures à venir. Une
+reprise des onze lignes changerait la date de mesures déjà servies au praticien
+et à l'équilibre — c'est un geste sur des données cliniques produites, il
+demanderait son propre arbitrage et sa propre `release-db`. Il n'est pas
+demandé ici.
+
+**8. Le repère est PARTAGÉ, et c'est le point.** `dateMesureAgenda` vit dans un
+module unique appelé par les deux clôtures, avec un banc à chaque bout. Les
+deux agendas ont déjà divergé une fois — l'alimentaire n'a jamais produit une
+seule passation là où le sommeil en a onze : une règle recopiée aurait dérivé
+sans que rien ne rougisse.
 
 ### D-151 — Une décision antérieure n'a rien tranché : la différence entre deux artefacts est temporelle, pas ensembliste
 

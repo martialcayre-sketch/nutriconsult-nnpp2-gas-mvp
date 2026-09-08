@@ -1,6 +1,6 @@
 ### Note
 
-- **Le niveau d'alerte documente ; il ne décide pas** (`D-152`). `D-143` avait
+- **Le niveau d'alerte documente ; il ne décide pas** (`D-153`). `D-143` avait
   retiré la couleur inventée et laissé ouverte la seule question qui comptait :
   non pas « quels paliers », mais **à quoi le niveau doit servir**. Trois issues
   étaient posées — documenter, trier, ou moduler un refus de sécurité, cette

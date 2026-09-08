@@ -76,7 +76,7 @@ describe('échelle d’alerte — rien n’est inventé ([[D-143]])', () => {
     expect(types).toContain('niveauAlerte: string | null;');
   });
 
-  // LE NIVEAU DOCUMENTE, IL NE DÉCIDE PAS ([[D-152]]). L'arbitrage a retenu la
+  // LE NIVEAU DOCUMENTE, IL NE DÉCIDE PAS ([[D-153]]). L'arbitrage a retenu la
   // première des trois issues laissées ouvertes par [[D-143]] : le niveau
   // s'affiche et ne commande rien. Ce qui alerte reste le FAIT — un cumul
   // constaté, un seuil dépassé —, jamais l'étiquette posée dessus.

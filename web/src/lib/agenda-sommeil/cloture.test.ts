@@ -110,6 +110,26 @@ describe('cloturerAgenda', () => {
     );
   });
 
+  // [[D-152]] — la passation vaut pour la PÉRIODE OBSERVÉE, pas pour le geste.
+  // Mesuré en production le 2026-09-08 : une nuit unique du 29 juillet portait
+  // la date du 29 août, soit 31 jours d'écart pour une tolérance de jalon de 8.
+  it('la passation est datée de la DERNIÈRE nuit mesurée, pas de la clôture', async () => {
+    prisma.assignation.findUnique.mockResolvedValue(ASS);
+    prisma.agendaSommeilNuit.findMany.mockResolvedValue(nuitsConsecutives(14));
+    mockTransaction('non_rempli');
+
+    await cloturerAgenda({ idAssignation: 'ASS_AGD' });
+
+    // 14 nuits depuis le lundi 2026-07-06 → dernière nuit le 2026-07-19.
+    const data = prisma.questionnaireReponse.create.mock.calls[0][0].data;
+    expect((data.dateReponse as Date).toISOString()).toBe('2026-07-19T00:00:00.000Z');
+    // Le geste de clôture, lui, date bien du présent : il verrouille
+    // l'assignation, il ne date pas la mesure.
+    const maj = prisma.assignation.update.mock.calls[0][0].data;
+    expect((maj.dateDerniereModification as Date).getTime())
+      .toBeGreaterThan(new Date('2026-07-19T00:00:00.000Z').getTime());
+  });
+
   it('produit une réponse non scorée sous le seuil d’agrégation (scored:false, jamais un 0)', async () => {
     prisma.assignation.findUnique.mockResolvedValue(ASS);
     prisma.agendaSommeilNuit.findMany.mockResolvedValue(nuitsConsecutives(2));

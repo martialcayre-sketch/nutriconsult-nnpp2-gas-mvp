@@ -5,6 +5,7 @@ import { resolveDefinition } from '@/lib/instruments';
 import { createPublicId } from '@/lib/ids';
 import { calculerAgregatsAli, type AgregatsAgendaAli } from './agregats';
 import { resolveJoursActifs } from './jour';
+import { dateMesureAgenda } from '@/lib/agenda/dateMesureAgenda';
 import { listJours } from './persistence';
 import { AGENDA_ALI_ID } from './types';
 
@@ -133,6 +134,10 @@ export async function cloturerAgendaAli(input: { idAssignation: string }): Promi
 
   const idReponse = createPublicId('REP');
   const now = new Date();
+  // La passation vaut pour la PÉRIODE OBSERVÉE, pas pour le geste de clôture
+  // ([[D-152]], arbitrage du responsable du 2026-09-08). `now` reste l'instant
+  // du geste : il date le verrouillage de l'assignation, pas la mesure.
+  const dateMesure = dateMesureAgenda(joursActifs.map(x => x.dateJour), now);
 
   // Création de la réponse + verrouillage de l'assignation dans une seule
   // transaction, avec re-vérification sous verrou de LIGNE (SELECT … FOR
@@ -162,7 +167,7 @@ export async function cloturerAgendaAli(input: { idAssignation: string }): Promi
         idAssignation: ass.idAssignation,
         idQuestionnaire: AGENDA_ALI_ID,
         titre: ass.titre || AGENDA_ALI_ID,
-        dateReponse: now,
+        dateReponse: dateMesure,
         scoresJson: scoresWithAnswers,
         scorePrincipal,
         interpretation: interpretation || null,
