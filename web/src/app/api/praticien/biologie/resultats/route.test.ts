@@ -6,6 +6,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     patient: { findUnique: vi.fn() },
     biologyAnalyte: { findUnique: vi.fn() },
     resultatBiologique: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn() },
+    biologyFunctionalRange: { findMany: vi.fn() },
     journalAccesDossier: { create: vi.fn(), deleteMany: vi.fn() },
   },
 }));
@@ -70,6 +71,11 @@ beforeEach(() => {
     actif: true,
   });
   prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE]);
+  // Par défaut AUCUNE plage publiée ([[D-156]]) : c'est l'état de la
+  // production (2 plages fonctionnelles pour 47 analytes), et un défaut qui
+  // en servirait une ferait passer au vert des bancs qui doivent éprouver le
+  // silence.
+  prisma.biologyFunctionalRange.findMany.mockResolvedValue([]);
   // Par défaut : aucune cible de correction, aucune ligne supplantée.
   prisma.resultatBiologique.findFirst.mockResolvedValue(null);
   prisma.resultatBiologique.create.mockResolvedValue(LIGNE_CONSIGNEE);
@@ -656,5 +662,68 @@ describe('POST — la correction d’une mesure (D-124) : une ligne de plus, jam
     );
     expect(response.status).toBe(201);
     expect(prisma.resultatBiologique.create.mock.calls[0][0].data.supersedesResultatId).toBe('res2');
+  });
+});
+
+// LA PLAGE SOURCÉE SERVIE AVEC LA SÉRIE ([[D-156]]).
+describe('GET — les plages fonctionnelles servies avec la série', () => {
+  const PLAGE = {
+    analyteCode: 'BIO_FERRITINE',
+    borneMin: 30,
+    borneMax: 100,
+    unite: 'µg/L',
+    population: 'adulte_tout_venant',
+    claimId: 'WN-CL-2026-004',
+    versionClaim: 'v1.0',
+    niveauPreuve: 'modere',
+  };
+
+  it('ne lit QUE les plages actives des analytes présents au dossier', async () => {
+    prisma.biologyFunctionalRange.findMany.mockResolvedValue([PLAGE]);
+    const response = await GET(new Request(`${URL_BASE}?idPatient=PAT1`));
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    expect(data.plagesParAnalyte.BIO_FERRITINE).toHaveLength(1);
+    expect(data.plagesParAnalyte.BIO_FERRITINE[0].claimId).toBe('WN-CL-2026-004');
+    // Le `where` prouve les deux bornes du périmètre : les analytes du
+    // dossier, et les plages ACTIVES seules.
+    const where = prisma.biologyFunctionalRange.findMany.mock.calls[0][0].where;
+    expect(where.actif).toBe(true);
+    expect(where.analyteCode.in).toEqual(['BIO_FERRITINE']);
+  });
+
+  it('aucune plage publiée ⇒ un objet VIDE, jamais un champ absent', async () => {
+    const response = await GET(new Request(`${URL_BASE}?idPatient=PAT1`));
+    const data = await response.json();
+    // Un objet vide dit « lu, rien à dire » ; un champ absent laisserait
+    // l'écran incapable de distinguer cela d'une réponse d'ancienne version.
+    expect(data.plagesParAnalyte).toEqual({});
+  });
+
+  it('aucune mesure au dossier ⇒ la table des plages n’est même pas interrogée', async () => {
+    prisma.resultatBiologique.findMany.mockResolvedValue([]);
+    const response = await GET(new Request(`${URL_BASE}?idPatient=PAT1`));
+    expect(response.status).toBe(200);
+    // Une route qui sert des données de santé nommées n'a pas à verser en
+    // plus un référentiel que l'écran ne montrera pas.
+    expect(prisma.biologyFunctionalRange.findMany).not.toHaveBeenCalled();
+  });
+
+  it('TOUTES les plages d’un analyte sont rendues — en choisir une serait trancher', async () => {
+    prisma.biologyFunctionalRange.findMany.mockResolvedValue([
+      PLAGE,
+      { ...PLAGE, borneMin: 50, borneMax: 150, population: 'femme_menopausee' },
+    ]);
+    const response = await GET(new Request(`${URL_BASE}?idPatient=PAT1`));
+    const data = await response.json();
+    expect(data.plagesParAnalyte.BIO_FERRITINE).toHaveLength(2);
+  });
+
+  it('la série reste servie entière : les plages ne filtrent aucune mesure', async () => {
+    prisma.biologyFunctionalRange.findMany.mockResolvedValue([PLAGE]);
+    prisma.resultatBiologique.findMany.mockResolvedValue([LIGNE_CONSIGNEE, LIGNE_CORRECTION]);
+    const response = await GET(new Request(`${URL_BASE}?idPatient=PAT1`));
+    const data = await response.json();
+    expect(data.resultats).toHaveLength(2);
   });
 });

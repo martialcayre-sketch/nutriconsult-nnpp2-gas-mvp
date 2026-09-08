@@ -575,3 +575,161 @@ describe('EstimeMesurePanel — le geste de correction (D-124)', () => {
     expect(screen.getByRole('button', { name: /^Corriger la mesure du/ })).toBeTruthy();
   });
 });
+
+// LA PLAGE SOURCÉE À CÔTÉ DE LA MESURE ([[D-156]]).
+//
+// L'arbitrage praticien a tranché : juxtaposer une plage FONCTIONNELLE SOURCÉE
+// à côté d'une mesure, sans écart calculé ni couleur ni « hors plage », est de
+// l'AFFICHAGE DOCUMENTAIRE, pas une interprétation au sens `DC-19`/`DC-20`.
+// Ces bancs gardent la frontière : ce qui s'affiche, et surtout ce qui se tait.
+describe('EstimeMesurePanel — la plage sourcée juxtaposée ([[D-156]])', () => {
+  const MESURE = {
+    id: 'r1',
+    analyteCode: 'BIO_FERRITINE',
+    analyteLibelle: 'Ferritine',
+    valeur: 42.5,
+    unite: 'µg/L',
+    uniteCatalogue: 'µg/L',
+    preleveLe: '2026-09-01T08:00:00.000Z',
+    source: 'saisie_praticien',
+    saisiLe: '2026-09-01T09:00:00.000Z',
+    supersedesResultatId: null,
+    corrigeeParId: null,
+  };
+
+  const PLAGE = {
+    borneMin: 30,
+    borneMax: 100,
+    unite: 'µg/L',
+    population: 'adulte_tout_venant',
+    claimId: 'WN-CL-2026-004',
+    versionClaim: 'v1.0',
+    niveauPreuve: 'modere',
+  };
+
+  function monter(resultats: unknown[], plagesParAnalyte: Record<string, unknown[]> | undefined) {
+    const fetchMock = vi.fn(async (entree: RequestInfo | URL) => {
+      const url = String(entree);
+      if (url.includes('/api/praticien/biologie/catalogue')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            analytes: [{ code: 'BIO_FERRITINE', libelle: 'Ferritine', unite: 'µg/L' }],
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, resultats, plagesParAnalyte }),
+      } as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(
+      <CbFeatureProvider enabled resultsEnabled>
+        <EstimeMesurePanel idPatient="PAT1" />
+      </CbFeatureProvider>,
+    );
+  }
+
+  it('affiche la plage avec son claim et son niveau de preuve — jamais un verdict', async () => {
+    monter([MESURE], { BIO_FERRITINE: [PLAGE] });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getByText(/Plage fonctionnelle 30 – 100 µg\/L/)).toBeTruthy();
+    // Le claim est la CONDITION D'EXISTENCE d'une plage fonctionnelle : une
+    // borne servie sans lui serait un seuil sans provenance.
+    expect(screen.getByText(/Claim WN-CL-2026-004 · version v1\.0/)).toBeTruthy();
+    expect(screen.getByText(/Niveau de preuve : modere/)).toBeTruthy();
+  });
+
+  // LA VERSION SE REND VERBATIM. `VERSION_CLAIM_RE` (`/^v?[0-9]+\.[0-9]+$/`)
+  // rend le préfixe `v` FACULTATIF : le corpus porte « 1.0 » ou « v1.0 » selon
+  // la saisie. Un `(v…)` en dur rendait « vv1.0 » pour les uns et « v1.0 » pour
+  // les autres — or le couple (claim, version) est une IDENTITÉ, et lui ajouter
+  // un caractère la renomme. Trouvé par ce banc, pas à la relecture.
+  it('la version du claim s’affiche telle qu’elle est stockée, sans préfixe ajouté', async () => {
+    monter([MESURE], { BIO_FERRITINE: [{ ...PLAGE, versionClaim: '2.0' }] });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getByText(/version 2\.0/)).toBeTruthy();
+    const texte = screen.getByRole('region', { name: 'Estimé et mesuré' }).textContent ?? '';
+    expect(texte).not.toContain('vv');
+    // La mesure reste là, intacte et non commentée.
+    expect(screen.getByText('42.5 µg/L')).toBeTruthy();
+  });
+
+  it('une mesure SANS plage publiée n’affiche RIEN à cet endroit (`DC-24`)', async () => {
+    monter([MESURE], {});
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/Plage fonctionnelle/)).toBeNull();
+    // Et surtout : pas d'annonce d'absence. « Aucune plage publiée » posé au
+    // milieu d'un dossier serait une information sur le CORPUS, à un endroit
+    // où le praticien lit un PATIENT.
+    expect(screen.queryByText(/[Aa]ucune plage/)).toBeNull();
+  });
+
+  it('le champ ABSENT de la réponse se comporte comme l’absence de plage', async () => {
+    // Réponse d'une version antérieure : `plagesParAnalyte` n'existe pas.
+    monter([MESURE], undefined);
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/Plage fonctionnelle/)).toBeNull();
+  });
+
+  it('unité DISCORDANTE entre la mesure et la plage : l’écran se tait', async () => {
+    // 75 nmol/L à côté de « 30 – 100 µg/L » invite une comparaison fausse que
+    // l'œil fait avant que la tête ne lise l'unité. L'écart d'unités est un
+    // problème de catalogue ; l'écran le laisse visible en ne montrant rien.
+    monter([{ ...MESURE, unite: 'nmol/L' }], { BIO_FERRITINE: [PLAGE] });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/Plage fonctionnelle/)).toBeNull();
+  });
+
+  it('série aux unités MÊLÉES : muette aussi, la plage ne vaut pas pour une moitié', async () => {
+    monter([MESURE, { ...MESURE, id: 'r2', unite: 'nmol/L', preleveLe: '2026-09-02T08:00:00.000Z' }], {
+      BIO_FERRITINE: [PLAGE],
+    });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/Plage fonctionnelle/)).toBeNull();
+  });
+
+  it('DEUX plages actives : les deux sont rendues — en choisir une serait trancher', async () => {
+    monter([MESURE], {
+      BIO_FERRITINE: [
+        PLAGE,
+        { ...PLAGE, borneMin: 50, borneMax: 150, population: 'femme_menopausee' },
+      ],
+    });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.getByText(/30 – 100 µg\/L/)).toBeTruthy();
+    expect(screen.getByText(/50 – 150 µg\/L/)).toBeTruthy();
+  });
+
+  it('une plage SANS borne ne s’affiche pas : une unité seule se lit comme une donnée manquante', async () => {
+    monter([MESURE], { BIO_FERRITINE: [{ ...PLAGE, borneMin: null, borneMax: null }] });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    expect(screen.queryByText(/Plage fonctionnelle/)).toBeNull();
+  });
+
+  // LA SENTINELLE DE VOCABULAIRE. Miroir de celle du rayon Bibliothèque : la
+  // frontière entre juxtaposer et interpréter ne tient pas à l'intention de
+  // qui écrit l'écran, elle tient aux MOTS qui s'y affichent. Un « hors
+  // plage » rendrait le verdict que tout le reste du lot refuse de calculer.
+  it('aucun vocabulaire de verdict sur cette surface', async () => {
+    monter([MESURE], { BIO_FERRITINE: [PLAGE] });
+    await waitFor(() => expect(screen.getByText('Ferritine')).toBeTruthy());
+    const texte = screen.getByRole('region', { name: 'Estimé et mesuré' }).textContent ?? '';
+    for (const mot of [
+      /hors\s+plage/i,
+      /\banormal/i,
+      /\bélevée?\b/i,
+      /\bbasse?\b/i,
+      /\bdéficit/i,
+      /\bcarence/i,
+      /\bexcès\b/i,
+      /\bnormal/i,
+    ]) {
+      expect(mot.test(texte), `vocabulaire de verdict trouvé : ${mot}`).toBe(false);
+    }
+  });
+});

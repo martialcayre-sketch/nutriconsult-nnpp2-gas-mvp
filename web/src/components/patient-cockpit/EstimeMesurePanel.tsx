@@ -42,6 +42,54 @@ type ResultatAffiche = {
   corrigeeParId: string | null;
 };
 
+/**
+ * Une plage fonctionnelle sourcée, telle que la route la sert ([[D-156]]).
+ * L'écran la JUXTAPOSE à la série, il ne la compare à aucune mesure.
+ */
+type PlageAffichee = {
+  borneMin: number | null;
+  borneMax: number | null;
+  unite: string;
+  population: string;
+  claimId: string;
+  versionClaim: string;
+  niveauPreuve: string;
+};
+
+function formatBornes(min: number | null, max: number | null, unite: string): string {
+  if (min !== null && max !== null) return `${min} – ${max} ${unite}`;
+  if (min !== null) return `≥ ${min} ${unite}`;
+  if (max !== null) return `≤ ${max} ${unite}`;
+  // Une plage sans borne ne dit rien ; l'appelant la retire plutôt que
+  // d'afficher une unité seule, qui se lirait comme une donnée manquante.
+  return '';
+}
+
+/**
+ * LES PLAGES D'UNE SÉRIE, OU AUCUNE — la règle d'unité ([[D-156]]).
+ *
+ * Une plage ne s'affiche que si son unité est celle de TOUTES les mesures de
+ * la série. Dès qu'une unité diverge — la mesure a été consignée avant que le
+ * catalogue ne bouge, ou la plage a été publiée dans une autre —, l'écran se
+ * TAIT sur cet analyte.
+ *
+ * Ce n'est pas de la prudence d'affichage : convertir serait interpréter, et
+ * juxtaposer « 30 – 100 ng/mL » à « 75 nmol/L » invite une comparaison fausse
+ * que l'œil fera avant que la tête ne lise l'unité. L'écart d'unités est un
+ * problème de CATALOGUE ; l'écran le laisse visible en ne montrant rien.
+ */
+function plagesAfficheesPourSerie(
+  serie: { unite: string | null }[],
+  plages: PlageAffichee[] | undefined,
+): PlageAffichee[] {
+  if (!plages || plages.length === 0 || serie.length === 0) return [];
+  const unites = new Set(serie.map(m => m.unite));
+  if (unites.size !== 1) return [];
+  const unite = [...unites][0];
+  if (unite === null) return [];
+  return plages.filter(p => p.unite === unite && formatBornes(p.borneMin, p.borneMax, p.unite) !== '');
+}
+
 function formatDateHeure(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
@@ -290,6 +338,14 @@ function SaisieMesure({
 export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
   const resultsEnabled = useCbResultsEnabled();
   const [resultats, setResultats] = useState<ResultatAffiche[]>([]);
+  /**
+   * Les plages fonctionnelles servies avec la série ([[D-156]]). Vide tant
+   * qu'aucune lecture n'a abouti — et une absence de plage ne s'affiche pas :
+   * un analyte sans plage publiée ne montre RIEN à cet endroit (`DC-24`), il
+   * n'annonce pas « aucune plage », ce qui serait une information sur le
+   * corpus posée au milieu d'un dossier.
+   */
+  const [plagesParAnalyte, setPlagesParAnalyte] = useState<Record<string, PlageAffichee[]>>({});
   // ÉCHEC DE LECTURE ≠ ABSENCE DE MESURE (DC-24, même règle que le runtime
   // clinique deux panneaux plus haut) : l'état vide ne s'affirme qu'après une
   // lecture ABOUTIE — jamais pendant le chargement, jamais sur une panne.
@@ -309,9 +365,17 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
       const response = await fetch(
         `/api/praticien/biologie/resultats?idPatient=${encodeURIComponent(idPatient ?? '')}`,
       );
-      const payload = (await response.json()) as { ok: boolean; resultats?: ResultatAffiche[] };
+      const payload = (await response.json()) as {
+        ok: boolean;
+        resultats?: ResultatAffiche[];
+        plagesParAnalyte?: Record<string, PlageAffichee[]>;
+      };
       if (response.ok && payload.ok) {
         setResultats(payload.resultats ?? []);
+        // `?? {}` et non un maintien de l'état précédent : une réponse d'une
+        // version antérieure ne porte pas ce champ, et garder les plages d'une
+        // lecture d'avant les juxtaposerait à des mesures qui ont pu changer.
+        setPlagesParAnalyte(payload.plagesParAnalyte ?? {});
         setLecture('ok');
       } else {
         setLecture('erreur');
@@ -465,6 +529,25 @@ export function EstimeMesurePanel({ idPatient }: { idPatient?: string }) {
           {[...parAnalyte.entries()].map(([code, serie]) => (
             <li key={code} className="rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{serie[0].analyteLibelle}</p>
+              {/* LA PLAGE SOURCÉE, JUXTAPOSÉE — JAMAIS UN VERDICT ([[D-156]]).
+                  Aucun écart n'est calculé, aucune couleur d'état n'est posée,
+                  aucun tri par « anormalité » n'existe : ce bloc rend ce que le
+                  corpus porte, à côté de ce que le dossier porte, et laisse au
+                  praticien le geste de les lire ensemble. Il se place au niveau
+                  de la SÉRIE et non de chaque mesure — la plage décrit
+                  l'analyte, la répéter sous chaque ligne en ferait un commentaire
+                  de la valeur. */}
+              {plagesAfficheesPourSerie(serie, plagesParAnalyte[code]).map(plage => (
+                <p
+                  key={`${plage.claimId}-${plage.versionClaim}-${plage.population}`}
+                  className="mt-1 text-xs text-muted-foreground"
+                >
+                  Plage fonctionnelle {formatBornes(plage.borneMin, plage.borneMax, plage.unite)}
+                  {' — '}
+                  {plage.population} · Claim {plage.claimId} · version {plage.versionClaim} ·
+                  Niveau de preuve : {plage.niveauPreuve}
+                </p>
+              ))}
               <ul className="mt-1 space-y-1">
                 {serie.map(mesure => {
                   const correction = mesure.corrigeeParId

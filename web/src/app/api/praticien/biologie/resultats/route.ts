@@ -80,8 +80,29 @@ export type ResultatConsigne = {
   corrigeeParId: string | null;
 };
 
+/**
+ * Une plage fonctionnelle ACTIVE, servie telle que le catalogue la porte
+ * ([[D-156]]). JUXTAPOSITION, JAMAIS VERDICT : aucun écart n'est calculé ici,
+ * aucun état n'est déduit, et la borne n'est jamais comparée à la mesure —
+ * l'écran non plus ne le fera pas. Ce que cette structure transporte est un
+ * FAIT du corpus, pas une lecture du dossier.
+ *
+ * Le référentiel LABORATOIRE n'est pas servi : les deux ne se fusionnent
+ * jamais (invariant fondateur du schéma), et il est vide en production.
+ */
+export type PlageFonctionnelleAffichee = {
+  borneMin: number | null;
+  borneMax: number | null;
+  unite: string;
+  population: string;
+  /** Une plage fonctionnelle n'existe qu'ancrée à son claim — le couple fait foi. */
+  claimId: string;
+  versionClaim: string;
+  niveauPreuve: string;
+};
+
 export type ResultatsGetResponse =
-  | { ok: true; resultats: ResultatConsigne[] }
+  | { ok: true; resultats: ResultatConsigne[]; plagesParAnalyte: Record<string, PlageFonctionnelleAffichee[]> }
   | { ok: false; reason: string; error: string };
 
 export type ResultatsPostResponse =
@@ -221,9 +242,50 @@ export async function GET(req: Request) {
       })),
     );
 
+    // Les plages fonctionnelles des SEULS analytes présents au dossier
+    // ([[D-156]]). Pas le catalogue entier : une route qui sert des données de
+    // santé nommées n'a pas à verser en plus un référentiel que l'écran ne
+    // montrera pas. `analyteCode` d'une ligne n'est jamais nul (colonne NOT
+    // NULL) ; l'ensemble peut être vide, et alors la requête ne part pas.
+    const codes = [...new Set(lignes.map(l => l.analyteCode))];
+    const plages = codes.length === 0 ? [] : await prisma.biologyFunctionalRange.findMany({
+      where: { analyteCode: { in: codes }, actif: true },
+      orderBy: [{ analyteCode: 'asc' }, { population: 'asc' }],
+      select: {
+        analyteCode: true,
+        borneMin: true,
+        borneMax: true,
+        unite: true,
+        population: true,
+        claimId: true,
+        versionClaim: true,
+        niveauPreuve: true,
+      },
+    });
+
+    // TOUTES les plages actives d'un analyte sont rendues, jamais une seule.
+    // En choisir une — « la plus pertinente », « celle de l'adulte » — serait
+    // trancher à la place du praticien quelle population décrit ce dossier :
+    // c'est précisément l'interprétation que ce lot refuse.
+    const plagesParAnalyte: Record<string, PlageFonctionnelleAffichee[]> = {};
+    for (const p of plages) {
+      const code = p.analyteCode;
+      if (code === null) continue;
+      (plagesParAnalyte[code] ??= []).push({
+        borneMin: p.borneMin,
+        borneMax: p.borneMax,
+        unite: p.unite,
+        population: p.population,
+        claimId: p.claimId,
+        versionClaim: p.versionClaim,
+        niveauPreuve: p.niveauPreuve,
+      });
+    }
+
     return NextResponse.json<ResultatsGetResponse>({
       ok: true,
       resultats: lignes.map(l => versConsigne(l, corrections.get(l.id)?.id ?? null)),
+      plagesParAnalyte,
     });
   } catch (err) {
     // JAMAIS `err.message` : un `PrismaClientValidationError` rend ses

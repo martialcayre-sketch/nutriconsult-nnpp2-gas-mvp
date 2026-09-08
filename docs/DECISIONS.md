@@ -4,6 +4,77 @@
 
 ## Décisions actives
 
+### D-156 — Juxtaposer une plage sourcée à une mesure est documentaire ; la comparer serait interpréter
+
+- Date : 2026-09-08
+- Statut : accepté (arbitrage praticien explicite en session — question d'ouverture du LOT-04, posée le 2026-09-04 et restée sans réponse jusqu'ici)
+- Domaine : rayon biologie, restitution praticien, frontière `DC-19`/`DC-20`
+
+**§1 — La question, telle qu'elle était posée.** Le bilan du 2026-09-04 avait
+constaté qu'aucun rapprochement mesure ↔ plage n'existait nulle part, **même
+neutre**, et que la question n'avait jamais été consignée : afficher la plage
+fonctionnelle sourcée (avec son claim) à côté d'une mesure, sans verdict, sans
+couleur, sans « hors plage », est-ce de l'affichage documentaire ou déjà de
+l'interprétation au sens `DC-19`/`DC-20` ?
+
+Le lot était explicitement à deux issues, sans entre-deux : réponse
+« documentaire » ⇒ il se construit ; réponse « interprétation » ⇒ **il tombe**,
+et la décision est consignée quand même.
+
+**§2 — La réponse : documentaire.** Une plage fonctionnelle est un **fait du
+corpus**, ancré à son claim et à son niveau de preuve. La poser à côté d'un
+fait du dossier n'invente aucune borne, ne dérive aucun seuil et ne produit
+aucun état. Ce qui basculerait dans l'interprétation, c'est le **geste de
+rapprochement** — calculer un écart, colorer, trier par « anormalité », écrire
+« hors plage ». Ce geste appartient au praticien ; l'écran met les deux faits
+sous les yeux et s'arrête là.
+
+**§3 — Ce que le lot refuse, et qui est gardé par des bancs.** Aucun écart
+calculé, aucune couleur d'état, aucun tri. Une sentinelle d'écran refuse tout
+vocabulaire de verdict sur la surface — « hors plage », « anormal », « élevé »,
+« bas », « déficit », « carence », « excès », « normal ». La frontière ne tient
+pas à l'intention de qui écrit l'écran : elle tient aux **mots** qui s'y
+affichent, et un banc les tient.
+
+**§4 — Trois silences, qui sont la vraie substance du lot.**
+
+- **Aucune plage publiée ⇒ RIEN ne s'affiche** — pas même « aucune plage ». Une
+  information sur le CORPUS posée au milieu d'un dossier se lirait comme une
+  information sur le PATIENT (`DC-24`).
+- **Unité discordante ⇒ silence.** Juxtaposer « 30 – 100 µg/L » à « 75 nmol/L »
+  invite une comparaison fausse que l'œil fait avant que la tête ne lise
+  l'unité. Convertir serait interpréter. L'écart d'unités est un problème de
+  **catalogue** ; l'écran le laisse visible en ne montrant rien.
+- **Série aux unités mêlées ⇒ silence aussi.** Une plage ne vaut pas pour une
+  moitié de série.
+
+**§5 — Toutes les plages actives, jamais une seule.** Un analyte peut porter
+plusieurs plages actives (populations distinctes). Elles sont **toutes**
+rendues. En choisir une — « la plus pertinente », « celle de l'adulte » —
+serait trancher à la place du praticien quelle population décrit ce dossier :
+exactement l'interprétation que ce lot refuse.
+
+**§6 — Le référentiel LABORATOIRE n'est pas servi.** Les deux ne se fusionnent
+jamais (invariant fondateur du schéma) ; il est par ailleurs **vide en
+production**. V1 : plages fonctionnelles seules.
+
+**§7 — Un défaut d'identité trouvé par le banc.** L'écran écrivait `(v{version})`
+en dur. Or `VERSION_CLAIM_RE` (`/^v?[0-9]+\.[0-9]+$/`) rend le préfixe `v`
+**facultatif** : le corpus porte « 1.0 » ou « v1.0 » selon la saisie, et le
+rendu donnait « vv1.0 » pour les uns, « v1.0 » pour les autres. Le couple
+(`claim_id`, `version_claim`) est une **identité** — lui ajouter un caractère
+la renomme. La version se rend désormais verbatim. Le même défaut existe dans
+`FicheAnalytePanel` ; il n'est pas corrigé ici (hors périmètre) mais il est
+nommé.
+
+**§8 — Portée sur l'existant.** Étiquette [[D-125]] : **démontré dans le code,
+sans occurrence observée**. Lecture de production du 2026-09-08
+(`one-off-9242`) : **2 plages fonctionnelles pour 47 analytes, 0 plage de
+référence, 0 résultat biologique**, et `WN_CB_RESULTS_ENABLED` n'est pas posé —
+la surface entière est fail-closed. Le lot ne change donc rien à ce qui
+s'affiche aujourd'hui ; il fixe ce qui s'affichera quand l'étage 2 s'ouvrira,
+et surtout ce qui ne s'affichera jamais.
+
 ### D-155 — Une absence d'observation ne referme pas [[D-049]] : seule une cause racine le peut
 
 - Date : 2026-09-08
