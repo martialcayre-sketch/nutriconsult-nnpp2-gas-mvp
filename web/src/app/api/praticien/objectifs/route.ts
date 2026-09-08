@@ -6,6 +6,7 @@ import { emailPraticien, verifierAppartenancePatient } from '@/lib/praticien/app
 import type { GabaritAcces } from '@/lib/praticien/journalAcces';
 import { MESSAGE_DOSSIER_CLOS, RAISON_DOSSIER_CLOS, accepteNouvelEnvoi } from '@/lib/patient/cycleDeVie';
 import { dossierDansPerimetreProposition, isObjectifProposeEnabled } from '@/lib/patient/featureFlag';
+import { sendObjectifProposeEmail } from '@/lib/consultation/email';
 import {
   chaineDObjectif,
   etatRatification,
@@ -406,6 +407,44 @@ export async function GET(req: Request): Promise<NextResponse<ObjectifsApiRespon
  * commençant par « code » — faux positif ici (c'est un code d'ERREUR), mais on
  * renomme plutôt que d'assouplir une garde contournable par un nom bien choisi.
  */
+/**
+ * L'objectif rédigé atteint le patient ([[D-153]], constat `M02`).
+ *
+ * MESURE QUI FONDE CE GESTE (production, 2026-09-08) : 4 propositions,
+ * 1 objectif négocié, et **0 ratification, 0 amendement, 0 réponse de jalon** —
+ * les trois drapeaux de la chaîne étant pourtant posés. Le patient ne pouvait
+ * l'apprendre qu'en revenant spontanément au portail ; les chiffres démentent
+ * cette hypothèse.
+ *
+ * TROIS PROPRIÉTÉS, ET AUCUNE N'EST ACCESSOIRE.
+ *   1. RIEN NE PART D'UN DOSSIER CLOS OU DÉSACTIVÉ — mais la porte n'est PAS
+ *      ici : le POST refuse déjà 409 à l'entrée (`accepteNouvelEnvoi`, plus
+ *      bas), avant toute écriture. Un second contrôle ici serait INATTEIGNABLE,
+ *      donc invérifiable — un banc l'a montré en survivant à sa suppression.
+ *      Le dépôt vient d'apprendre ce que coûte un mécanisme qu'aucun chemin
+ *      n'atteint ([[D-148]]) : on ne le refait pas pour se rassurer. Tout
+ *      appelant NOUVEAU de cette fonction doit donc franchir la même porte.
+ *   2. L'ÉCHEC N'ANNULE PAS L'ÉCRITURE. L'objectif est déjà en base : un
+ *      relais SMTP en panne ne doit pas transformer une écriture réussie en
+ *      500. L'échec est journalisé par l'envoyeur — donc visible sur la fiche
+ *      depuis [[D-148]] — puis absorbé ici.
+ *   3. L'ÉNONCÉ NE VOYAGE PAS. Le gabarit dit qu'un texte attend ; il ne le
+ *      transporte pas (cf. `registreGabarits`).
+ */
+async function notifierObjectifPropose(idPatient: string): Promise<void> {
+  try {
+    const patient = await prisma.patient.findUnique({
+      where: { idPatient },
+      select: { email: true, prenom: true },
+    });
+    if (!patient?.email) return;
+    await sendObjectifProposeEmail(patient.email, patient.prenom, idPatient);
+  } catch (err) {
+    // Jamais le payload : il porte l'énoncé du patient.
+    console.error('[praticien/objectifs] notification objectif', messageJournalisable(err));
+  }
+}
+
 function messageJournalisable(err: unknown): string {
   if (!(err instanceof Error)) return String(err);
   if (!err.name.startsWith('PrismaClient')) return err.message;
@@ -835,6 +874,7 @@ export async function POST(req: Request): Promise<NextResponse<ObjectifsApiRespo
         data: preparation.donnees,
         select: SELECTION_OBJECTIF,
       });
+      await notifierObjectifPropose(idPatient);
       return NextResponse.json({ ok: true, objectif: exposer(creee) }, { status: 201 });
     }
 
@@ -866,6 +906,10 @@ export async function POST(req: Request): Promise<NextResponse<ObjectifsApiRespo
       prisma.dispositionProposition.create({ data: geste.donnees, select: { id: true } }),
     ]);
 
+    // APRÈS la transaction, jamais dedans : un envoi réseau dans une
+    // transaction la tiendrait ouverte le temps du SMTP, et un échec y
+    // annulerait deux écritures que le praticien a bel et bien faites.
+    await notifierObjectifPropose(idPatient);
     return NextResponse.json({ ok: true, objectif: exposer(creee) }, { status: 201 });
   } catch (err) {
     // Jamais le payload : il porte l'énoncé du patient et la compréhension du
