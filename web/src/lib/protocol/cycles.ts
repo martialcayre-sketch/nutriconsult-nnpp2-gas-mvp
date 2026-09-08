@@ -66,7 +66,7 @@ export function indexDeCycle(milestone: string): number | null {
  * dans le dossier et non sur l'ouverture d'un cycle :
  *   · [[D-156]] — la fenêtre de l'ancre initiale couvre tout l'état d'entrée ;
  *     l'ouvrir pour un `T1` lui ferait embarquer tout l'historique.
- *   · [[D-157]] — le second rideau se compte depuis la première synthèse
+ *   · [[D-158]] — le second rideau se compte depuis la première synthèse
  *     validée du dossier ; appliqué à un `T1` posé des mois plus tard, il
  *     compterait comme « second rideau » tout ce qui a été assigné depuis,
  *     jalons de suivi compris.

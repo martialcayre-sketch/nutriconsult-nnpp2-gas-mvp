@@ -110,7 +110,7 @@ export const CONSULTATION_VALIDEE_FIXTURE = {
 };
 
 /**
- * Le SECOND RIDEAU du dossier de référence ([[D-157]]) — assigné APRÈS la
+ * Le SECOND RIDEAU du dossier de référence ([[D-158]]) — assigné APRÈS la
  * validation de la synthèse, et rendu.
  *
  * La date est postérieure à `SYNTHESE_VALIDEE_FIXTURE.dateValidation` d'un

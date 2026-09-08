@@ -149,7 +149,7 @@ export function EpisodeConfirmationPanel({
           {/* Le nom métier suffit au praticien — l'identifiant Q_SOM_09
               relevait de la fuite dev (audit 2026-09-02) ; il reste dans le
               code et les contrats, pas à l'écran. */}
-          {/* RÉÉCRIT PAR [[D-157]] : « les agendas ne sont pas requis » est
+          {/* RÉÉCRIT PAR [[D-158]] : « les agendas ne sont pas requis » est
               devenu faux le jour où le second rideau est entré dans les
               conditions dures. Un agenda que vous assignez après la synthèse
               EST attendu. La phrase distingue donc les deux rideaux, au lieu

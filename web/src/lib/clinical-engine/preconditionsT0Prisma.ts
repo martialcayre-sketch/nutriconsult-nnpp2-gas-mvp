@@ -68,7 +68,7 @@ export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<
       orderBy: [{ dateValidation: 'desc' }, { createdAt: 'desc' }],
     }),
     contradictionsPourPatient(idPatient),
-    // LA PREMIÈRE validation, quand celle du dessus est LA DERNIÈRE ([[D-157]]
+    // LA PREMIÈRE validation, quand celle du dessus est LA DERNIÈRE ([[D-158]]
     // §3). Le tri est ASCENDANT et c'est tout l'écart : la fraîcheur se juge
     // sur la synthèse la plus récente, la borne du second rideau sur celle qui
     // l'a motivé. Une borne d'entrée ne se déplace pas — sans quoi valider une
@@ -123,7 +123,7 @@ export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<
 /**
  * Raccourci des trois routes : lire, puis évaluer.
  *
- * `jalon` est REQUIS et sans défaut ([[D-157]] §6) : le second rideau ne vaut
+ * `jalon` est REQUIS et sans défaut ([[D-158]] §6) : le second rideau ne vaut
  * que pour l'entrée dans le dossier, et un défaut choisirait en silence entre
  * « entrer » et « rouvrir ».
  */

@@ -27,7 +27,7 @@ const { getServerSession, prisma, writes } = vi.hoisted(() => {
       decisionPrioritySelection: { findMany: vi.fn() },
       // Préconditions de confirmation T0 (D-052).
       syntheseIA: { findFirst: vi.fn() },
-      // Second rideau ([[D-157]]) : assignations du dossier, et ancre déjà
+      // Second rideau ([[D-158]]) : assignations du dossier, et ancre déjà
       // posée s'il y en a une (la borne haute de ce rideau).
       assignation: { findMany: vi.fn() },
       // Journal des accès (G-TRUST-04) : écriture d'audit, pas clinique.
@@ -337,7 +337,7 @@ describe('/api/praticien/cockpit', () => {
     });
     // Aucun second rideau : ce cas éprouve la fraîcheur d'origine ([[D-052]] §4)
     // et son message. Le cas symétrique — second rideau rendu mais non LU, qui
-    // appelle une synthèse NEUVE ([[D-157]] §3 bis) — a son propre message et
+    // appelle une synthèse NEUVE ([[D-158]] §3 bis) — a son propre message et
     // vit dans `preconditionsT0.test.ts`, où il se décrit sans mock.
     prisma.assignation.findMany.mockResolvedValue([]);
     const proposed = await proposal();

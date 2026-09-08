@@ -87,7 +87,7 @@ export type ContradictionPourChecklist = {
 };
 
 /**
- * Une assignation du dossier, telle que la base la porte ([[D-157]]).
+ * Une assignation du dossier, telle que la base la porte ([[D-158]]).
  *
  * `titre` et non l'identifiant : c'est ce que l'écran cite quand il nomme ce
  * qui manque, et l'identifiant technique relevait de la fuite dev (audit du
@@ -110,7 +110,7 @@ export type EntreesPreconditionsT0 = {
   synthese: SynthesePourPreconditions | null;
   /**
    * Date de validation de la PREMIÈRE synthèse du dossier — la borne du second
-   * rideau ([[D-157]] §3). Distincte de `synthese`, qui est la DERNIÈRE et
+   * rideau ([[D-158]] §3). Distincte de `synthese`, qui est la DERNIÈRE et
    * porte la fraîcheur : deux bornes, deux rôles. `null` si aucune validation.
    */
   premiereValidationSynthese: Date | null;
@@ -122,7 +122,7 @@ export type EntreesPreconditionsT0 = {
   assignations: readonly AssignationPourPreconditions[];
   /**
    * `confirmedAt` de l'ancre initiale si elle est DÉJÀ posée, `null` sinon —
-   * la borne haute du second rideau ([[D-157]] §5). Un acte posé ne se re-juge
+   * la borne haute du second rideau ([[D-158]] §5). Un acte posé ne se re-juge
    * pas sur des faits postérieurs : sans elle, la première assignation de suivi
    * refuserait en 422 l'écriture d'un protocole sur un dossier vivant, panne
    * que [[D-129]] a déjà dû rouvrir une fois.
@@ -294,7 +294,7 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
 
 /**
  * Fraîcheur de la synthèse : postérieure à la dernière passation DES RIDEAUX, et
- * non du dossier ([[D-052]] §4, étendu par [[D-157]] §3 bis) — une passation hors
+ * non du dossier ([[D-052]] §4, étendu par [[D-158]] §3 bis) — une passation hors
  * rideau, plus récente, ne périme pas une synthèse qui n'avait pas à en tenir
  * compte.
  *
@@ -305,7 +305,7 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
  * c'est-à-dire sur une analyse antérieure aux réponses qu'elle avait demandées,
  * et la proposition de protocole se serait construite sans elles.
  *
- * LE PIÈGE N'EST PAS ROUVERT, et c'est [[D-157]] §3 qui l'en empêche : le second
+ * LE PIÈGE N'EST PAS ROUVERT, et c'est [[D-158]] §3 qui l'en empêche : le second
  * rideau se borne à la PREMIÈRE synthèse validée, celle-ci se juge sur la
  * DERNIÈRE. Si les deux lisaient la même, valider la synthèse #2 sortirait le
  * second rideau de son propre compte et le dossier deviendrait inconfirmable.
@@ -357,7 +357,7 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
 }
 
 /**
- * LE SECOND RIDEAU ([[D-157]]) : ce que le praticien a demandé au vu de la
+ * LE SECOND RIDEAU ([[D-158]]) : ce que le praticien a demandé au vu de la
  * première synthèse, et que le patient a rendu.
  *
  * PAS UNE LISTE SIGNÉE, ET C'EST LA DIFFÉRENCE AVEC `RIDEAU_T0`. Le premier
@@ -393,7 +393,7 @@ const STATUT_ASSIGNATION_ANNULEE = 'Annulée';
  *
  * Extrait parce qu'il se lit DEUX fois, et que deux copies dériveraient : par sa
  * propre condition, et par la fraîcheur de la synthèse — qui doit être
- * postérieure aux passations de ce rideau-là ([[D-157]] §3 bis).
+ * postérieure aux passations de ce rideau-là ([[D-158]] §3 bis).
  */
 function secondRideauDuDossier(
   entrees: EntreesPreconditionsT0,
@@ -503,7 +503,7 @@ export function evaluerPreconditionsT0(
   /**
    * Le jalon dont on évalue la confirmation. Il n'était pas nécessaire tant que
    * toutes les conditions valaient pour toute ancre ; le second rideau, lui, ne
-   * vaut que pour l'ENTRÉE dans le dossier ([[D-157]] §6) — il n'a pas de
+   * vaut que pour l'ENTRÉE dans le dossier ([[D-158]] §6) — il n'a pas de
    * défaut, parce qu'un défaut choisirait en silence entre « entrer » et
    * « rouvrir ».
    */

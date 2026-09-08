@@ -56,7 +56,7 @@ function rideauComplet(): PassationPourPreconditions[] {
 const LE_2026_08_10 = new Date('2026-08-10T09:00:00.000Z');
 
 /**
- * Le dossier de référence porte un second rideau RENDU ([[D-157]]) : un
+ * Le dossier de référence porte un second rideau RENDU ([[D-158]]) : un
  * instrument assigné après la validation de la synthèse, et complété. Sans lui,
  * les vingt-trois cas qui éprouvent AUTRE CHOSE seraient tous bloquants pour la
  * même raison, et ne prouveraient plus rien de ce qu'ils visent.
@@ -317,7 +317,7 @@ describe('préconditions de confirmation T0 (D-052)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// D-157 — LE SECOND RIDEAU : ce que le praticien a demandé au vu de la première
+// D-158 — LE SECOND RIDEAU : ce que le praticien a demandé au vu de la première
 // synthèse, et que le patient a rendu.
 //
 // Production au 2026-09-08 : 14 dossiers portent une synthèse validée, 4 ont
@@ -326,7 +326,7 @@ describe('préconditions de confirmation T0 (D-052)', () => {
 // C'est pourquoi ce rideau ne peut pas être une liste signée comme RIDEAU_T0 :
 // il se compose dossier par dossier.
 // ---------------------------------------------------------------------------
-describe('second rideau (D-157)', () => {
+describe('second rideau (D-158)', () => {
   const APRES = new Date('2026-08-12T09:00:00.000Z');
 
   function assignation(
@@ -440,7 +440,7 @@ describe('second rideau (D-157)', () => {
     }), 'T0');
     expect(dure(resultat, 'second_rideau').satisfaite).toBe(true);
   });
-  // ── LE CINQUIÈME TEMPS ([[D-157]] §3 bis, arbitrage du 2026-09-09) ────────
+  // ── LE CINQUIÈME TEMPS ([[D-158]] §3 bis, arbitrage du 2026-09-09) ────────
   // « T0 doit se valider sur une synthèse produite APRÈS le deuxième rideau. »
   // La condition sœur exige que le second rideau soit RENDU ; celle-ci exige
   // qu'il ait été LU.

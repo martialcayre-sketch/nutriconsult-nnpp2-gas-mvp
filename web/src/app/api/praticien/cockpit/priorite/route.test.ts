@@ -7,7 +7,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    // Second rideau ([[D-157]]) : assignations du dossier, et ancre déjà
+    // Second rideau ([[D-158]]) : assignations du dossier, et ancre déjà
     // posée s'il y en a une (la borne haute de ce rideau).
     assignation: { findMany: vi.fn() },
     decisionPrioritySelection: { findMany: vi.fn(), create: vi.fn() },

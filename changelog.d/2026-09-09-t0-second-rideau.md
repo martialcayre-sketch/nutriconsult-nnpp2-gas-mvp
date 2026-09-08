@@ -1,7 +1,7 @@
 ### Modifié
 
 - **Un `T0` ne se confirme qu'après le second rideau, et sur une synthèse qui
-  l'a lu** (`D-157`, arbitrage du responsable). Une quatrième condition dure
+  l'a lu** (`D-158`, arbitrage du responsable). Une quatrième condition dure
   s'ajoute aux trois de `D-052` — ce que le praticien a assigné **après la
   validation de la première synthèse** doit être rendu —, et la fraîcheur de la
   synthèse est étendue au second rideau. La chaîne compte cinq temps : premier

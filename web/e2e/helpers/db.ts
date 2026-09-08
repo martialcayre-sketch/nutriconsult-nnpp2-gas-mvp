@@ -789,7 +789,7 @@ export async function provisionnerDossierBiologie(idPatient: string): Promise<vo
   });
 
   // ── Condition dure 4 : un second rideau assigné APRÈS la synthèse, et rendu
-  // ([[D-157]]). La date vient de la fixture partagée, postérieure d'un jour à
+  // ([[D-158]]). La date vient de la fixture partagée, postérieure d'un jour à
   // la validation ci-dessus : la condition et la fixture bougent ensemble.
   // `statut: 'Complété'` est ce que lit la condition — pas la cotabilité, que
   // le second rideau n'exige pas.
@@ -801,7 +801,7 @@ export async function provisionnerDossierBiologie(idPatient: string): Promise<vo
   // [[D-156]]), donc dans la carte de décision, donc dans les propositions que
   // les trois specs biologie asservissent à `PLAINTES_DIGESTIF_ET_PONDERAL` :
   // ce provisionnement changerait ce qu'ils mesurent. La fraîcheur de la
-  // synthèse VIS-À-VIS du second rideau ([[D-157]] §3 bis) est donc éprouvée
+  // synthèse VIS-À-VIS du second rideau ([[D-158]] §3 bis) est donc éprouvée
   // par `preconditionsT0.test.ts` — où la chaîne des cinq temps se décrit sans
   // mock —, pas ici. Ici, seule la condition d'ASSIGNATION est franchie.
   await prisma.assignation.create({
