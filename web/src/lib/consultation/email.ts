@@ -192,7 +192,7 @@ export async function sendPortailLinkEmail(
 }
 
 /**
- * Notification « un objectif vous attend » ([[D-153]], constat `M02`).
+ * Notification « un objectif vous attend » ([[D-154]], constat `M02`).
  *
  * POURQUOI ICI, dans un module nommé « accès ». `envoyerAccesTrace` est le seul
  * endroit du dépôt qui tienne le triplet complet d'un envoi patient — pas de

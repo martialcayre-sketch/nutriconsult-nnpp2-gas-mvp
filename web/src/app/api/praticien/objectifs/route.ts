@@ -408,7 +408,7 @@ export async function GET(req: Request): Promise<NextResponse<ObjectifsApiRespon
  * renomme plutôt que d'assouplir une garde contournable par un nom bien choisi.
  */
 /**
- * L'objectif rédigé atteint le patient ([[D-153]], constat `M02`).
+ * L'objectif rédigé atteint le patient ([[D-154]], constat `M02`).
  *
  * MESURE QUI FONDE CE GESTE (production, 2026-09-08) : 4 propositions,
  * 1 objectif négocié, et **0 ratification, 0 amendement, 0 réponse de jalon** —

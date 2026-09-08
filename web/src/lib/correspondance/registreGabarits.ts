@@ -409,7 +409,7 @@ export const REGISTRE_GABARITS_PATIENT: readonly VersionGabaritPatient[] = Objec
     hash: '0e65572d94cc85966add63e7891136a552169d777a971e16319ec7e082694e86',
   },
   // ── OBJECTIF PROPOSÉ ────────────────────────────────────────────────────
-  // ARBITRAGE DU RESPONSABLE, 2026-09-08 ([[D-153]], constat `M02`) : l'objectif
+  // ARBITRAGE DU RESPONSABLE, 2026-09-08 ([[D-154]], constat `M02`) : l'objectif
   // rédigé par le praticien doit ATTEINDRE le patient. Mesure de production du
   // même jour : 4 propositions, 1 objectif négocié, et **0 ratification, 0
   // amendement, 0 réponse de jalon** — les trois drapeaux de la chaîne étant

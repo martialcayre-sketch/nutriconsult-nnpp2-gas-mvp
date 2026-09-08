@@ -42,7 +42,7 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
   },
 }));
 
-// [[D-153]] — l'envoyeur est moqué : ce banc éprouve QUI est notifié et QUAND,
+// [[D-154]] — l'envoyeur est moqué : ce banc éprouve QUI est notifié et QUAND,
 // pas le SMTP. Le contenu du gabarit est tenu par `registreGabarits.test.ts`
 // (hash-lock), et le triplet Envoye/Non_envoye/Erreur par `email.test.ts`.
 const sendObjectifProposeEmail = vi.hoisted(() => vi.fn());
@@ -1042,7 +1042,7 @@ describe('/api/praticien/objectifs', () => {
 });
 
 // ---------------------------------------------------------------------------
-// M02 / D-153 — l'objectif rédigé atteint le patient.
+// M02 / D-154 — l'objectif rédigé atteint le patient.
 //
 // Mesure de production du 2026-09-08 : 4 propositions, 1 objectif négocié, et
 // 0 ratification, 0 amendement, 0 réponse de jalon — les trois drapeaux de la
@@ -1050,7 +1050,7 @@ describe('/api/praticien/objectifs', () => {
 // `WN_CE_QUI_COMPTE` tous à `true`). Le retour spontané au portail, seul chemin
 // jusqu'ici, est démenti par ces chiffres.
 // ---------------------------------------------------------------------------
-describe('/api/praticien/objectifs — notification du patient (M02, D-153)', () => {
+describe('/api/praticien/objectifs — notification du patient (M02, D-154)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });

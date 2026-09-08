@@ -49,7 +49,7 @@ describe('registre des gabarits patient — intégrité', () => {
       // haute d'une clé. Une v3 d'`acces_portail` serait servie AUSSI au chemin
       // sans lien, où le rendu lèverait sur `{{lien}}` manquant.
       'acces_portail_lien@1',
-      // [[D-153]] — premier gabarit d'un message qui n'ouvre pas un accès mais
+      // [[D-154]] — premier gabarit d'un message qui n'ouvre pas un accès mais
       // APPELLE UN GESTE : relire l'objectif proposé. Il ne transporte pas
       // l'énoncé, seulement l'adresse de l'espace.
       'objectif_propose@1',

@@ -1,7 +1,7 @@
 ### Ajouté
 
 - **Un objectif écrit par le praticien prévient le patient** (`M02` de l'audit
-  du 2026-09-06, `D-153` — arbitrage du responsable rendu en session). Nouveau
+  du 2026-09-06, `D-154` — arbitrage du responsable rendu en session). Nouveau
   gabarit au registre, `objectif_propose@1`, premier message qui n'ouvre pas un
   accès mais **appelle un geste** : relire l'objectif et dire s'il correspond.
 
