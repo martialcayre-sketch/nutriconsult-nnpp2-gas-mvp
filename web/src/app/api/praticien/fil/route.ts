@@ -89,9 +89,13 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
         where: { pointEtape: 'J21' },
         select: { id: true, idPatient: true, reponses: true, soumisLe: true },
       }),
+      // `confirmedAt` et pas seulement `idPatient` ([[D-151]]) : la décision
+      // d'un point d'étape est celle qui lui est POSTÉRIEURE. Sans la date, un
+      // épisode J21 ancien masquait l'attente — entre cycles, mais aussi DANS
+      // un seul cycle, les deux « J21 » vivant sur deux calendriers.
       prisma.assessmentEpisode.findMany({
         where: { milestone: 'J21' },
-        select: { idPatient: true },
+        select: { idPatient: true, confirmedAt: true },
       }),
       // Consultations prévues aujourd'hui (LOT-04). Déjà bornées au praticien
       // (la table porte praticienEmail) et au jour civil.
@@ -203,11 +207,14 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
 
     // Jalon J21 = check-in J21 sans épisode J21 consigné (différence pure),
     // enrichi du momentum réel quand il existe (bornée aux patients-jalon).
-    const jalonsBruts = jalonsSansDecision(
-      checkinsJ21,
-      new Set(episodesJ21.map(e => e.idPatient)),
-      actifs,
-    );
+    // Le PLUS RÉCENT épisode par patient : c'est lui qui peut avoir tranché le
+    // point d'étape le plus récent. Un épisode plus ancien ne tranche rien.
+    const dernierEpisodeJ21ParPatient = new Map<string, Date>();
+    for (const e of episodesJ21) {
+      const connu = dernierEpisodeJ21ParPatient.get(e.idPatient);
+      if (!connu || e.confirmedAt > connu) dernierEpisodeJ21ParPatient.set(e.idPatient, e.confirmedAt);
+    }
+    const jalonsBruts = jalonsSansDecision(checkinsJ21, dernierEpisodeJ21ParPatient, actifs);
     const momentums = await momentumJalonsParPatient(jalonsBruts.map(j => j.idPatient));
     const jalons = jalonsBruts.map(j => ({ ...j, momentum: momentums.get(j.idPatient) ?? null }));
 
