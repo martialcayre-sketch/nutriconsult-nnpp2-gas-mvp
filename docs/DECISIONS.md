@@ -4,6 +4,72 @@
 
 ## Décisions actives
 
+### D-151 — Une décision antérieure n'a rien tranché : la différence entre deux artefacts est temporelle, pas ensembliste
+
+- Date : 2026-09-08
+- Statut : accepté (constat `A04` de l'audit du 2026-09-06, requalifié par sa contre-épreuve)
+- Domaine : Fil du praticien, points d'étape J21, épisodes d'évaluation
+
+**1. Le défaut.** Le Fil lisait « point d'étape J21 sans décision consignée »
+comme une différence d'ENSEMBLES : tout patient portant au moins un épisode
+`J21` était écarté, quelle que soit la date de cet épisode. Une décision
+ANTÉRIEURE masquait donc un point d'étape arrivé après elle — définitivement,
+la carte n'ayant aucun autre chemin de retour.
+
+**2. L'audit réduisait le défaut à « entre cycles ». Il est plus large.** Deux
+chemins y mènent, et le second ne demande qu'un seul cycle : les deux « J21 »
+vivent sur **deux calendriers distincts** — le point d'étape est dû à
+`approvedAt` + 21 ± 3 j, la mesure à `confirmedAt` de l'ancre + 21 ± 8 j. Un
+épisode de mesure confirmé AVANT l'arrivée du point d'étape du même cycle
+supprime la carte. « Tester deux cycles », l'action que l'audit proposait, ne
+passe pas par ce chemin.
+
+**3. LA ROUTE SE CONTREDISAIT À DIX LIGNES D'ÉCART.** L'enrichissement du
+momentum, dans le même fichier, raisonne DÉJÀ par cycle (`momentumJ21.ts`
+sélectionne `cycleId`, le transmet, prend le cycle courant). Seul le filtre
+raisonnait par patient. Ce n'était donc pas un modèle absent, c'était un
+alignement manquant.
+
+**4. CE QUI N'EST PAS FAIT, ET C'EST LE CŒUR DE L'ARBITRAGE.** L'audit
+demandait de « rapprocher les objets avec l'identité métier appropriée »,
+c'est-à-dire par cycle. La contre-épreuve le refuse, et elle a raison : la
+chaîne `checkin.protocolDraftId → draft.assessmentEpisodeId → episode.cycleId`
+est **nullable aux deux maillons** ([[D-114]] nomme le `NULL` de `cycle_id`),
+et l'unique `protocol_draft` de production n'a **pas** d'`assessment_episode_id`
+— vérifié ce jour. Une jointure par cycle apparierait mal ou tomberait en
+silence. La règle de précédence temporelle ferme le même risque sans dépendre
+d'une chaîne que la production ne peuple pas. Ce lot n'est donc **pas**
+l'arbitrage d'identité de cycle : il le rend inutile pour ce défaut-là.
+
+**5. Les bancs encodaient la règle fautive.** `jalonsJ21.test.ts` posait
+`new Set(['P-SOPHIE'])` et affirmait qu'un épisode quelconque écarte le point
+d'étape ; le mock de `fil/route.test.ts` portait `[{ idPatient }]` **sans
+date**. Les deux tenaient le défaut pour un comportement voulu — c'est
+précisément pourquoi il a survécu à toutes les relectures. Ils sont RÉÉCRITS,
+pas complétés. La borne est explicite : un épisode confirmé à l'instant même de
+la soumission EST la décision de ce point d'étape.
+
+**6. Exposition réelle : zéro, et il faut le dire.** Lecture de production du
+2026-09-08 : `protocol_checkins` ne rend **aucune** ligne, `assessment_episodes`
+en compte 4 **toutes `T0`**, `protocol_drafts` en compte 1 sans épisode. Il
+n'existe donc ni point d'étape J21, ni épisode J21, ni second cycle. Pour que
+le défaut se produise il faut successivement un épisode J21, un T1 ouvert, un
+protocole diffusé, et un point d'étape 21 jours plus tard. Comme [[D-146]] et
+pour la même raison, ce lot ferme une trappe **armée et jamais déclenchée** :
+il ne répare aucun dommage. Le bon déclencheur de sa vérification est
+événementiel — la première diffusion d'un protocole — et non calendaire.
+
+**7. Deux choses signalées et NON traitées ici.** (a) Le titre de la carte dit
+« Jalon J21 atteint » là où l'objet est un POINT D'ÉTAPE : le vocabulaire A1
+distingue les deux, et la substitution est fautive. Le corriger touche une
+phrase d'interface, donc une baseline visuelle que cette machine ne compare pas
+— un rouge de CI indiagnosticable localement. Cela mérite son lot, avec la
+baseline. (b) L'effet inverse déjà documenté (`F-068`) : la carte peut mener à
+un cockpit où aucun J21 n'est confirmable. Faire revenir PLUS de cartes sans ce
+garde-fou augmente le nombre de cartes que le cockpit ne sait pas fermer
+autrement que par un refus. Ce lot ne l'aggrave pas au-delà de ce que la
+correction impose, mais il ne le ferme pas.
+
 ### D-150 — Un geste attendu qu'aucun écran ne réclame se fait en moyenne quarante-trois jours trop tard
 
 - Date : 2026-09-08

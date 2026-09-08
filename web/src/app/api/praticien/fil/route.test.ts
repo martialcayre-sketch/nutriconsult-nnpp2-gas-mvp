@@ -191,15 +191,36 @@ describe('GET /api/praticien/fil', () => {
     expect(consultation.href).toContain('/dashboard/copilote?idPatient=PAT_SEED_01');
   });
 
-  it('un check-in J21 déjà suivi d’un épisode J21 consigné ne produit aucune carte jalon', async () => {
+  // Le mock portait `[{ idPatient }]` SANS DATE : il affirmait qu'un épisode
+  // J21 quelconque suffit à écarter le point d'étape — la règle que [[D-151]]
+  // corrige. Il porte désormais un `confirmedAt` POSTÉRIEUR à la soumission,
+  // seul cas où l'écartement est vrai.
+  it('un point d’étape J21 tranché par un épisode POSTÉRIEUR ne produit aucune carte jalon', async () => {
     prisma.patient.findMany.mockResolvedValue([{ idPatient: 'PAT_SEED_01', prenom: 'Sophie', nom: 'Nicola' }]);
     prisma.protocolCheckin.findMany.mockResolvedValue([
       { id: 'CHK_J21', idPatient: 'PAT_SEED_01', reponses: {}, soumisLe: new Date('2026-07-14T08:00:00.000Z') },
     ]);
-    prisma.assessmentEpisode.findMany.mockResolvedValue([{ idPatient: 'PAT_SEED_01' }]);
+    prisma.assessmentEpisode.findMany.mockResolvedValue([
+      { idPatient: 'PAT_SEED_01', confirmedAt: new Date('2026-07-16T08:00:00.000Z') },
+    ]);
 
     const payload = await (await GET()).json();
     expect(payload.cartes.some((c: { type: string }) => c.type === 'jalon_j21')).toBe(false);
+  });
+
+  // Le défaut `A04` vu de bout en bout : un épisode J21 ANTÉRIEUR au point
+  // d'étape ne tranche rien, et la carte doit rester.
+  it('un épisode J21 ANTÉRIEUR au point d’étape laisse la carte jalon', async () => {
+    prisma.patient.findMany.mockResolvedValue([{ idPatient: 'PAT_SEED_01', prenom: 'Sophie', nom: 'Nicola' }]);
+    prisma.protocolCheckin.findMany.mockResolvedValue([
+      { id: 'CHK_J21', idPatient: 'PAT_SEED_01', reponses: {}, soumisLe: new Date('2026-07-14T08:00:00.000Z') },
+    ]);
+    prisma.assessmentEpisode.findMany.mockResolvedValue([
+      { idPatient: 'PAT_SEED_01', confirmedAt: new Date('2026-07-02T08:00:00.000Z') },
+    ]);
+
+    const payload = await (await GET()).json();
+    expect(payload.cartes.some((c: { type: string }) => c.type === 'jalon_j21')).toBe(true);
   });
 
   const CLE_SYNTHESE = 'synthese_a_valider:agregat:PAT_SEED_01:2026-07-20T09:00:00.000Z';
