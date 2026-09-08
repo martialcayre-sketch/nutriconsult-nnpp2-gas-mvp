@@ -75,4 +75,54 @@ describe('échelle d’alerte — rien n’est inventé ([[D-143]])', () => {
     const types = readFileSync(join(RACINE, 'lib', 'supplement-library', 'types.ts'), 'utf8');
     expect(types).toContain('niveauAlerte: string | null;');
   });
+
+  // LE NIVEAU DOCUMENTE, IL NE DÉCIDE PAS ([[D-152]]). L'arbitrage a retenu la
+  // première des trois issues laissées ouvertes par [[D-143]] : le niveau
+  // s'affiche et ne commande rien. Ce qui alerte reste le FAIT — un cumul
+  // constaté, un seuil dépassé —, jamais l'étiquette posée dessus.
+  //
+  // Ce terme vise la COMPARAISON DE VALEUR, et rien d'autre :
+  //
+  // - le test de PRÉSENCE reste permis (`=== null`, `!== undefined`,
+  //   truthiness) — savoir si le niveau existe est nécessaire pour l'AFFICHER,
+  //   et l'affichage est précisément ce que l'arbitrage autorise ;
+  // - la borne de longueur reste permise (`niveauAlerte.length > …`) — elle
+  //   valide une saisie libre, elle ne lit aucune gradation ;
+  // - la vérification de TYPE reste permise (`typeof x.niveauAlerte ===
+  //   'string'`) — elle valide la forme d'une entrée, pas son contenu. Ce banc
+  //   l'a d'abord refusée à tort, sur la route d'écriture des alertes : le
+  //   faux positif est retiré ICI, à la source, plutôt que par une exception
+  //   nommant ce fichier — une liste d'exceptions vieillit mal ;
+  // - l'ORDRE est refusé sans exception : `<` ou `>` sur ce champ n'a de sens
+  //   que si des paliers sont ordonnés, et aucun ne l'est.
+  //
+  // Une sentinelle qui interdirait de MONTRER le niveau punirait la bonne
+  // conduite et finirait désactivée ([[D-147]] §4).
+  it('aucune source servie ne DÉCIDE sur le niveau d’alerte', () => {
+    // L'espace vit DANS la négation, et ce n'est pas un détail de style :
+    // écrite `…\s*(?!null\b)`, l'expression laisse le moteur rétrograder `\s*`
+    // à zéro, comparer « ` null` » à « `null` », et accuser le test de
+    // PRÉSENCE qu'elle est censée autoriser. Constaté par mutation.
+    const comparaisonValeur =
+      /niveauAlerte\s*(?:===|!==|==(?!=)|!=(?!=))(?!\s*(?:null|undefined)\b)/;
+    const comparaisonOrdre = /niveauAlerte\s*(?:<=?|>=?)(?!=)/;
+    const aiguillage = /switch\s*\(\s*[A-Za-z0-9_.?[\]]*niveauAlerte\b/;
+    // `typeof <expr>.niveauAlerte === '<type>'` — garde de forme, retirée de la
+    // ligne avant analyse pour qu'elle ne se lise pas comme une décision.
+    const gardeDeType = /typeof\s+[A-Za-z0-9_.?[\]]*niveauAlerte\s*(?:===|!==)\s*['"`][a-z]+['"`]/g;
+
+    const coupables: string[] = [];
+    for (const fichier of fichiers) {
+      readFileSync(fichier, 'utf8').split('\n').forEach((ligne, index) => {
+        const nue = ligne.trim();
+        if (nue.startsWith('//') || nue.startsWith('*')) return;
+        const analysee = ligne.replace(gardeDeType, '');
+        if (!comparaisonValeur.test(analysee)
+          && !comparaisonOrdre.test(analysee)
+          && !aiguillage.test(analysee)) return;
+        coupables.push(`${fichier.replace(RACINE, 'src')}:${index + 1} — ${nue}`);
+      });
+    }
+    expect(coupables, coupables.join('\n')).toEqual([]);
+  });
 });
