@@ -10,7 +10,10 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
+    // Second rideau ([[D-158]]) : assignations du dossier, et ancre déjà
+    // posée s'il y en a une (la borne haute de ce rideau).
+    assignation: { findMany: vi.fn() },
+    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
     arbitrageBiologique: { findMany: vi.fn() },
     // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
@@ -29,7 +32,7 @@ import { buildProtocolDraft } from '@/lib/clinical-engine/protocolDraft';
 import { VERSION_PROTOCOL_DRAFT_V4 } from '@/lib/clinical-engine/types';
 import type { ProtocolAction } from '@/lib/clinical-engine/types';
 import { deriveProtocolDraftId, deriveVersionId } from '@/lib/protocol/versioning';
-import { SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
+import { SECOND_RIDEAU_RENDU_FIXTURE, SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
 import {
   ANAMNESE_C1_FIXTURE,
   CANDIDAT_RANG_1,
@@ -153,6 +156,7 @@ describe('POST /api/praticien/protocoles/versions', () => {
     prisma.questionnaireReponse.findMany.mockResolvedValue(passationsC1Fixture());
     prisma.consultation.findFirst.mockResolvedValue(ANAMNESE_C1_FIXTURE);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
+    prisma.assignation.findMany.mockResolvedValue(SECOND_RIDEAU_RENDU_FIXTURE);
     prisma.ciqualNutrientValue.findMany.mockResolvedValue(ciqualRows());
     // Aucun arbitrage biologique par défaut : la garde LOT-06 ne mord que sur
     // une résolution d'intention `conditionnelle_biologie`.

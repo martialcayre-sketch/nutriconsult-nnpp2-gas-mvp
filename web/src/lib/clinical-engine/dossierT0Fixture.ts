@@ -108,3 +108,23 @@ export const SYNTHESE_VALIDEE_FIXTURE = {
 export const CONSULTATION_VALIDEE_FIXTURE = {
   anamnese: { motif_principal: 'Fatigue persistante depuis six mois.' },
 };
+
+/**
+ * Le SECOND RIDEAU du dossier de référence ([[D-158]]) — assigné APRÈS la
+ * validation de la synthèse, et rendu.
+ *
+ * La date est postérieure à `SYNTHESE_VALIDEE_FIXTURE.dateValidation` d'un
+ * jour, et c'est la seule chose qui compte : la borne du second rideau est cette
+ * validation-là. Un instrument HORS `RIDEAU_T0` — le second rideau explore ce
+ * que le premier a fait apparaître, il ne le repasse pas.
+ */
+export const DATE_SECOND_RIDEAU_FIXTURE = new Date('2026-01-03T00:00:00.000Z');
+
+export const SECOND_RIDEAU_RENDU_FIXTURE = [
+  {
+    idQuestionnaire: 'Q_GAS_01',
+    titre: 'Confort digestif',
+    dateAssignation: DATE_SECOND_RIDEAU_FIXTURE,
+    statut: 'Complété',
+  },
+];

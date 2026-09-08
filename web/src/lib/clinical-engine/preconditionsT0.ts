@@ -1,6 +1,7 @@
 import { ANAMNESE_CHAMP_REQUIS } from '../consultation/anamnese';
 import { scoresRecalculesPourRaisonnement } from '../clinical/orientationService';
 import { statutExcluDuRaisonnement } from '../scoring/validite';
+import { estAncreInitiale } from '../protocol/cycles';
 
 /**
  * Préconditions de confirmation d'un épisode T0 ([[D-052]]).
@@ -85,6 +86,20 @@ export type ContradictionPourChecklist = {
   passations: readonly string[];
 };
 
+/**
+ * Une assignation du dossier, telle que la base la porte ([[D-158]]).
+ *
+ * `titre` et non l'identifiant : c'est ce que l'écran cite quand il nomme ce
+ * qui manque, et l'identifiant technique relevait de la fuite dev (audit du
+ * 2026-09-02).
+ */
+export type AssignationPourPreconditions = {
+  idQuestionnaire: string;
+  titre: string;
+  dateAssignation: Date;
+  statut: string;
+};
+
 export type EntreesPreconditionsT0 = {
   passations: readonly PassationPourPreconditions[];
   /** Anamnèse de la consultation validée la plus récente ; `null` si aucune. */
@@ -93,6 +108,26 @@ export type EntreesPreconditionsT0 = {
   consultationValidee: boolean;
   /** Synthèse la plus récente du patient ; `null` si aucune. */
   synthese: SynthesePourPreconditions | null;
+  /**
+   * Date de validation de la PREMIÈRE synthèse du dossier — la borne du second
+   * rideau ([[D-158]] §3). Distincte de `synthese`, qui est la DERNIÈRE et
+   * porte la fraîcheur : deux bornes, deux rôles. `null` si aucune validation.
+   */
+  premiereValidationSynthese: Date | null;
+  /**
+   * TOUTES les assignations du dossier, non filtrées. Le module pur choisit
+   * lesquelles composent le second rideau : la règle est clinique, elle ne se
+   * pré-filtre pas au chargement.
+   */
+  assignations: readonly AssignationPourPreconditions[];
+  /**
+   * `confirmedAt` de l'ancre initiale si elle est DÉJÀ posée, `null` sinon —
+   * la borne haute du second rideau ([[D-158]] §5). Un acte posé ne se re-juge
+   * pas sur des faits postérieurs : sans elle, la première assignation de suivi
+   * refuserait en 422 l'écriture d'un protocole sur un dossier vivant, panne
+   * que [[D-129]] a déjà dû rouvrir une fois.
+   */
+  confirmationAncreInitiale: Date | null;
   /**
    * Contradictions OUVERTES du dossier (LOT-01), constat par constat depuis
    * `D-119` — la checklist affichait un compte que le chargeur calculait à
@@ -258,9 +293,22 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
 }
 
 /**
- * Fraîcheur de la synthèse : postérieure à la dernière passation DU RIDEAU, et
- * non du dossier ([[D-052]]) — une passation hors rideau, plus récente, ne
- * périme pas une synthèse qui n'avait pas à en tenir compte.
+ * Fraîcheur de la synthèse : postérieure à la dernière passation DES RIDEAUX, et
+ * non du dossier ([[D-052]] §4, étendu par [[D-158]] §3 bis) — une passation hors
+ * rideau, plus récente, ne périme pas une synthèse qui n'avait pas à en tenir
+ * compte.
+ *
+ * LES DEUX RIDEAUX, ET C'EST L'ARBITRAGE DU 2026-09-09 : « `T0` doit se valider
+ * sur une synthèse produite APRÈS le deuxième rideau ». La condition sœur exige
+ * que le second rideau soit rendu ; celle-ci exige qu'il ait été LU. Sans elle,
+ * un `T0` se confirmait sur la synthèse qui avait MOTIVÉ le second rideau —
+ * c'est-à-dire sur une analyse antérieure aux réponses qu'elle avait demandées,
+ * et la proposition de protocole se serait construite sans elles.
+ *
+ * LE PIÈGE N'EST PAS ROUVERT, et c'est [[D-158]] §3 qui l'en empêche : le second
+ * rideau se borne à la PREMIÈRE synthèse validée, celle-ci se juge sur la
+ * DERNIÈRE. Si les deux lisaient la même, valider la synthèse #2 sortirait le
+ * second rideau de son propre compte et le dossier deviendrait inconfirmable.
  *
  * `dateValidation` fait foi, jamais la date d'annotation : `Corrigee_Praticien`
  * ne rafraîchit pas `dateValidation` (comportement existant, non modifié ici).
@@ -270,7 +318,7 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
  * `null` hérité passerait sinon pour une date.
  */
 function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition {
-  const base = { id: 'synthese_validee', libelle: 'Synthèse validée et postérieure au rideau' };
+  const base = { id: 'synthese_validee', libelle: 'Synthèse validée après les passations qu’elle doit lire' };
   const synthese = entrees.synthese;
   if (!synthese || !STATUTS_SYNTHESE_VALIDEE_SET.has(synthese.statut)) {
     return { ...base, satisfaite: false, detail: 'Aucune synthèse validée par le praticien.' };
@@ -280,7 +328,12 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
   }
 
   const dernieres = dernieresParInstrument(entrees.passations);
-  const datesRideau = RIDEAU_T0
+  const secondRideau = secondRideauDuDossier(entrees);
+  const instrumentsAttendus = new Set<string>([
+    ...RIDEAU_T0,
+    ...secondRideau.map(assignation => assignation.idQuestionnaire),
+  ]);
+  const datesRideau = [...instrumentsAttendus]
     .map(idQuestionnaire => dernieres.get(idQuestionnaire)?.dateReponse)
     .filter((date): date is Date => date instanceof Date);
   const derniereDuRideau = datesRideau.reduce<Date | null>(
@@ -292,9 +345,105 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
     return {
       ...base,
       satisfaite: false,
-      detail: 'La synthèse validée est antérieure à la dernière passation du premier rideau.',
+      // DEUX MESSAGES, PARCE QUE LE GESTE ATTENDU N'EST PAS LE MÊME. Sans second
+      // rideau, la synthèse est simplement en retard sur le premier ; avec, il
+      // faut une synthèse NEUVE, et le dire évite d'aller re-valider l'ancienne.
+      detail: secondRideau.length > 0
+        ? 'La synthèse validée précède la dernière passation du second rideau : il en faut une nouvelle, produite après.'
+        : 'La synthèse validée est antérieure à la dernière passation du premier rideau.',
     };
   }
+  return { ...base, satisfaite: true, detail: null };
+}
+
+/**
+ * LE SECOND RIDEAU ([[D-158]]) : ce que le praticien a demandé au vu de la
+ * première synthèse, et que le patient a rendu.
+ *
+ * PAS UNE LISTE SIGNÉE, ET C'EST LA DIFFÉRENCE AVEC `RIDEAU_T0`. Le premier
+ * rideau est une table clinique en dur pour qu'un geste administratif ne
+ * déplace pas une règle clinique (`DC-26`). Le second ne peut pas l'être : la
+ * production le montre composé DOSSIER PAR DOSSIER — les deux seuls existants
+ * au 2026-09-08 comptent 5 et 8 instruments et n'en partagent que 3. Ce n'est
+ * pas dériver la règle d'un objet éditable : l'assignation N'EST PAS la règle,
+ * elle EST le geste clinique — le praticien lit la synthèse, décide ce qu'il
+ * veut explorer, l'assigne, et le T0 attend cette exploration.
+ *
+ * DEUX BORNES, ET CHACUNE FERME UNE PANNE PRÉCISE :
+ *
+ *   · EN BAS, la PREMIÈRE validation de synthèse, jamais la dernière. Valider
+ *     une seconde synthèse après le second rideau déplacerait une borne « la
+ *     plus récente » AU-DELÀ des assignations qu'elle doit compter : plus
+ *     aucune ne serait postérieure, et le dossier qui a fait exactement ce
+ *     qu'on lui demandait deviendrait définitivement inconfirmable.
+ *   · EN HAUT, la confirmation de l'ancre. Cette garde est rejouée à CHAQUE
+ *     écriture de protocole, y compris sur un T0 déjà confirmé : sans borne
+ *     haute, le premier questionnaire de suivi assigné après l'acte rendrait la
+ *     condition fausse et refuserait le protocole d'un dossier vivant.
+ *
+ * `Annulée` sort du compte : c'est le geste par lequel le praticien dit « je ne
+ * l'attends plus ». Le vocabulaire est celui que la base tient déjà
+ * (`STATUTS_ASSIGNATION_TERMINAL`), pas un second.
+ */
+export const STATUT_ASSIGNATION_RENDUE = 'Complété';
+const STATUT_ASSIGNATION_ANNULEE = 'Annulée';
+
+/**
+ * Les assignations qui COMPOSENT le second rideau d'un dossier.
+ *
+ * Extrait parce qu'il se lit DEUX fois, et que deux copies dériveraient : par sa
+ * propre condition, et par la fraîcheur de la synthèse — qui doit être
+ * postérieure aux passations de ce rideau-là ([[D-158]] §3 bis).
+ */
+function secondRideauDuDossier(
+  entrees: EntreesPreconditionsT0,
+): readonly AssignationPourPreconditions[] {
+  const borne = entrees.premiereValidationSynthese;
+  if (!borne) return [];
+  const plafond = entrees.confirmationAncreInitiale;
+  return entrees.assignations.filter(a =>
+    a.statut !== STATUT_ASSIGNATION_ANNULEE
+    && a.dateAssignation.getTime() > borne.getTime()
+    && (plafond === null || a.dateAssignation.getTime() <= plafond.getTime()));
+}
+
+function evaluerSecondRideau(entrees: EntreesPreconditionsT0): ConditionPrecondition {
+  const base = { id: 'second_rideau', libelle: 'Second rideau assigné après la synthèse, et rendu' };
+  if (!entrees.premiereValidationSynthese) {
+    // DONNÉE ABSENTE ⇒ CONDITION NON SATISFAITE, jamais satisfaite par défaut
+    // (`DC-24`). Le message pointe la cause réelle plutôt que de répéter
+    // « aucune assignation », qui se lirait comme un reproche au praticien.
+    return {
+      ...base,
+      satisfaite: false,
+      detail: 'Le second rideau se compte depuis la validation de la synthèse : elle n’a pas encore eu lieu.',
+    };
+  }
+
+  const secondRideau = secondRideauDuDossier(entrees);
+
+  if (secondRideau.length === 0) {
+    return {
+      ...base,
+      satisfaite: false,
+      detail: 'Aucun questionnaire assigné depuis la validation de la synthèse : le second rideau reste à composer.',
+    };
+  }
+
+  // « RENDU » SE LIT SUR L'ASSIGNATION, PAS SUR LA COTABILITÉ, et ce n'est pas
+  // un relâchement : `Q_ALI_03` ne rend aucun total par construction, les
+  // agendas et `Q_ALI_09` ne sont pas scorés. Un second rideau qui en contient
+  // un serait, sous le prédicat du premier rideau, insatisfiable par nature.
+  const enAttente = secondRideau.filter(a => a.statut !== STATUT_ASSIGNATION_RENDUE);
+  if (enAttente.length > 0) {
+    const titres = [...new Set(enAttente.map(a => a.titre))].join(', ');
+    return {
+      ...base,
+      satisfaite: false,
+      detail: `Second rideau incomplet — en attente : ${titres}.`,
+    };
+  }
+
   return { ...base, satisfaite: true, detail: null };
 }
 
@@ -349,11 +498,22 @@ function evaluerContradictions(entrees: EntreesPreconditionsT0): ConditionPrecon
  * un verdict sur une donnée absente : une donnée qui manque rend la condition
  * NON SATISFAITE avec son motif, jamais satisfaite par défaut (`DC-24`).
  */
-export function evaluerPreconditionsT0(entrees: EntreesPreconditionsT0): PreconditionsT0 {
+export function evaluerPreconditionsT0(
+  entrees: EntreesPreconditionsT0,
+  /**
+   * Le jalon dont on évalue la confirmation. Il n'était pas nécessaire tant que
+   * toutes les conditions valaient pour toute ancre ; le second rideau, lui, ne
+   * vaut que pour l'ENTRÉE dans le dossier ([[D-158]] §6) — il n'a pas de
+   * défaut, parce qu'un défaut choisirait en silence entre « entrer » et
+   * « rouvrir ».
+   */
+  jalon: string,
+): PreconditionsT0 {
   const dures = [
     evaluerRideau(entrees.passations),
     evaluerAnamnese(entrees),
     evaluerSynthese(entrees),
+    ...(estAncreInitiale(jalon) ? [evaluerSecondRideau(entrees)] : []),
   ];
   const souples = [
     evaluerAmbigues(entrees.passations),

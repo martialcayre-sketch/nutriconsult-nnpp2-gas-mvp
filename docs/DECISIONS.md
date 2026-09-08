@@ -4,6 +4,141 @@
 
 ## Décisions actives
 
+### D-158 — Un `T0` ne se confirme qu'après le second rideau, ET sur une synthèse qui l'a lu
+
+- Date : 2026-09-08, **amendée le 2026-09-09** (§3 bis — le cinquième temps)
+- Statut : accepté — **arbitrage du responsable rendu en session**, en deux temps
+- Numéro : `D-157` avait été choisi à l'écriture ; il a été pris à la fusion par
+  la plage sourcée du LOT-04 biologie. Septième collision de la campagne — un
+  numéro ne se réserve pas, il s'acquiert au merge.
+- Domaine : clinique, préconditions de confirmation T0, second rideau
+- Amende : [[D-052]], en **ajoutant** une quatrième condition dure. Les trois
+  existantes — rideau d'entrée, anamnèse, fraîcheur de la synthèse — sont
+  inchangées, et la table `RIDEAU_T0` n'est pas touchée.
+- Suit : [[D-156]], qui a fait tomber la borne haute de l'ancre initiale pour
+  que le `T0` retardé embarque ce qu'il attend.
+
+**1. LA DEMANDE, DANS LES TERMES DU RESPONSABLE.** « Aujourd'hui les conditions
+requises pour valider `T0` sont fiche signalétique et anamnèse complétées,
+premier rideau rempli, synthèse validée. Je souhaite pousser plus loin l'analyse
+et valider `T0` seulement après le deuxième rideau de questionnaires, assignés
+justement après la première synthèse. À ce moment seulement je suis capable de
+déclencher `T0` et de faire une proposition de protocole de prise en charge. »
+
+**2. LE SECOND RIDEAU EST CE QUI A ÉTÉ ASSIGNÉ, PAS UNE LISTE SIGNÉE.** [[D-052]]
+§1 a posé le premier rideau comme une table clinique en dur, précisément pour
+qu'un geste administratif ne déplace pas une règle clinique (`DC-26`). Le second
+rideau ne peut pas être cette chose-là : la production le montre composé **par
+dossier** — les deux seuls existants au 2026-09-08 comptent 5 et 8 instruments
+et n'en partagent que 3. Figer une liste reviendrait à décider à l'avance ce que
+l'analyse d'un dossier singulier doit explorer, ce qui est l'inverse de ce que le
+responsable demande.
+
+Le second rideau est donc l'ensemble des **assignations postérieures à la
+validation de la PREMIÈRE synthèse**, hors `Annulée`. Ce n'est pas dériver la
+règle d'un objet éditable : l'assignation N'EST PAS la règle, elle est le geste
+clinique lui-même. Le praticien lit la synthèse, décide ce qu'il veut explorer,
+l'assigne — et le `T0` attend cette exploration.
+
+**3. LA PREMIÈRE SYNTHÈSE VALIDÉE, ET NON LA DERNIÈRE.** La borne est la plus
+ANCIENNE `dateValidation` du dossier, quand la fraîcheur de [[D-052]] §4
+continue de se juger sur la plus RÉCENTE. Deux bornes, deux rôles, et le piège
+qu'écarte celle-ci est mécanique : valider une seconde synthèse après le second
+rideau déplacerait une borne « la plus récente » au-delà des assignations
+qu'elle est censée compter — plus aucune assignation ne serait « postérieure », et
+le dossier qui a fait exactement ce qu'on lui demandait deviendrait
+définitivement inconfirmable. Une borne d'entrée ne se déplace pas.
+
+**3 bis. LA SYNTHÈSE QUI PORTE LE `T0` EST CELLE QUI A LU LE SECOND RIDEAU.**
+Arbitrage complémentaire du responsable, 2026-09-09 : « `T0` doit se valider sur
+une synthèse produite APRÈS le deuxième rideau ». La condition du §2 exige que le
+second rideau soit **rendu** ; la fraîcheur de [[D-052]] §4 est étendue pour
+exiger qu'il ait été **lu**. Sans cela, un `T0` se confirmait sur la synthèse qui
+avait MOTIVÉ le second rideau — donc sur une analyse antérieure aux réponses
+qu'elle venait de demander — et la proposition de protocole se serait construite
+sans elles. La chaîne compte désormais cinq temps : premier rideau → synthèse #1
+→ second rideau assigné → second rideau rendu → **synthèse #2** → `T0`.
+
+Concrètement, la fraîcheur ne se juge plus sur les seuls instruments de
+`RIDEAU_T0` mais sur l'union de ceux-ci et des instruments du second rideau. Et
+LE PIÈGE DU §3 N'EST PAS ROUVERT, parce que les deux bornes restent distinctes :
+le second rideau se compte depuis la PREMIÈRE synthèse validée, la fraîcheur se
+juge sur la DERNIÈRE. Si les deux lisaient la même, valider la synthèse #2
+sortirait le second rideau de son propre compte.
+
+Le message de refus est DOUBLE, parce que le geste attendu diffère : sans second
+rideau, la synthèse est en retard sur le premier ; avec, il en faut une NEUVE —
+et le dire évite d'aller re-valider l'ancienne, qui ne rafraîchirait rien
+(`Corrigee_Praticien` ne touche pas `dateValidation`).
+
+**4. « RENDU » SE LIT SUR L'ASSIGNATION, PAS SUR LA COTABILITÉ.** Le premier
+rideau exige une passation **cotable** (`scored`, `total`) : il alimente le
+raisonnement. Le second exige `statut === 'Complété'`. Ce n'est pas un
+relâchement, c'est la seule règle qui puisse s'appliquer : `Q_ALI_03` ne rend
+aucun total par construction, les agendas et `Q_ALI_09` ne sont pas scorés — un
+second rideau qui en contient un serait, sous le prédicat du premier,
+**structurellement insatisfiable**. Le vocabulaire employé est celui que la base
+tient déjà (`STATUTS_ASSIGNATION_TERMINAL`, index partiel
+`assignations_unicite_ouverte`), pas un second.
+
+**5. LA CONDITION S'ARRÊTE À LA CONFIRMATION DE L'ANCRE, ET C'EST LA LEÇON DE
+[[D-129]].** `refusPreconditionsPersistance` est rejouée à CHAQUE écriture de
+protocole, y compris sur un `T0` déjà confirmé. Sans borne haute, la première
+assignation de suivi posée après le `T0` — un questionnaire J21, une relance —
+aurait rendu la condition fausse et **refusé en 422 l'enregistrement d'un
+protocole sur un dossier vivant**. Le second rideau se compte donc entre la
+première synthèse validée et la confirmation de l'ancre ; passé l'acte, il ne se
+re-juge plus. C'est exactement ce que `D-129` a dû rouvrir pour les
+contournements, et le dépôt le dit à l'endroit même de cette garde : « sans lui
+[…] le dossier deviendrait inenregistrable ».
+
+**6. `T0` SEUL.** `estAncreInitiale` — `estAncreDeCycle` **et**
+`indexDeCycle === 0` — rejoint `protocol/cycles.ts`, où vivent déjà ses deux
+termes, parce qu'un second consommateur apparaît. [[D-113]] a étendu le rideau
+d'entrée à toute ancre au motif qu'ouvrir un cycle est le même acte ; **rouvrir
+un suivi n'est pas y entrer**. La borne du second rideau est la première
+synthèse du dossier : appliquée à un `T1` posé des mois plus tard, elle
+compterait comme « second rideau » tout ce qui a été assigné entre-temps, jalons
+de suivi compris. La condition ne vaut donc que pour l'ancre initiale.
+
+**7. CE QUE CETTE RÈGLE COÛTE, MESURÉ AVANT D'ÊTRE ÉCRITE.** Lecture de
+production du 2026-09-08 : 14 dossiers portent une synthèse validée, 4 ont déjà
+leur `T0`. Des 10 restants, **2 seulement** ont un second rideau assigné, et
+aucun ne l'a rendu (5 et 8 instruments, tous `non_rempli`). **Neuf dossiers
+réels deviennent donc non confirmables** tant que le praticien n'a pas assigné,
+le patient rendu, et le praticien produit la synthèse qui lit ce retour. Ce n'est pas un effet de bord : c'est la demande, et elle
+est assumée telle quelle. [[D-052]] avait mesuré la même chose avant de fermer sa
+porte ; une porte qui ferme tout serait une régression, celle-ci ferme ce que le
+responsable veut voir fermé.
+
+**8. LE RIDEAU SE ROUVRE SI ON Y AJOUTE.** Une assignation posée après coup et
+non rendue re-bloque un `T0` devenu confirmable la veille. C'est cohérent — le
+`T0` attend ce qui a été demandé — et réversible par le seul geste qui dit « je
+ne l'attends plus » : `Annulée`. Aucun statut nouveau n'est inventé pour cela.
+
+**9. `Q_SOM_09` N'EST PAS RÉARBITRÉ.** L'agenda du sommeil reste hors du PREMIER
+rideau, au motif inchangé de [[D-052]] §1. Mais l'argument qui l'excluait — « 21
+nuits ne peuvent pas conditionner une décision prise à J0 » — cesse de valoir
+pour le second rideau, qui se place après la première synthèse. Le praticien peut
+donc l'y mettre, dossier par dossier, et le `T0` l'attendra. Aucune liste ne le
+décide à sa place.
+
+**10. CE QUE CE LOT NE FAIT PAS.** Aucune migration : la preuve est
+l'horodatage, et le registre le dit — un second rideau n'est pas **tracé** comme
+tel en base, il est **constaté**. Aucune auto-assignation à la validation de la
+synthèse ([[D-045]] : le moteur propose, il n'assigne pas). Rien n'est barré
+avant `T0` qui ne l'était déjà : la proposition de biologie et la décision
+compléments restent lisibles, seules les persistances de protocole passent la
+porte, comme avant.
+
+**11. RÉSERVE NOMMÉE.** La règle repose sur une comparaison d'horodatages, donc
+elle n'est pas **auditable** : rien en base ne prouvera a posteriori que le
+praticien composait un second rideau plutôt qu'il ne rattrapait un oubli. Marquer
+la vague demanderait une colonne, donc une migration, donc le chemin [[D-087]] —
+et quatre chemins d'écriture d'assignation à instrumenter sans en oublier un. Le
+constat par date est le choix le moins coûteux qui rende le service demandé ; le
+marquage reste ouvert le jour où l'audit de la vague deviendra nécessaire.
+
 ### D-157 — Juxtaposer une plage sourcée à une mesure est documentaire ; la comparer serait interpréter
 
 - Date : 2026-09-08

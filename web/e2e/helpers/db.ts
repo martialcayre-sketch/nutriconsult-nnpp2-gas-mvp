@@ -26,6 +26,7 @@ import {
   PLAINTES_DIGESTIF_ET_PONDERAL,
   SYNTHESE_VALIDEE_FIXTURE,
   CONSULTATION_VALIDEE_FIXTURE,
+  SECOND_RIDEAU_RENDU_FIXTURE,
   DATE_RIDEAU_FIXTURE,
 } from '../../src/lib/clinical-engine/dossierT0Fixture';
 
@@ -709,6 +710,7 @@ const ID_REPONSE_BIO_E2E_PREFIX = 'E2E_BIO_';
 /** Consultation et synthèse de la fixture — marquées, comme le reste. */
 const ID_CONSULTATION_BIO_E2E = 'E2E_BIO_CONSULT';
 const ID_SYNTHESE_BIO_E2E = 'E2E_BIO_SYNTHESE';
+const ID_SECOND_RIDEAU_BIO_E2E = 'E2E_BIO_RIDEAU2';
 /** Destinataire de la lettre établie par le parcours — sa seule marque. */
 export const MEDECIN_BIO_E2E = 'Dr Dogné (banc E2E biologie)';
 /** Date du bilan déclaré par le parcours — la marque du panel documenté. */
@@ -783,6 +785,35 @@ export async function provisionnerDossierBiologie(idPatient: string): Promise<vo
       syntheseJson: { source: 'fixture E2E biologie — aucun contenu clinique' },
       statut: SYNTHESE_VALIDEE_FIXTURE.statut,
       dateValidation: SYNTHESE_VALIDEE_FIXTURE.dateValidation,
+    },
+  });
+
+  // ── Condition dure 4 : un second rideau assigné APRÈS la synthèse, et rendu
+  // ([[D-158]]). La date vient de la fixture partagée, postérieure d'un jour à
+  // la validation ci-dessus : la condition et la fixture bougent ensemble.
+  // `statut: 'Complété'` est ce que lit la condition — pas la cotabilité, que
+  // le second rideau n'exige pas.
+  //
+  // NON-COUVERTURE NOMMÉE, et elle a un motif. Cette assignation est `Complété`
+  // SANS passation correspondante, ce que la production ne produit pas — un
+  // `submit` écrit toujours les deux. Lui en donner une ferait entrer une
+  // réponse de plus dans l'épisode T0 (qui embarque tout l'état d'entrée depuis
+  // [[D-156]]), donc dans la carte de décision, donc dans les propositions que
+  // les trois specs biologie asservissent à `PLAINTES_DIGESTIF_ET_PONDERAL` :
+  // ce provisionnement changerait ce qu'ils mesurent. La fraîcheur de la
+  // synthèse VIS-À-VIS du second rideau ([[D-158]] §3 bis) est donc éprouvée
+  // par `preconditionsT0.test.ts` — où la chaîne des cinq temps se décrit sans
+  // mock —, pas ici. Ici, seule la condition d'ASSIGNATION est franchie.
+  await prisma.assignation.create({
+    data: {
+      idAssignation: `${ID_SECOND_RIDEAU_BIO_E2E}_${idPatient}`,
+      idPatient,
+      emailPatient: patient.email,
+      idQuestionnaire: SECOND_RIDEAU_RENDU_FIXTURE[0].idQuestionnaire,
+      titre: SECOND_RIDEAU_RENDU_FIXTURE[0].titre,
+      dateAssignation: SECOND_RIDEAU_RENDU_FIXTURE[0].dateAssignation,
+      statut: SECOND_RIDEAU_RENDU_FIXTURE[0].statut,
+      statutReponses: 'verrouille',
     },
   });
 }
@@ -891,6 +922,9 @@ export async function nettoyerDossierBiologie(idPatient: string): Promise<void> 
   });
   await prisma.panelBiologieDocumente.deleteMany({
     where: { idPatient, documenteLe: DATE_BILAN_BIO_E2E },
+  });
+  await prisma.assignation.deleteMany({
+    where: { idPatient, idAssignation: `${ID_SECOND_RIDEAU_BIO_E2E}_${idPatient}` },
   });
   await prisma.syntheseIA.deleteMany({
     where: { idPatient, idSynthese: `${ID_SYNTHESE_BIO_E2E}_${idPatient}` },

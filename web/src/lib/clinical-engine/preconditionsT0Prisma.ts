@@ -32,7 +32,10 @@ import {
  * refuseraient un T0 à un endroit et l'accepteraient à un autre.
  */
 export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<EntreesPreconditionsT0> {
-  const [passations, consultation, synthese, contradictions] = await Promise.all([
+  const [
+    passations, consultation, synthese, contradictions,
+    premiereSynthese, assignations, ancreInitiale,
+  ] = await Promise.all([
     prisma.questionnaireReponse.findMany({
       where: { idPatient },
       select: {
@@ -65,6 +68,30 @@ export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<
       orderBy: [{ dateValidation: 'desc' }, { createdAt: 'desc' }],
     }),
     contradictionsPourPatient(idPatient),
+    // LA PREMIÈRE validation, quand celle du dessus est LA DERNIÈRE ([[D-158]]
+    // §3). Le tri est ASCENDANT et c'est tout l'écart : la fraîcheur se juge
+    // sur la synthèse la plus récente, la borne du second rideau sur celle qui
+    // l'a motivé. Une borne d'entrée ne se déplace pas — sans quoi valider une
+    // seconde synthèse rendrait le dossier définitivement inconfirmable.
+    prisma.syntheseIA.findFirst({
+      where: { idPatient, statut: { in: [...STATUTS_SYNTHESE_VALIDEE] }, dateValidation: { not: null } },
+      select: { dateValidation: true },
+      orderBy: [{ dateValidation: 'asc' }],
+    }),
+    // TOUTES les assignations, non filtrées : le module pur choisit lesquelles
+    // composent le second rideau. Filtrer ici mettrait la règle clinique dans
+    // le chargeur, où aucun banc de domaine ne la lirait.
+    prisma.assignation.findMany({
+      where: { idPatient },
+      select: { idQuestionnaire: true, titre: true, dateAssignation: true, statut: true },
+    }),
+    // L'ancre initiale DÉJÀ posée, s'il y en a une — la borne haute du second
+    // rideau. `T0` en dur ici, et c'est exact : `estAncreInitiale` ne reconnaît
+    // que ce nom, et les ancres de réouverture n'ont pas de second rideau.
+    prisma.assessmentEpisode.findFirst({
+      where: { idPatient, milestone: 'T0' },
+      select: { confirmedAt: true },
+    }),
   ]);
 
   return {
@@ -77,6 +104,9 @@ export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<
     anamnese: consultation?.anamnese ?? null,
     consultationValidee: consultation !== null,
     synthese: synthese ? { statut: synthese.statut, dateValidation: synthese.dateValidation } : null,
+    premiereValidationSynthese: premiereSynthese?.dateValidation ?? null,
+    assignations,
+    confirmationAncreInitiale: ancreInitiale?.confirmedAt ?? null,
     // RECOPIE, JAMAIS COMPOSITION (`D-119`) : la description est celle du
     // service, telle quelle ; la passation est son instrument et sa date
     // lisible, joints par un tiret de mise en page. Rien n'est reformulé —
@@ -90,9 +120,18 @@ export async function chargerEntreesPreconditionsT0(idPatient: string): Promise<
   };
 }
 
-/** Raccourci des trois routes : lire, puis évaluer. */
-export async function preconditionsT0PourPatient(idPatient: string): Promise<PreconditionsT0> {
-  return evaluerPreconditionsT0(await chargerEntreesPreconditionsT0(idPatient));
+/**
+ * Raccourci des trois routes : lire, puis évaluer.
+ *
+ * `jalon` est REQUIS et sans défaut ([[D-158]] §6) : le second rideau ne vaut
+ * que pour l'entrée dans le dossier, et un défaut choisirait en silence entre
+ * « entrer » et « rouvrir ».
+ */
+export async function preconditionsT0PourPatient(
+  idPatient: string,
+  jalon: string,
+): Promise<PreconditionsT0> {
+  return evaluerPreconditionsT0(await chargerEntreesPreconditionsT0(idPatient), jalon);
 }
 
 /**
@@ -195,7 +234,7 @@ export async function refusPreconditionsPersistance(
 
   if (!estAncreDeCycle(jalonEffectif(episode))) return null;
 
-  const preconditions = await preconditionsT0PourPatient(episode.patientId);
+  const preconditions = await preconditionsT0PourPatient(episode.patientId, jalonEffectif(episode));
   if (preconditions.bloquant) return messageRefusPreconditions(preconditions);
 
   const requis = new Set(preconditions.contournementsRequis);

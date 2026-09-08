@@ -100,8 +100,9 @@ test.describe('Mode consultation (fiche patient)', () => {
       await expect(page.getByText('Premier rideau renseigné et cotable')).toBeVisible();
       await expect(page.getByText(/Premier rideau incomplet/)).toBeVisible();
       await expect(confirm).toBeDisabled();
-      // Ce qui n'est pas requis est nommé, plutôt que passé sous silence.
-      await expect(page.getByText(/ne sont pas requis/)).toBeVisible();
+      // Ce qui n'est pas requis AU PREMIER RIDEAU est nommé, plutôt que passé
+      // sous silence — et la phrase distingue les deux rideaux (D-158).
+      await expect(page.getByText(/pas requis au premier rideau/)).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     }
   });

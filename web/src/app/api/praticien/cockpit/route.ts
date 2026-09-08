@@ -495,7 +495,7 @@ export async function GET(req: Request): Promise<NextResponse<CockpitRuntimeApiR
     // interdit précisément. Le seuil ne bouge pas ; c'est la clé qui s'ouvre.
     const preconditions = inputs.asOf || !estAncreDeCycle(milestoneRaw)
       ? undefined
-      : await preconditionsT0PourPatient(idPatient);
+      : await preconditionsT0PourPatient(idPatient, milestoneRaw);
     return NextResponse.json({
       status: 'proposal_required',
       proposal,
@@ -610,7 +610,7 @@ export async function POST(req: Request): Promise<NextResponse<CockpitRuntimeApi
           422,
         );
       }
-      const preconditions = await preconditionsT0PourPatient(idPatient);
+      const preconditions = await preconditionsT0PourPatient(idPatient, payload.milestone);
       if (preconditions.bloquant) {
         return unavailable('preconditions_non_remplies', messageRefusPreconditions(preconditions), 422);
       }

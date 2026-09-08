@@ -9,7 +9,10 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
     questionnaireReponse: { findMany: vi.fn() },
     consultation: { findFirst: vi.fn() },
     syntheseIA: { findFirst: vi.fn() },
-    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
+    // Second rideau ([[D-158]]) : assignations du dossier, et ancre déjà
+    // posée s'il y en a une (la borne haute de ce rideau).
+    assignation: { findMany: vi.fn() },
+    assessmentEpisode: { upsert: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), findFirst: vi.fn() },
     protocolDraft: { upsert: vi.fn(), findMany: vi.fn() },
     // Sélection praticien d'une priorité (`D-127`) : relue par le recalcul
     // serveur, qui ne réinjecte plus la valeur soumise.
@@ -24,7 +27,7 @@ vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/prisma', () => ({ prisma }));
 
 import { VERSION_SCORE_EQUILIBRE } from '@/lib/equilibre/constants';
-import { SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
+import { SECOND_RIDEAU_RENDU_FIXTURE, SYNTHESE_VALIDEE_FIXTURE } from '@/lib/clinical-engine/dossierT0Fixture';
 import {
   ANAMNESE_C1_FIXTURE,
   ANAMNESE_C1_FIXTURE_AVEC_SIGNAL,
@@ -130,6 +133,7 @@ describe('POST /api/praticien/protocoles', () => {
     prisma.questionnaireReponse.findMany.mockResolvedValue(passationsC1Fixture());
     prisma.consultation.findFirst.mockResolvedValue(ANAMNESE_C1_FIXTURE);
     prisma.syntheseIA.findFirst.mockResolvedValue(SYNTHESE_VALIDEE_FIXTURE);
+    prisma.assignation.findMany.mockResolvedValue(SECOND_RIDEAU_RENDU_FIXTURE);
     signerTablePriorites();
     // Défaut honnête : aucune ligne d'épisode en base. `vi.clearAllMocks()` vide
     // les appels mais GARDE les implémentations — sans ce reset, un banc qui
