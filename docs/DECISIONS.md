@@ -4,6 +4,50 @@
 
 ## Décisions actives
 
+### D-153 — Le niveau d'alerte documente ; il ne décide pas, et une sentinelle le tient
+
+- Date : 2026-09-08
+- Statut : accepté (arbitrage praticien explicite en session, question posée par [[D-143]] §2 : « documenter — il s'affiche, ne commande rien »)
+- Domaine : sécurité des compléments, sentinelle C4B
+
+**§1 — La question que ce lot referme.** [[D-143]] a retiré la couleur inventée
+(`'orange'` écrite en dur) et a laissé ouverte la seule question qui comptait :
+non pas « quels paliers », mais **à quoi le niveau doit servir**. Trois issues
+étaient posées — documenter, trier, ou moduler un refus de sécurité. La
+troisième aurait été un assouplissement de garde (`DC-12`, `DC-23`). L'arbitrage
+retient la **première**.
+
+**§2 — Ce que « documenter » veut dire, exactement.** Le niveau est ce que le
+praticien a saisi à l'atelier, recopié tel quel depuis l'alerte jointe, et
+**null quand aucune alerte ne le porte**. Il s'affiche, il se lit, il ne
+commande rien. Conséquence directe et libératrice : **aucune échelle n'est à
+fonder**. Une échelle ne doit être gouvernée que si quelque chose s'y appuie ;
+un commentaire libre n'a pas besoin de paliers, et `niveau_alerte` reste
+légitimement un `TEXT` sans `CHECK`.
+
+C'est aussi ce qui distingue cet arbitrage d'un report : il ne remet pas la
+question à plus tard, il constate que le champ **n'a pas besoin** de la réponse
+qu'on croyait lui devoir.
+
+**§3 — La ligne exacte, parce que c'est elle qui se garde.** Ce qui alerte reste
+le **fait** — un cumul constaté, un seuil dépassé —, jamais l'étiquette posée
+dessus. Les deux portes de sécurité continuent de basculer sur la **présence**
+de l'alerte. Un code qui comparerait le niveau à une valeur ferait de cette
+étiquette une décision, et ce serait le glissement que `D-143` a arrêté :
+d'abord une couleur par défaut, ensuite une couleur qui autorise.
+
+**§4 — La sentinelle, et pourquoi elle vise la comparaison et non la
+mention.** `echelleAlerte.guard.test.ts` gagne un terme : aucune source servie
+ne peut **comparer** `niveauAlerte` à quoi que ce soit — `===`, `!==`, `switch`,
+ou un ordre (`<`, `>`). Elle ne vise PAS la truthiness (`niveauAlerte && …`) ni
+l'affichage : montrer le niveau est précisément ce que l'arbitrage autorise, et
+une sentinelle qui l'interdirait punirait la bonne conduite — elle finirait
+désactivée, comme le rappelle [[D-147]] §4.
+
+**§5 — Portée sur l'existant : nulle.** `protocol_review_flags` n'est écrite par
+aucun chemin et aucun écran ne lit ce niveau. Étiquette [[D-125]] : **démontré
+dans le code, sans occurrence observée**. Ce lot ne change aucun comportement ;
+il fixe ce que le champ a le droit de devenir.
 ### D-152 — Une mesure d'agenda vaut pour la période observée, pas pour le geste qui la clôt
 
 - Date : 2026-09-08
