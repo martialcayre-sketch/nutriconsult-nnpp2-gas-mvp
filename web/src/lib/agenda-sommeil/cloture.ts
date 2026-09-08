@@ -6,6 +6,7 @@ import { createPublicId } from '@/lib/ids';
 import { calculerAgregats, compterNuitsPlausibles } from './agregats';
 import { resolveNuitsActives } from './nuit';
 import { listNuits } from './persistence';
+import { dateMesureAgenda } from '@/lib/agenda/dateMesureAgenda';
 import { AGENDA_SOMMEIL_ID } from './types';
 
 // Clôture d'un agenda du sommeil (Q_SOM_09) — chemin UNIQUE de production des
@@ -79,6 +80,10 @@ export async function cloturerAgenda(input: { idAssignation: string }): Promise<
 
   const idReponse = createPublicId('REP');
   const now = new Date();
+  // La passation vaut pour la PÉRIODE OBSERVÉE, pas pour le geste de clôture
+  // ([[D-152]], arbitrage du responsable du 2026-09-08). `now` reste l'instant
+  // du geste : il date le verrouillage de l'assignation, pas la mesure.
+  const dateMesure = dateMesureAgenda(nuitsActives.map(x => x.dateNuit), now);
 
   // Création de la réponse + verrouillage de l'assignation dans une seule
   // transaction, avec re-vérification du verrou : deux clôtures concurrentes ne
@@ -112,7 +117,7 @@ export async function cloturerAgenda(input: { idAssignation: string }): Promise<
         idAssignation: ass.idAssignation,
         idQuestionnaire: AGENDA_SOMMEIL_ID,
         titre: ass.titre || AGENDA_SOMMEIL_ID,
-        dateReponse: now,
+        dateReponse: dateMesure,
         scoresJson: scoresWithAnswers,
         scorePrincipal,
         interpretation: interpretation || null,
