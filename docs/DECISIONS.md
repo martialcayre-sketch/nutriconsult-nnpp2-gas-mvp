@@ -4,7 +4,7 @@
 
 ## Décisions actives
 
-### D-157 — Un `T0` ne se confirme qu'après le second rideau : ce que le praticien a demandé au vu de la première synthèse, et que le patient a rendu
+### D-157 — Un `T0` ne se confirme qu'après le second rideau, ET sur une synthèse qui l'a lu
 
 - Date : 2026-09-08
 - Statut : accepté — **arbitrage du responsable rendu en session le 2026-09-08**
@@ -46,6 +46,28 @@ qu'elle est censée compter — plus aucune assignation ne serait « postérieur
 le dossier qui a fait exactement ce qu'on lui demandait deviendrait
 définitivement inconfirmable. Une borne d'entrée ne se déplace pas.
 
+**3 bis. LA SYNTHÈSE QUI PORTE LE `T0` EST CELLE QUI A LU LE SECOND RIDEAU.**
+Arbitrage complémentaire du responsable, 2026-09-09 : « `T0` doit se valider sur
+une synthèse produite APRÈS le deuxième rideau ». La condition du §2 exige que le
+second rideau soit **rendu** ; la fraîcheur de [[D-052]] §4 est étendue pour
+exiger qu'il ait été **lu**. Sans cela, un `T0` se confirmait sur la synthèse qui
+avait MOTIVÉ le second rideau — donc sur une analyse antérieure aux réponses
+qu'elle venait de demander — et la proposition de protocole se serait construite
+sans elles. La chaîne compte désormais cinq temps : premier rideau → synthèse #1
+→ second rideau assigné → second rideau rendu → **synthèse #2** → `T0`.
+
+Concrètement, la fraîcheur ne se juge plus sur les seuls instruments de
+`RIDEAU_T0` mais sur l'union de ceux-ci et des instruments du second rideau. Et
+LE PIÈGE DU §3 N'EST PAS ROUVERT, parce que les deux bornes restent distinctes :
+le second rideau se compte depuis la PREMIÈRE synthèse validée, la fraîcheur se
+juge sur la DERNIÈRE. Si les deux lisaient la même, valider la synthèse #2
+sortirait le second rideau de son propre compte.
+
+Le message de refus est DOUBLE, parce que le geste attendu diffère : sans second
+rideau, la synthèse est en retard sur le premier ; avec, il en faut une NEUVE —
+et le dire évite d'aller re-valider l'ancienne, qui ne rafraîchirait rien
+(`Corrigee_Praticien` ne touche pas `dateValidation`).
+
 **4. « RENDU » SE LIT SUR L'ASSIGNATION, PAS SUR LA COTABILITÉ.** Le premier
 rideau exige une passation **cotable** (`scored`, `total`) : il alimente le
 raisonnement. Le second exige `statut === 'Complété'`. Ce n'est pas un
@@ -81,7 +103,7 @@ production du 2026-09-08 : 14 dossiers portent une synthèse validée, 4 ont dé
 leur `T0`. Des 10 restants, **2 seulement** ont un second rideau assigné, et
 aucun ne l'a rendu (5 et 8 instruments, tous `non_rempli`). **Neuf dossiers
 réels deviennent donc non confirmables** tant que le praticien n'a pas assigné,
-et le patient rendu. Ce n'est pas un effet de bord : c'est la demande, et elle
+le patient rendu, et le praticien produit la synthèse qui lit ce retour. Ce n'est pas un effet de bord : c'est la demande, et elle
 est assumée telle quelle. [[D-052]] avait mesuré la même chose avant de fermer sa
 porte ; une porte qui ferme tout serait une régression, celle-ci ferme ce que le
 responsable veut voir fermé.

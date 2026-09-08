@@ -233,12 +233,19 @@ describe('préconditions de confirmation T0 (D-052)', () => {
     expect(dure(resultat, 'synthese_validee').satisfaite).toBe(false);
   });
 
-  it('une synthèse antérieure à la dernière passation du rideau est périmée', () => {
+  it('une synthèse antérieure à la dernière passation du PREMIER rideau est périmée', () => {
+    // Aucun second rideau ici — c'est le cas d'origine de [[D-052]] §4, et son
+    // message reste le sien : la synthèse est simplement en retard. Le cas
+    // symétrique (second rideau non lu, qui appelle une synthèse NEUVE) vit
+    // dans le bloc `second rideau`, avec son propre message.
     const resultat = evaluerPreconditionsT0(entrees({
       synthese: { statut: 'Validee_Praticien', dateValidation: new Date('2026-07-01T09:00:00.000Z') },
+      premiereValidationSynthese: null,
+      assignations: [],
     }), 'T0');
     expect(dure(resultat, 'synthese_validee').satisfaite).toBe(false);
     expect(dure(resultat, 'synthese_validee').detail).toContain('antérieure');
+    expect(dure(resultat, 'synthese_validee').detail).toContain('premier rideau');
   });
 
   it('une passation HORS rideau plus récente ne périme pas la synthèse', () => {
@@ -432,5 +439,72 @@ describe('second rideau (D-157)', () => {
       assignations: [assignation({ idQuestionnaire: 'Q_ALI_09', titre: 'Journal alimentaire' })],
     }), 'T0');
     expect(dure(resultat, 'second_rideau').satisfaite).toBe(true);
+  });
+  // ── LE CINQUIÈME TEMPS ([[D-157]] §3 bis, arbitrage du 2026-09-09) ────────
+  // « T0 doit se valider sur une synthèse produite APRÈS le deuxième rideau. »
+  // La condition sœur exige que le second rideau soit RENDU ; celle-ci exige
+  // qu'il ait été LU.
+  it('une synthèse antérieure aux passations du second rideau ne porte pas le T0', () => {
+    const passationSecondRideau = new Date('2026-08-14T09:00:00.000Z');
+    const resultat = evaluerPreconditionsT0(entrees({
+      // La seule synthèse validée est celle qui a MOTIVÉ le second rideau.
+      synthese: { statut: 'Validee_Praticien', dateValidation: LE_2026_08_05 },
+      premiereValidationSynthese: LE_2026_08_05,
+      assignations: [assignation()],
+      passations: [
+        ...rideauComplet(),
+        passation('Q_NEU_11', { dateReponse: passationSecondRideau }),
+      ],
+    }), 'T0');
+    expect(resultat.bloquant).toBe(true);
+    expect(dure(resultat, 'synthese_validee').detail).toContain('il en faut une nouvelle');
+    // Le second rideau, lui, est bien rendu : ce n'est PAS lui qui bloque.
+    expect(dure(resultat, 'second_rideau').satisfaite).toBe(true);
+  });
+
+  it('une synthèse produite APRÈS le second rideau porte le T0', () => {
+    const passationSecondRideau = new Date('2026-08-14T09:00:00.000Z');
+    const secondeSynthese = new Date('2026-08-16T09:00:00.000Z');
+    const resultat = evaluerPreconditionsT0(entrees({
+      synthese: { statut: 'Validee_Praticien', dateValidation: secondeSynthese },
+      premiereValidationSynthese: LE_2026_08_05,
+      assignations: [assignation()],
+      passations: [
+        ...rideauComplet(),
+        passation('Q_NEU_11', { dateReponse: passationSecondRideau }),
+      ],
+    }), 'T0');
+    expect(resultat.bloquant).toBe(false);
+  });
+
+  // La chaîne complète, dans l'ordre où le praticien la vit — et le banc qui
+  // dirait « c'est vert » si l'un des cinq temps sautait.
+  it('les cinq temps s’enchaînent, et chacun bloque à son tour', () => {
+    const p1 = new Date('2026-08-14T09:00:00.000Z');
+    const avecPassation = [...rideauComplet(), passation('Q_NEU_11', { dateReponse: p1 })];
+
+    // 1-2. Premier rideau + synthèse #1 : le second rideau manque.
+    const t2 = evaluerPreconditionsT0(entrees({ assignations: [] }), 'T0');
+    expect(dure(t2, 'second_rideau').satisfaite).toBe(false);
+
+    // 3. Assigné, pas rendu.
+    const t3 = evaluerPreconditionsT0(entrees({
+      assignations: [assignation({ statut: 'En attente' })],
+    }), 'T0');
+    expect(dure(t3, 'second_rideau').satisfaite).toBe(false);
+
+    // 4. Rendu, mais aucune synthèse ne l'a lu.
+    const t4 = evaluerPreconditionsT0(entrees({
+      assignations: [assignation()], passations: avecPassation,
+    }), 'T0');
+    expect(dure(t4, 'second_rideau').satisfaite).toBe(true);
+    expect(dure(t4, 'synthese_validee').satisfaite).toBe(false);
+
+    // 5. Synthèse #2 validée après : le T0 s'ouvre.
+    const t5 = evaluerPreconditionsT0(entrees({
+      assignations: [assignation()], passations: avecPassation,
+      synthese: { statut: 'Validee_Praticien', dateValidation: new Date('2026-08-16T09:00:00.000Z') },
+    }), 'T0');
+    expect(t5.bloquant).toBe(false);
   });
 });

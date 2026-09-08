@@ -293,9 +293,22 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
 }
 
 /**
- * Fraîcheur de la synthèse : postérieure à la dernière passation DU RIDEAU, et
- * non du dossier ([[D-052]]) — une passation hors rideau, plus récente, ne
- * périme pas une synthèse qui n'avait pas à en tenir compte.
+ * Fraîcheur de la synthèse : postérieure à la dernière passation DES RIDEAUX, et
+ * non du dossier ([[D-052]] §4, étendu par [[D-157]] §3 bis) — une passation hors
+ * rideau, plus récente, ne périme pas une synthèse qui n'avait pas à en tenir
+ * compte.
+ *
+ * LES DEUX RIDEAUX, ET C'EST L'ARBITRAGE DU 2026-09-09 : « `T0` doit se valider
+ * sur une synthèse produite APRÈS le deuxième rideau ». La condition sœur exige
+ * que le second rideau soit rendu ; celle-ci exige qu'il ait été LU. Sans elle,
+ * un `T0` se confirmait sur la synthèse qui avait MOTIVÉ le second rideau —
+ * c'est-à-dire sur une analyse antérieure aux réponses qu'elle avait demandées,
+ * et la proposition de protocole se serait construite sans elles.
+ *
+ * LE PIÈGE N'EST PAS ROUVERT, et c'est [[D-157]] §3 qui l'en empêche : le second
+ * rideau se borne à la PREMIÈRE synthèse validée, celle-ci se juge sur la
+ * DERNIÈRE. Si les deux lisaient la même, valider la synthèse #2 sortirait le
+ * second rideau de son propre compte et le dossier deviendrait inconfirmable.
  *
  * `dateValidation` fait foi, jamais la date d'annotation : `Corrigee_Praticien`
  * ne rafraîchit pas `dateValidation` (comportement existant, non modifié ici).
@@ -305,7 +318,7 @@ function evaluerAnamnese(entrees: EntreesPreconditionsT0): ConditionPrecondition
  * `null` hérité passerait sinon pour une date.
  */
 function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition {
-  const base = { id: 'synthese_validee', libelle: 'Synthèse validée et postérieure au rideau' };
+  const base = { id: 'synthese_validee', libelle: 'Synthèse validée après les passations qu’elle doit lire' };
   const synthese = entrees.synthese;
   if (!synthese || !STATUTS_SYNTHESE_VALIDEE_SET.has(synthese.statut)) {
     return { ...base, satisfaite: false, detail: 'Aucune synthèse validée par le praticien.' };
@@ -315,7 +328,12 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
   }
 
   const dernieres = dernieresParInstrument(entrees.passations);
-  const datesRideau = RIDEAU_T0
+  const secondRideau = secondRideauDuDossier(entrees);
+  const instrumentsAttendus = new Set<string>([
+    ...RIDEAU_T0,
+    ...secondRideau.map(assignation => assignation.idQuestionnaire),
+  ]);
+  const datesRideau = [...instrumentsAttendus]
     .map(idQuestionnaire => dernieres.get(idQuestionnaire)?.dateReponse)
     .filter((date): date is Date => date instanceof Date);
   const derniereDuRideau = datesRideau.reduce<Date | null>(
@@ -327,7 +345,12 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
     return {
       ...base,
       satisfaite: false,
-      detail: 'La synthèse validée est antérieure à la dernière passation du premier rideau.',
+      // DEUX MESSAGES, PARCE QUE LE GESTE ATTENDU N'EST PAS LE MÊME. Sans second
+      // rideau, la synthèse est simplement en retard sur le premier ; avec, il
+      // faut une synthèse NEUVE, et le dire évite d'aller re-valider l'ancienne.
+      detail: secondRideau.length > 0
+        ? 'La synthèse validée précède la dernière passation du second rideau : il en faut une nouvelle, produite après.'
+        : 'La synthèse validée est antérieure à la dernière passation du premier rideau.',
     };
   }
   return { ...base, satisfaite: true, detail: null };
@@ -365,10 +388,28 @@ function evaluerSynthese(entrees: EntreesPreconditionsT0): ConditionPrecondition
 export const STATUT_ASSIGNATION_RENDUE = 'Complété';
 const STATUT_ASSIGNATION_ANNULEE = 'Annulée';
 
+/**
+ * Les assignations qui COMPOSENT le second rideau d'un dossier.
+ *
+ * Extrait parce qu'il se lit DEUX fois, et que deux copies dériveraient : par sa
+ * propre condition, et par la fraîcheur de la synthèse — qui doit être
+ * postérieure aux passations de ce rideau-là ([[D-157]] §3 bis).
+ */
+function secondRideauDuDossier(
+  entrees: EntreesPreconditionsT0,
+): readonly AssignationPourPreconditions[] {
+  const borne = entrees.premiereValidationSynthese;
+  if (!borne) return [];
+  const plafond = entrees.confirmationAncreInitiale;
+  return entrees.assignations.filter(a =>
+    a.statut !== STATUT_ASSIGNATION_ANNULEE
+    && a.dateAssignation.getTime() > borne.getTime()
+    && (plafond === null || a.dateAssignation.getTime() <= plafond.getTime()));
+}
+
 function evaluerSecondRideau(entrees: EntreesPreconditionsT0): ConditionPrecondition {
   const base = { id: 'second_rideau', libelle: 'Second rideau assigné après la synthèse, et rendu' };
-  const borne = entrees.premiereValidationSynthese;
-  if (!borne) {
+  if (!entrees.premiereValidationSynthese) {
     // DONNÉE ABSENTE ⇒ CONDITION NON SATISFAITE, jamais satisfaite par défaut
     // (`DC-24`). Le message pointe la cause réelle plutôt que de répéter
     // « aucune assignation », qui se lirait comme un reproche au praticien.
@@ -379,11 +420,7 @@ function evaluerSecondRideau(entrees: EntreesPreconditionsT0): ConditionPrecondi
     };
   }
 
-  const plafond = entrees.confirmationAncreInitiale;
-  const secondRideau = entrees.assignations.filter(a =>
-    a.statut !== STATUT_ASSIGNATION_ANNULEE
-    && a.dateAssignation.getTime() > borne.getTime()
-    && (plafond === null || a.dateAssignation.getTime() <= plafond.getTime()));
+  const secondRideau = secondRideauDuDossier(entrees);
 
   if (secondRideau.length === 0) {
     return {

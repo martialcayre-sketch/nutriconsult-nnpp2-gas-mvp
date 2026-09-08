@@ -335,6 +335,11 @@ describe('/api/praticien/cockpit', () => {
     prisma.syntheseIA.findFirst.mockResolvedValue({
       statut: 'Validee_Praticien', dateValidation: new Date('2025-01-01T00:00:00.000Z'),
     });
+    // Aucun second rideau : ce cas éprouve la fraîcheur d'origine ([[D-052]] §4)
+    // et son message. Le cas symétrique — second rideau rendu mais non LU, qui
+    // appelle une synthèse NEUVE ([[D-157]] §3 bis) — a son propre message et
+    // vit dans `preconditionsT0.test.ts`, où il se décrit sans mock.
+    prisma.assignation.findMany.mockResolvedValue([]);
     const proposed = await proposal();
     const response = await POST(postRequest({
       idPatient: 'PAT_TEST', milestone: 'T0',

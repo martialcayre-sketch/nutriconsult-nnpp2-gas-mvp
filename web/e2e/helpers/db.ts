@@ -793,6 +793,17 @@ export async function provisionnerDossierBiologie(idPatient: string): Promise<vo
   // la validation ci-dessus : la condition et la fixture bougent ensemble.
   // `statut: 'Complété'` est ce que lit la condition — pas la cotabilité, que
   // le second rideau n'exige pas.
+  //
+  // NON-COUVERTURE NOMMÉE, et elle a un motif. Cette assignation est `Complété`
+  // SANS passation correspondante, ce que la production ne produit pas — un
+  // `submit` écrit toujours les deux. Lui en donner une ferait entrer une
+  // réponse de plus dans l'épisode T0 (qui embarque tout l'état d'entrée depuis
+  // [[D-156]]), donc dans la carte de décision, donc dans les propositions que
+  // les trois specs biologie asservissent à `PLAINTES_DIGESTIF_ET_PONDERAL` :
+  // ce provisionnement changerait ce qu'ils mesurent. La fraîcheur de la
+  // synthèse VIS-À-VIS du second rideau ([[D-157]] §3 bis) est donc éprouvée
+  // par `preconditionsT0.test.ts` — où la chaîne des cinq temps se décrit sans
+  // mock —, pas ici. Ici, seule la condition d'ASSIGNATION est franchie.
   await prisma.assignation.create({
     data: {
       idAssignation: `${ID_SECOND_RIDEAU_BIO_E2E}_${idPatient}`,
