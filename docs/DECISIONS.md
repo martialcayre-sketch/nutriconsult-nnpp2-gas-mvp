@@ -457,6 +457,25 @@ migration soit approuvée. La direction est un *contract*, donc sûre — un
 déploiement où la colonne existe encore et où plus rien ne la lit est
 parfaitement valide, et c'est même l'état attendu pendant la fenêtre
 d'approbation. L'inverse ne le serait pas.
+
+> **Le commit de fusion (#949) porte « (D-145) » dans son sujet.** Cette
+> décision a été renumérotée de `D-145` en `D-147` après que #948 et #944 ont
+> pris `D-145` et `D-146` pendant l'attente du CI. Le titre de la PR **avait**
+> été renuméroté ; cela n'a rien changé — voir la note sous [[D-142]] pour le
+> mécanisme (`squash_merge_commit_title = COMMIT_OR_PR_TITLE`) et le levier
+> (`gh pr merge --squash --subject`).
+>
+> L'écart est ici plus gênant qu'ailleurs : **`D-145` existe** et désigne « Un
+> destinataire vivant que quinze mois de dossier n'avaient jamais nommé ». Qui
+> remonte de `git log` au registre tombe sur une décision sans rapport, et rien
+> dans le commit ne signale l'erreur. Le registre fait foi.
+>
+> **Application en production constatée** le 2026-09-08 par conteneur
+> `one-off-7344`, et non sur la foi du workflow : `condition_supplementaire`
+> absente d'`information_schema.columns`, migration
+> `20260908000000_drop_condition_supplementaire` appliquée en **une** tentative
+> — la garde n'a donc pas mordu —, `clinical_rules` à 0 ligne.
+
 ### D-146 — Un champ facultatif dont le défaut est « valide » rend l'oubli indiscernable de l'affirmation
 
 - Date : 2026-09-08
@@ -707,9 +726,25 @@ n'indexer que les chemins du lot.
 
 > **Le commit de fusion (#943) porte « (D-141) » dans son sujet.** Cette décision
 > a été renumérotée de `D-141` en `D-142` après que #942 (Sentry) a pris le
-> numéro pendant l'attente du CI ; le titre de la PR n'a pas suivi. Le registre
-> fait foi ; l'historique se trompe, et cela ne se réécrit pas sur la branche
-> principale.
+> numéro pendant l'attente du CI. Le registre fait foi ; l'historique se trompe,
+> et cela ne se réécrit pas sur la branche principale.
+>
+> **Correction du 2026-09-08 — l'explication ci-dessus était fausse.** Cette
+> note attribuait l'écart à « un titre de PR qui n'a pas suivi ». C'est
+> inexact : #949 a renuméroté son titre de PR **et** a quand même produit un
+> sujet faux. Le réglage du dépôt est
+> `squash_merge_commit_title = COMMIT_OR_PR_TITLE` — GitHub prend le titre du
+> **commit** quand la branche ne porte qu'un seul commit *réel*, les commits de
+> fusion ne comptant pas. Éditer le titre de la PR ne change donc rien.
+>
+> Ce n'est pas une étourderie isolée mais un **mécanisme**, et trois PR en
+> portent la trace sur `main` : #943 (sujet `D-141` / registre `D-142`), #949
+> (sujet `D-145` / registre `D-147` — et `D-145` **existe**, désignant une
+> décision sans rapport), #950 (sujet `D-147` / registre `D-148`).
+>
+> **Le levier** : `gh pr merge <N> --squash --subject "<sujet exact>"`. Il ne
+> demande aucun `force`-push, contrairement à un `commit --amend`. Éprouvé sur
+> #956, dont le sujet écrit sur `main` porte bien `(D-153)`.
 
 - Date : 2026-09-07
 - Statut : accepté (clôture du chantier « séparation de `condition_supplementaire` », ouvert par [[D-138]])

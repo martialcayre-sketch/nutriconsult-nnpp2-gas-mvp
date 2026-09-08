@@ -22,6 +22,43 @@
 //     récente à la plus ancienne. Une entrée insérée au mauvais endroit après
 //     une résolution de conflit se voit ici et nulle part ailleurs.
 //
+// ── QUAND prendre le numéro ─────────────────────────────────────────────────
+//
+// **Un numéro ne se réserve qu'au MERGE.** Le choisir à l'ouverture de la
+// branche, c'est parier que personne ne mergera pendant le CI — et le pari se
+// perd dès que l'intervalle entre deux merges descend sous la durée d'un CI.
+// Le 2026-09-08 il a été perdu CINQ fois en une journée (`D-142→144`,
+// `D-145→147`, `D-152→153`), six décisions ayant atterri sur `main` en
+// quelques heures.
+//
+// Ce n'est pas un défaut de ce garde : c'est le prix, assumé plus haut, de
+// rendre la collision bruyante. Cinq conflits qui se résolvent valent mieux
+// qu'un doublon qui se propage. Ce qu'on réduit, c'est leur FRÉQUENCE, jamais
+// leur prix — une renumérotation coûte toujours un CI rejoué, et un T3 local
+// de plus sur une PR migration.
+//
+// En pratique :
+//   - relire `origin/main` fraîchement récupéré JUSTE AVANT le merge, CI déjà
+//     vert, plutôt que de faire confiance au numéro choisi à l'ouverture ;
+//   - ne pas rebaser pour renuméroter — fusionner `main` dans la branche,
+//     résoudre le conflit ici, puis reprendre registre, fragment et code ;
+//   - à plusieurs sessions, ce qui coordonne n'est pas le worktree (elles y
+//     sont déjà, et la contention est un COMPTEUR, pas un répertoire) mais
+//     d'annoncer le numéro qu'on prend au moment où on le prend.
+//
+// ── Le numéro écrit dans le SUJET de commit ─────────────────────────────────
+//
+// Une renumérotation tardive laisse une trace ailleurs, que ce garde ne voit
+// pas : le sujet du commit de squash. Le réglage du dépôt est
+// `squash_merge_commit_title = COMMIT_OR_PR_TITLE` — GitHub prend le titre du
+// COMMIT quand la branche ne porte qu'un seul commit *réel* (les commits de
+// fusion ne comptent pas). **Éditer le titre de la PR ne suffit donc pas**, et
+// trois PR en portent la trace sur `main` : #943, #949 (dont le sujet cite un
+// `D-145` qui EXISTE et désigne autre chose) et #950.
+//
+// Le levier, qui ne demande aucun `force`-push contrairement à un `--amend` :
+//   gh pr merge <N> --squash --delete-branch --subject "<sujet exact>"
+//
 // ── Le jour où une décision est RETIRÉE ─────────────────────────────────────
 //
 // Le refus du trou a une conséquence qu'il faut avoir écrite quelque part,
