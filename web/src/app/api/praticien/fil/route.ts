@@ -6,7 +6,7 @@ import { emailPraticien, filtrePatientsDuPraticien } from '@/lib/praticien/appar
 import { construireFil, type CarteFil } from '@/lib/fil/cartes';
 import { clesRefusees, filtrerCartesRefusees } from '@/lib/fil/refus';
 import { jalonsSansDecision } from '@/lib/fil/jalonsJ21';
-import { RIDEAU_T0 } from '@/lib/clinical-engine/preconditionsT0';
+import { RIDEAU_T0, STATUTS_SYNTHESE_VALIDEE } from '@/lib/clinical-engine/preconditionsT0';
 import { arbitragesSansRevision } from '@/lib/fil/biologieArbitree';
 import { isCbEnabled } from '@/lib/biology-library/featureFlag';
 import { momentumJalonsParPatient } from '@/lib/fil/momentumJ21';
@@ -65,6 +65,8 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
       passationsRideau,
       episodesT0,
       premieresPassationsGroupBy,
+      premieresSynthesesGroupBy,
+      assignationsToutes,
     ] = await Promise.all([
       prisma.trustAdverseEffectReport.findMany({ where: filtreNonTraite, select: selectSignalement, take: 10 }),
       prisma.trustPrivacyIncident.findMany({ where: filtreNonTraite, select: selectSignalement, take: 10 }),
@@ -140,6 +142,24 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
       prisma.questionnaireReponse.groupBy({
         by: ['idPatient'],
         _min: { dateReponse: true },
+      }),
+      // Second rideau ([[D-158]]) : deux lectures d'ENSEMBLE de plus, même
+      // discipline que ci-dessus — la carte NE rejoue PAS les préconditions
+      // dures par dossier, elle situe le geste attendu.
+      //
+      // La PREMIÈRE validation de synthèse, comme la précondition : c'est la
+      // borne depuis laquelle le second rideau se compte, et elle ne se déplace
+      // pas quand une seconde synthèse est validée.
+      prisma.syntheseIA.groupBy({
+        by: ['idPatient'],
+        where: { statut: { in: [...STATUTS_SYNTHESE_VALIDEE] }, dateValidation: { not: null } },
+        _min: { dateValidation: true },
+      }),
+      // TOUTES les assignations, sans filtre de statut ni de date limite —
+      // celle du dessus (`assignations`) ne retient que les retards, et ne
+      // dirait rien d'un second rideau rendu.
+      prisma.assignation.findMany({
+        select: { idPatient: true, idQuestionnaire: true, dateAssignation: true, statut: true },
       }),
     ]);
 
@@ -233,6 +253,12 @@ export async function GET(): Promise<NextResponse<FilApiResponse>> {
       ),
       patientsAvecEpisodeT0: new Set(episodesT0.map(e => e.idPatient)),
       tailleRideauT0: RIDEAU_T0.length,
+      premieresSyntheses: new Map(
+        premieresSynthesesGroupBy
+          .filter((r): r is typeof r & { _min: { dateValidation: Date } } => r._min.dateValidation !== null)
+          .map(r => [r.idPatient, r._min.dateValidation]),
+      ),
+      assignationsToutes: assignationsToutes.filter(a => actifs.has(a.idPatient)),
       biologiesArbitrees: biologiesArbitreesBrutes.filter(b => actifs.has(b.idPatient)),
       assignations: assignations.filter(a => actifs.has(a.idPatient)),
       activites: activites
