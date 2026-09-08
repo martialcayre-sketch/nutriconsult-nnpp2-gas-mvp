@@ -429,6 +429,21 @@ describe('identité des cartes (clé)', () => {
 describe('cartesT0AConfirmer', () => {
   const RIDEAU = ['Q_MOD_03', 'Q_MOD_01', 'Q_INF_03', 'Q_ALI_01'];
   const T0 = new Date('2026-06-01T09:00:00');
+  // [[D-158]] — le dossier de référence de ce bloc a franchi les trois temps :
+  // synthèse #1 validée, second rideau assigné après elle, et rendu. Les cas
+  // qui éprouvent AUTRE CHOSE (rideau incomplet, épisode déjà posé) resteraient
+  // sinon muets pour une raison qui n'est pas la leur.
+  const SYNTHESE_1 = new Date('2026-06-05T09:00:00');
+  const SYNTHESES = new Map([['P-SOPHIE', SYNTHESE_1], ['P-MICHEL', SYNTHESE_1]]);
+
+  function secondRideauRendu(statut = 'Complété', idPatient = 'P-SOPHIE') {
+    return [{
+      idPatient,
+      idQuestionnaire: 'Q_GAS_01',
+      dateAssignation: new Date('2026-06-08T09:00:00'),
+      statut,
+    }];
+  }
 
   function rideauComplet(idPatient: string, statutValidite: string | null = null) {
     return RIDEAU.map((idQuestionnaire, i) => ({
@@ -445,6 +460,8 @@ describe('cartesT0AConfirmer', () => {
       new Map([['P-SOPHIE', T0]]),
       new Set<string>(),
       4,
+      SYNTHESES,
+      secondRideauRendu(),
       NOMS,
       MAINTENANT,
     );
@@ -462,7 +479,7 @@ describe('cartesT0AConfirmer', () => {
   // qu'il est.
   it('le délai d’attente est compté et dit, sans emprunter à la tolérance', () => {
     const cartes = cartesT0AConfirmer(
-      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     // 2026-06-01 -> 2026-07-15 = 44 jours depuis la première passation.
     expect(cartes[0].pourquoi).toContain('44 jours');
@@ -474,7 +491,7 @@ describe('cartesT0AConfirmer', () => {
   it('un dossier récent obtient le même texte : la carte ne connaît plus de seuil', () => {
     const recent = new Date(MAINTENANT.getTime() - 2 * 24 * 60 * 60 * 1000);
     const cartes = cartesT0AConfirmer(
-      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', recent]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', recent]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     expect(cartes[0].pourquoi).toContain('2 jours');
     expect(cartes[0].pourquoi).not.toContain('dépassée');
@@ -482,14 +499,14 @@ describe('cartesT0AConfirmer', () => {
 
   it('un épisode T0 déjà consigné retire la carte', () => {
     const cartes = cartesT0AConfirmer(
-      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set(['P-SOPHIE']), 4, NOMS, MAINTENANT,
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set(['P-SOPHIE']), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     expect(cartes).toEqual([]);
   });
 
   it('un rideau incomplet n’appelle rien : la carte ne réclame pas ce qui manque encore', () => {
     const cartes = cartesT0AConfirmer(
-      rideauComplet('P-SOPHIE').slice(0, 3), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      rideauComplet('P-SOPHIE').slice(0, 3), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     expect(cartes).toEqual([]);
   });
@@ -498,10 +515,75 @@ describe('cartesT0AConfirmer', () => {
   // synthèse validée) s'évaluent par dossier et gardent leur propre écran.
   it('la carte appelle, elle ne promet pas que la confirmation aboutira', () => {
     const cartes = cartesT0AConfirmer(
-      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     expect(cartes[0].pourquoi).not.toMatch(/confirmable|vous pouvez confirmer/i);
     expect(cartes[0].actionLabel).toBe('Ouvrir la fiche');
+  });
+
+  // ── [[D-158]] — la carte situe le geste, elle ne le devine pas ───────────
+  //
+  // Un premier rideau complet n'ouvre plus le T0 : il ouvre le SECOND rideau.
+  // Appeler « T0 non consigné » un dossier que la porte refuserait enverrait le
+  // praticien sur un bouton désactivé.
+  it('synthèse validée mais rien d’assigné depuis : la carte appelle à COMPOSER', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      SYNTHESES, [], NOMS, MAINTENANT,
+    );
+    expect(cartes).toHaveLength(1);
+    expect(cartes[0].titre).toBe('Premier rideau complet, second rideau à composer');
+    expect(cartes[0].pourquoi).toContain('reste à composer');
+    expect(cartes[0].pourquoi).not.toContain('T0');
+  });
+
+  it('second rideau rendu : la carte appelle au T0, et le dit', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
+    );
+    expect(cartes[0].titre).toBe('Second rideau rendu, T0 non consigné');
+    expect(cartes[0].pourquoi).toContain('Toutes les réponses du dossier entreront');
+  });
+
+  // LA BALLE EST CHEZ LE PATIENT : appeler ici serait appeler le praticien à
+  // attendre, et `assignation_en_retard` dit déjà les retards.
+  it('second rideau assigné mais pas rendu : aucune carte', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      SYNTHESES, secondRideauRendu('En attente'), NOMS, MAINTENANT,
+    );
+    expect(cartes).toEqual([]);
+  });
+
+  // `synthese_a_valider` porte déjà ce dossier : deux cartes pour un même geste
+  // feraient douter des deux.
+  it('aucune synthèse validée : la carte se tait', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      new Map<string, Date>(), [], NOMS, MAINTENANT,
+    );
+    expect(cartes).toEqual([]);
+  });
+
+  it('une assignation ANNULÉE ne compose pas un second rideau', () => {
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      SYNTHESES, secondRideauRendu('Annulée'), NOMS, MAINTENANT,
+    );
+    expect(cartes[0].titre).toBe('Premier rideau complet, second rideau à composer');
+  });
+
+  it('une assignation ANTÉRIEURE à la synthèse n’en compose pas un non plus', () => {
+    const avant = [{
+      idPatient: 'P-SOPHIE', idQuestionnaire: 'Q_GAS_01',
+      dateAssignation: new Date('2026-06-02T09:00:00'), statut: 'Complété',
+    }];
+    const cartes = cartesT0AConfirmer(
+      rideauComplet('P-SOPHIE'), new Map([['P-SOPHIE', T0]]), new Set<string>(), 4,
+      SYNTHESES, avant, NOMS, MAINTENANT,
+    );
+    expect(cartes[0].titre).toBe('Premier rideau complet, second rideau à composer');
   });
 
   it('le plus en retard passe devant', () => {
@@ -511,6 +593,8 @@ describe('cartesT0AConfirmer', () => {
       new Map([['P-SOPHIE', T0], ['P-MICHEL', vieux]]),
       new Set<string>(),
       4,
+      SYNTHESES,
+      [...secondRideauRendu(), ...secondRideauRendu('Complété', 'P-MICHEL')],
       NOMS,
       MAINTENANT,
     );
@@ -526,7 +610,7 @@ describe('cartesT0AConfirmer', () => {
       const passations = rideauComplet('P-SOPHIE');
       passations[0].statutValidite = 'INVALID';
       const cartes = cartesT0AConfirmer(
-        passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+        passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
       );
       expect(cartes).toEqual([]);
     } finally {
@@ -538,7 +622,7 @@ describe('cartesT0AConfirmer', () => {
     const passations = rideauComplet('P-SOPHIE');
     passations[0].statutValidite = 'INVALID';
     const cartes = cartesT0AConfirmer(
-      passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, NOMS, MAINTENANT,
+      passations, new Map([['P-SOPHIE', T0]]), new Set<string>(), 4, SYNTHESES, secondRideauRendu(), NOMS, MAINTENANT,
     );
     expect(cartes).toHaveLength(1);
   });

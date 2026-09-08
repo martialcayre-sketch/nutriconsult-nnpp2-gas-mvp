@@ -80,6 +80,16 @@ export type AssignationRow = {
   statut: string;
 };
 export type SyntheseRow = { idSynthese: string; idPatient: string; dateGeneration: Date };
+/**
+ * Une assignation, telle que la route la lit pour situer le second rideau
+ * ([[D-158]]). Distincte d'`AssignationRow`, qui ne porte que les retards.
+ */
+export type AssignationRideauRow = {
+  idPatient: string;
+  idQuestionnaire: string;
+  dateAssignation: Date;
+  statut: string;
+};
 /** Lecture confirmée la plus récente d'un patient — pas de ligne source
  * unique, cf. `cleCarte`. */
 export type LectureRow = { idPatient: string; derniereLecture: Date };
@@ -317,9 +327,25 @@ export function cartesT0AConfirmer(
    * la lui transmet.
    */
   tailleRideau: number,
+  /**
+   * Date de la PREMIÈRE synthèse validée, par patient — la borne depuis
+   * laquelle le second rideau se compte ([[D-158]] §3). Absente = aucune
+   * synthèse validée : la carte se tait, `synthese_a_valider` porte déjà ce
+   * dossier-là.
+   */
+  premieresSyntheses: Map<string, Date>,
+  /** Toutes les assignations des patients actifs, non filtrées. */
+  assignationsToutes: AssignationRideauRow[],
   noms: Map<string, string>,
   maintenant: Date,
 ): CarteFil[] {
+  const assignationsParPatient = new Map<string, AssignationRideauRow[]>();
+  for (const a of assignationsToutes) {
+    const deja = assignationsParPatient.get(a.idPatient) ?? [];
+    deja.push(a);
+    assignationsParPatient.set(a.idPatient, deja);
+  }
+
   const instrumentsParPatient = new Map<string, Set<string>>();
   for (const p of filtrerPassationsExploitables(passationsRideau)) {
     const deja = instrumentsParPatient.get(p.idPatient) ?? new Set<string>();
@@ -327,16 +353,44 @@ export function cartesT0AConfirmer(
     instrumentsParPatient.set(p.idPatient, deja);
   }
 
+  /**
+   * OÙ EN EST CE DOSSIER, DES TROIS TEMPS QUI SÉPARENT LE PREMIER RIDEAU DU T0
+   * ([[D-158]]) — et rien de plus. La carte NE rejoue PAS les préconditions
+   * dures : elle ne lit ni l'anamnèse, ni la fraîcheur de la synthèse, qui se
+   * calculent par dossier et gardent leur propre écran.
+   *
+   * `null` = la carte se tait. Deux cas, et ils ne se confondent pas :
+   *   · aucune synthèse validée — `synthese_a_valider` porte déjà ce dossier,
+   *     et deux cartes pour un même geste feraient douter des deux ;
+   *   · second rideau assigné mais pas rendu — la balle est chez le PATIENT,
+   *     et `assignation_en_retard` dit déjà les retards. Appeler ici serait
+   *     appeler le praticien à attendre.
+   */
+  function etape(idPatient: string): 'composer' | 'attendu' | null {
+    const borne = premieresSyntheses.get(idPatient);
+    if (!borne) return null;
+    const secondRideau = (assignationsParPatient.get(idPatient) ?? []).filter(
+      a => a.statut !== 'Annulée' && a.dateAssignation.getTime() > borne.getTime(),
+    );
+    if (secondRideau.length === 0) return 'composer';
+    return secondRideau.every(a => a.statut === 'Complété') ? 'attendu' : null;
+  }
+
   return [...instrumentsParPatient.entries()]
     .filter(([idPatient, instruments]) =>
       instruments.size === tailleRideau && !patientsAvecEpisodeT0.has(idPatient))
-    .map(([idPatient]) => ({ idPatient, cible: premieresPassations.get(idPatient) ?? null }))
-    .filter((x): x is { idPatient: string; cible: Date } => x.cible !== null)
+    .map(([idPatient]) => ({
+      idPatient,
+      cible: premieresPassations.get(idPatient) ?? null,
+      etape: etape(idPatient),
+    }))
+    .filter((x): x is { idPatient: string; cible: Date; etape: 'composer' | 'attendu' } =>
+      x.cible !== null && x.etape !== null)
     // Le plus ancien d'abord : c'est le dossier qui attend son T0 depuis le
     // plus longtemps.
     .sort((x, y) => x.cible.getTime() - y.cible.getTime())
     .slice(0, MAX_CARTES_PAR_TYPE)
-    .map(({ idPatient, cible }) => {
+    .map(({ idPatient, cible, etape: ou }) => {
       const jours = Math.floor((maintenant.getTime() - cible.getTime()) / JOUR_MS);
       // LA TOLÉRANCE A DISPARU DE CE TEXTE AVEC [[D-156]], et ce n'était pas
       // une reformulation : la carte annonçait que « les réponses arrivées
@@ -349,15 +403,26 @@ export function cartesT0AConfirmer(
       // (43 jours en moyenne entre la cible et l'acte). Il se dit désormais
       // pour ce qu'il est — un dossier qui attend —, sans emprunter à une
       // fenêtre qui ne gouverne plus rien ici.
-      const pourquoi =
-        `Les ${tailleRideau} instruments du premier rideau sont renseignés et aucun T0 n'est consigné. `
-        + `La première passation date du ${formatDateFr(cible)}, il y a ${jours} jour${jours > 1 ? 's' : ''}. `
-        + `Toutes les réponses du dossier entreront dans l'épisode.`;
+      //
+      // DEPUIS [[D-158]], LE GESTE ATTENDU N'EST PLUS LE MÊME POUR TOUS. Un
+      // premier rideau complet n'ouvre plus le T0 : il ouvre le SECOND rideau.
+      // Appeler « confirmez » un dossier que la porte refuserait, ce serait
+      // envoyer le praticien sur un bouton désactivé — et lui apprendre que la
+      // carte se trompe.
+      const ancrage =
+        `La première passation date du ${formatDateFr(cible)}, il y a ${jours} jour${jours > 1 ? 's' : ''}.`;
+      const pourquoi = ou === 'composer'
+        ? `Les ${tailleRideau} instruments du premier rideau sont renseignés et la synthèse est validée. `
+          + `Aucun questionnaire n'a été assigné depuis : le second rideau reste à composer. ${ancrage}`
+        : `Le second rideau est rendu et aucun T0 n'est consigné. ${ancrage} `
+          + `Toutes les réponses du dossier entreront dans l'épisode.`;
       return {
         type: 't0_a_confirmer' as const,
         idPatient,
         patient: nomPatient(noms, idPatient),
-        titre: 'Premier rideau complet, T0 non consigné',
+        titre: ou === 'composer'
+          ? 'Premier rideau complet, second rideau à composer'
+          : 'Second rideau rendu, T0 non consigné',
         pourquoi,
         date: cible.toISOString(),
         href: `/dashboard/patients/${idPatient}`,
@@ -578,6 +643,8 @@ export function construireFil(entrees: {
   premieresPassations?: Map<string, Date>;
   patientsAvecEpisodeT0?: Set<string>;
   tailleRideauT0?: number;
+  premieresSyntheses?: Map<string, Date>;
+  assignationsToutes?: AssignationRideauRow[];
   biologiesArbitrees?: BiologieArbitreeCarteRow[];
   assignations: AssignationRow[];
   activites: DerniereActiviteRow[];
@@ -595,6 +662,8 @@ export function construireFil(entrees: {
     premieresPassations = new Map<string, Date>(),
     patientsAvecEpisodeT0 = new Set<string>(),
     tailleRideauT0 = 0,
+    premieresSyntheses = new Map<string, Date>(),
+    assignationsToutes = [],
     biologiesArbitrees = [],
     assignations,
     activites,
@@ -611,7 +680,8 @@ export function construireFil(entrees: {
     // Le T0 précède le J21 : un dossier qui n'a pas son repère de départ ne
     // peut pas produire de jalon suivant. La carte passe donc devant.
     ...cartesT0AConfirmer(
-      passationsRideau, premieresPassations, patientsAvecEpisodeT0, tailleRideauT0, noms, maintenant,
+      passationsRideau, premieresPassations, patientsAvecEpisodeT0, tailleRideauT0,
+      premieresSyntheses, assignationsToutes, noms, maintenant,
     ),
     ...cartesJalons(jalons, noms),
     // Une biologie arbitrée sans révision retient une décision déjà prise :
