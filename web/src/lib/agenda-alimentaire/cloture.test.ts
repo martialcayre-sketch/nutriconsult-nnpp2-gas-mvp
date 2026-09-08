@@ -195,6 +195,21 @@ describe('cloturerAgendaAli', () => {
     await expect(cloturerAgendaAli({ idAssignation: 'ASS_AGA' })).rejects.toThrow(/Aucune journée/);
   });
 
+  // [[D-152]] — le jumeau sommeil porte la même règle : la passation date de la
+  // période observée, pas du geste. Le banc la tient aux DEUX endroits, sinon
+  // l'un des deux agendas dériverait sans que rien ne rougisse.
+  it('la passation est datée du DERNIER jour mesuré, pas de la clôture', async () => {
+    prisma.assignation.findUnique.mockResolvedValue(ASS);
+    prisma.agendaAlimentaireJour.findMany.mockResolvedValue(joursConsecutifs(7));
+    mockTransaction('non_rempli');
+
+    await cloturerAgendaAli({ idAssignation: 'ASS_AGA' });
+
+    // 7 jours depuis le lundi 2026-07-06 → dernier jour le 2026-07-12.
+    const data = prisma.questionnaireReponse.create.mock.calls[0][0].data;
+    expect((data.dateReponse as Date).toISOString()).toBe('2026-07-12T00:00:00.000Z');
+  });
+
   it('crée une réponse standard NON scorée et verrouille l’assignation (7 jours)', async () => {
     prisma.assignation.findUnique.mockResolvedValue(ASS);
     prisma.agendaAlimentaireJour.findMany.mockResolvedValue(joursConsecutifs(7));
