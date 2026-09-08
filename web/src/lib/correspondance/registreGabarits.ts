@@ -408,6 +408,57 @@ export const REGISTRE_GABARITS_PATIENT: readonly VersionGabaritPatient[] = Objec
     valideLe: '2026-09-07',
     hash: '0e65572d94cc85966add63e7891136a552169d777a971e16319ec7e082694e86',
   },
+  // ── OBJECTIF PROPOSÉ ────────────────────────────────────────────────────
+  // ARBITRAGE DU RESPONSABLE, 2026-09-08 ([[D-154]], constat `M02`) : l'objectif
+  // rédigé par le praticien doit ATTEINDRE le patient. Mesure de production du
+  // même jour : 4 propositions, 1 objectif négocié, et **0 ratification, 0
+  // amendement, 0 réponse de jalon** — les trois drapeaux de la chaîne étant
+  // pourtant posés. Le retour spontané au portail est donc démenti par les
+  // chiffres ; l'e-mail est le seul canal dont la production prouve qu'il
+  // fonctionne (74 liens magiques, 58 accusés, tous en `Envoye`).
+  //
+  // LE TEXTE DE L'OBJECTIF N'EST PAS DANS L'E-MAIL, ET C'EST LE POINT DUR.
+  // `enonce_patient` porte les mots du patient sur ce qui l'amène : c'est le
+  // contenu le plus nominatif du dossier. Une boîte e-mail n'est pas un canal
+  // maîtrisé (précédent : l'audit HDS du 2026-07-24 a retiré le motif de
+  // consultation de l'e-mail portail). Le message dit qu'un texte attend, il ne
+  // le transporte pas.
+  {
+    key: 'objectif_propose',
+    version: 1,
+    titre: 'Un objectif de suivi attend la relecture du patient',
+    sujet: 'Un objectif à relire dans votre espace — Wellneuro',
+    corps:
+      'Bonjour {{prenom}},\n\n' +
+      'À partir de nos échanges, j’ai écrit l’objectif que je vous propose pour la ' +
+      'suite de votre suivi. Il vous attend dans votre espace.\n\n' +
+      'Ce que j’attends de vous : le lire, et me dire s’il correspond à ce que vous ' +
+      'vouliez. S’il ne correspond pas, dites-le — c’est utile, et c’est prévu : ' +
+      'l’espace vous permet de le contester ou de proposer une autre formulation. ' +
+      'Rien n’est engagé tant que vous ne l’avez pas relu.\n\n' +
+      'Votre espace :\n{{connexion}}\n\n' +
+      'Vous pouvez taper cette adresse vous-même dans votre navigateur plutôt que de ' +
+      'cliquer : elle mène au même endroit. Vous vous y connecterez avec Google, ou ' +
+      'en demandant un lien d’accès par e-mail, à l’adresse à laquelle vous recevez ' +
+      'ce message.\n\n' +
+      'On ne vous demandera jamais de coordonnées bancaires, de numéro de carte ni ' +
+      'de mot de passe. Une question, un doute sur un message reçu : écrivez-moi à ' +
+      'martialcayre@wellneuro.fr.\n\n' +
+      'Martial Cayre\n' +
+      'Docteur en Pharmacie — praticien en santé fonctionnelle\n' +
+      'Labellisé Neuro-Nutrition® (Institut SIIN)\n' +
+      'Wellneuro — wellneuro.fr',
+    variables: ['prenom', 'connexion'],
+    // Ni instrument, ni domaine clinique, ni chiffre — et surtout PAS l'énoncé
+    // de l'objectif, qui reste dans l'espace.
+    donneesSante: { statut: 'conforme' },
+    redigeLe: '2026-09-08',
+    // `null` : le responsable a arbitré QU'UN e-mail parte, il n'a pas validé
+    // CE texte. Le registre le dit au lieu de l'inventer — comme il l'a fait
+    // huit versions durant.
+    valideLe: null,
+    hash: 'c784b2257263dfce984bc370dc54af3b9e31cba3ec537fd52116bcab0b111f16',
+  },
 ]);
 
 /** Le gabarit courant d'une clé : version la plus haute (les versions

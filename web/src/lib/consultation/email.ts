@@ -190,3 +190,46 @@ export async function sendPortailLinkEmail(
     },
   });
 }
+
+/**
+ * Notification « un objectif vous attend » ([[D-154]], constat `M02`).
+ *
+ * POURQUOI ICI, dans un module nommé « accès ». `envoyerAccesTrace` est le seul
+ * endroit du dépôt qui tienne le triplet complet d'un envoi patient — pas de
+ * SMTP → `Non_envoye` journalisé, succès → `Envoye`, échec → `Erreur` puis
+ * relance. Le dupliquer laisserait les deux copies diverger ; c'est exactement
+ * ce que [[D-148]] vient de corriger ailleurs.
+ *
+ * ELLE RELANCE, ET L'APPELANT DOIT L'ATTRAPER. L'objectif est DÉJÀ écrit quand
+ * cet appel a lieu : un relais SMTP en panne ne doit pas transformer une
+ * écriture réussie en 500. L'échec est journalisé — donc visible sur la fiche,
+ * depuis [[D-148]] — puis absorbé par la route.
+ */
+export async function sendObjectifProposeEmail(
+  patientEmail: string,
+  prenom: string,
+  idPatient: string,
+): Promise<StatutEnvoiAcces> {
+  const smtpUrl = process.env.SMTP_URL;
+  const connexion = buildGoogleConnexionUrl();
+  return envoyerAccesTrace({
+    idPatient,
+    type: TYPES_CORRESPONDANCE_PATIENT.objectifPropose,
+    objet: 'Objectif de suivi à relire',
+    envoyer: async () => {
+      if (!smtpUrl) return;
+      const transport = creerTransportSmtp(smtpUrl);
+      // Le gabarit ne transporte PAS l'énoncé de l'objectif : il porte les mots
+      // du patient sur ce qui l'amène, et une boîte e-mail n'est pas un canal
+      // maîtrisé (audit HDS du 2026-07-24, qui a retiré le motif de
+      // consultation de l'e-mail portail).
+      const gabarit = rendreGabarit(getGabarit('objectif_propose'), { prenom, connexion });
+      await transport.sendMail({
+        from: '"Wellneuro" <noreply@wellneuro.fr>',
+        to: patientEmail,
+        subject: gabarit.sujet,
+        text: gabarit.corps,
+      });
+    },
+  });
+}

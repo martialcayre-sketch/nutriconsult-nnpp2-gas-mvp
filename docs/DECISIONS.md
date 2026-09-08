@@ -4,6 +4,65 @@
 
 ## Décisions actives
 
+### D-154 — L'objectif rédigé atteint le patient par le seul canal dont la production prouve qu'il fonctionne
+
+- Date : 2026-09-08
+- Statut : accepté — **arbitrage du responsable rendu en session le 2026-09-08**
+- Domaine : objectif négocié, correspondance patient, gabarits sortants
+- Porte sur : `M02` de l'audit du 2026-09-06 ; [[D-093]] (a) ; [[D-148]]
+
+**1. Le constat, et sa prémisse corrigée.** L'audit relevait « 4 propositions,
+1 objectif négocié, 0 ratification, 0 amendement, 0 réponse de jalon » et notait
+`WN_OBJECTIF_PROPOSE` **absent**. Lecture du 2026-09-08 : le drapeau est
+**posé** (`true`), comme `WN_DOSSIER_DEUX_VOIX` et `WN_CE_QUI_COMPTE`. La chaîne
+est donc entièrement ouverte — et les chiffres n'ont pas bougé. **Ce n'est pas
+un drapeau qui manquait.** Le patient ne pouvait apprendre qu'un objectif
+l'attendait qu'en revenant spontanément au portail ; quatre propositions et zéro
+retour disent ce que vaut cette hypothèse.
+
+**2. L'arbitrage.** Quatre voies étaient posées au responsable : un e-mail à la
+proposition, une carte au portail sans e-mail, rien (le téléphone reste le
+canal), ou différer. Retenu : **l'e-mail**. C'est le seul canal dont la
+production prouve qu'il fonctionne — 74 liens magiques, 58 accusés de réception,
+22 ouvertures d'accès, **tous en `Envoye`**.
+
+**3. L'ÉNONCÉ NE VOYAGE PAS, ET C'EST LE POINT DUR.** `enonce_patient` porte les
+mots du patient sur ce qui l'amène : le contenu le plus nominatif du dossier. Le
+gabarit dit qu'un texte attend dans l'espace ; il ne le transporte pas. Le
+précédent est écrit — l'audit HDS du 2026-07-24 a retiré le motif de
+consultation de l'e-mail portail, au motif qu'une boîte e-mail n'est pas un
+canal maîtrisé.
+
+**4. Le gabarit entre au registre, et il n'est PAS validé.** `objectif_propose@1`
+porte son empreinte, rejoint la liste figée, et déclare `valideLe: null`. Le
+responsable a arbitré **qu'un e-mail parte**, il n'a pas validé **ce texte** —
+le registre le dit au lieu de l'inventer, comme il l'a fait huit versions
+durant. C'est aussi le premier gabarit du registre qui n'ouvre pas un accès mais
+**appelle un geste**.
+
+**5. L'échec d'envoi n'annule pas l'écriture.** L'objectif est en base avant que
+l'envoi ne parte ; un relais en panne ne doit pas transformer une écriture
+réussie en 500, ni faire croire au praticien qu'il doit recommencer. L'envoi est
+donc hors transaction — un appel réseau dans une transaction la tiendrait
+ouverte le temps du SMTP — et son échec est journalisé par l'envoyeur, donc
+**visible sur la fiche depuis [[D-148]]**, puis absorbé par la route.
+
+**6. UN GARDE-FOU RETIRÉ PARCE QU'IL ÉTAIT INATTEIGNABLE.** La première
+rédaction contrôlait le cycle de vie du dossier dans la notification. Le mutant
+l'a démasqué : le supprimer ne faisait rougir aucun banc, parce que le POST
+refuse déjà **409** à l'entrée, avant toute écriture. Deux bancs passaient donc
+pour la mauvaise raison. Le dépôt vient d'apprendre ce que coûte un mécanisme
+qu'aucun chemin n'atteint ([[D-148]] : un drapeau que nul écran ne pose) ; on ne
+le refait pas pour se rassurer. Le contrôle est retiré, la porte unique est
+nommée dans le commentaire, et les deux bancs éprouvent désormais le **refus
+d'entrée** — sans écriture, donc sans envoi.
+
+**7. Ce qui n'est PAS fait.** Aucune relance : un seul envoi, à l'écriture. Rien
+n'est envoyé sur une révision d'objectif écrite par une autre porte que celle-ci.
+Le portail n'est pas modifié — l'écran de ratification existe déjà, c'est son
+absence d'appel qui était le défaut. Et la validation formelle du texte reste à
+rendre : elle se pose en changeant `valideLe`, sans toucher l'empreinte.
+
 ### D-153 — Le niveau d'alerte documente ; il ne décide pas, et une sentinelle le tient
 
 - Date : 2026-09-08

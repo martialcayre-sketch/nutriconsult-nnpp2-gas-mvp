@@ -33,7 +33,7 @@ describe('registre des gabarits patient — intégrité', () => {
     }
   });
 
-  it('expose les dix versions attendues, dans cet ordre', () => {
+  it('expose les onze versions attendues, dans cet ordre', () => {
     expect(REGISTRE_GABARITS_PATIENT.map(g => `${g.key}@${g.version}`)).toEqual([
       'lien_magique@1',
       'acces_portail@1',
@@ -49,6 +49,10 @@ describe('registre des gabarits patient — intégrité', () => {
       // haute d'une clé. Une v3 d'`acces_portail` serait servie AUSSI au chemin
       // sans lien, où le rendu lèverait sur `{{lien}}` manquant.
       'acces_portail_lien@1',
+      // [[D-154]] — premier gabarit d'un message qui n'ouvre pas un accès mais
+      // APPELLE UN GESTE : relire l'objectif proposé. Il ne transporte pas
+      // l'énoncé, seulement l'adresse de l'espace.
+      'objectif_propose@1',
     ]);
   });
 

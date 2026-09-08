@@ -42,6 +42,12 @@ const { getServerSession, prisma } = vi.hoisted(() => ({
   },
 }));
 
+// [[D-154]] — l'envoyeur est moqué : ce banc éprouve QUI est notifié et QUAND,
+// pas le SMTP. Le contenu du gabarit est tenu par `registreGabarits.test.ts`
+// (hash-lock), et le triplet Envoye/Non_envoye/Erreur par `email.test.ts`.
+const sendObjectifProposeEmail = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/consultation/email', () => ({ sendObjectifProposeEmail }));
+
 vi.mock('next-auth', () => ({ getServerSession }));
 vi.mock('@/lib/auth', () => ({ authOptions: {} }));
 vi.mock('@/lib/prisma', () => ({ prisma }));
@@ -102,7 +108,11 @@ describe('/api/praticien/objectifs', () => {
       praticienEmail: 'praticien@wellneuro.fr',
       actif: true,
       suiviClotureLe: null,
+      email: 'sophie.nicola@fictif.wellneuro.fr',
+      prenom: 'Sophie',
     });
+    sendObjectifProposeEmail.mockReset();
+    sendObjectifProposeEmail.mockResolvedValue('Envoye');
     prisma.consultation.findFirst.mockResolvedValue(null);
     prisma.objectifNegocie.findMany.mockResolvedValue([]);
     prisma.objectifNegocie.findUnique.mockResolvedValue(null);
@@ -1028,5 +1038,126 @@ describe('/api/praticien/objectifs', () => {
       const charge = await corpsDe(await GET(getRequest()));
       expect(charge.ratifications).toEqual({ OBJ_1: 'en_attente' });
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// M02 / D-154 — l'objectif rédigé atteint le patient.
+//
+// Mesure de production du 2026-09-08 : 4 propositions, 1 objectif négocié, et
+// 0 ratification, 0 amendement, 0 réponse de jalon — les trois drapeaux de la
+// chaîne étant pourtant posés (`WN_OBJECTIF_PROPOSE`, `WN_DOSSIER_DEUX_VOIX`,
+// `WN_CE_QUI_COMPTE` tous à `true`). Le retour spontané au portail, seul chemin
+// jusqu'ici, est démenti par ces chiffres.
+// ---------------------------------------------------------------------------
+describe('/api/praticien/objectifs — notification du patient (M02, D-154)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getServerSession.mockResolvedValue({ user: { email: 'praticien@wellneuro.fr' } });
+    prisma.patient.findUnique.mockResolvedValue({
+      praticienEmail: 'praticien@wellneuro.fr',
+      actif: true,
+      suiviClotureLe: null,
+      email: 'sophie.nicola@fictif.wellneuro.fr',
+      prenom: 'Sophie',
+    });
+    prisma.consultation.findFirst.mockResolvedValue(null);
+    prisma.objectifNegocie.findMany.mockResolvedValue([]);
+    prisma.objectifNegocie.findUnique.mockResolvedValue(null);
+    prisma.objectifNegocie.findFirst.mockResolvedValue(null);
+    prisma.ratificationObjectif.findMany.mockResolvedValue([]);
+    prisma.amendementObjectif.findMany.mockResolvedValue([]);
+    prisma.reponseJalonObjectif.findMany.mockResolvedValue([]);
+    prisma.propositionObjectif.findMany.mockResolvedValue([]);
+    prisma.dispositionProposition.findMany.mockResolvedValue([]);
+    prisma.objectifNegocie.create.mockResolvedValue(ligneLue({ id: 'OBJ_NEUF' }));
+    sendObjectifProposeEmail.mockReset();
+    sendObjectifProposeEmail.mockResolvedValue('Envoye');
+  });
+
+  it('un objectif écrit notifie le patient, par son adresse de dossier', async () => {
+    expect((await POST(postRequest(corps()))).status).toBe(201);
+    expect(sendObjectifProposeEmail).toHaveBeenCalledTimes(1);
+    expect(sendObjectifProposeEmail).toHaveBeenCalledWith(
+      'sophie.nicola@fictif.wellneuro.fr',
+      'Sophie',
+      'PAT_TEST',
+    );
+  });
+
+  // L'énoncé porte les mots du patient sur ce qui l'amène : le contenu le plus
+  // nominatif du dossier. Il ne franchit pas la frontière de l'e-mail.
+  it('l’énoncé de l’objectif ne franchit pas la frontière de l’e-mail', async () => {
+    await POST(postRequest(corps()));
+    const args = JSON.stringify(sendObjectifProposeEmail.mock.calls[0]);
+    expect(args).not.toContain('dormir');
+    expect(args).not.toContain('trois heures');
+  });
+
+  // CES DEUX BANCS ONT ÉTÉ RÉÉCRITS. Ils affirmaient d'abord « le dossier clos
+  // ne reçoit rien » en s'appuyant sur un contrôle placé dans la notification —
+  // et ils passaient pour la MAUVAISE raison : le POST refuse 409 bien avant,
+  // si bien que supprimer ce contrôle ne les faisait pas rougir. Le mutant l'a
+  // montré. Ils éprouvent désormais la vraie porte : le refus d'entrée, avant
+  // toute écriture, donc avant tout envoi.
+  it('un dossier CLOS est refusé à l’entrée : ni écriture, ni envoi', async () => {
+    prisma.patient.findUnique.mockResolvedValue({
+      praticienEmail: 'praticien@wellneuro.fr',
+      actif: true,
+      suiviClotureLe: new Date('2026-08-01T00:00:00.000Z'),
+      email: 'sophie.nicola@fictif.wellneuro.fr',
+      prenom: 'Sophie',
+    });
+    const res = await POST(postRequest(corps()));
+    expect(res.status).toBe(409);
+    expect(prisma.objectifNegocie.create).not.toHaveBeenCalled();
+    expect(sendObjectifProposeEmail).not.toHaveBeenCalled();
+  });
+
+  it('un dossier DÉSACTIVÉ est refusé de la même façon', async () => {
+    prisma.patient.findUnique.mockResolvedValue({
+      praticienEmail: 'praticien@wellneuro.fr',
+      actif: false,
+      suiviClotureLe: null,
+      email: 'sophie.nicola@fictif.wellneuro.fr',
+      prenom: 'Sophie',
+    });
+    const res = await POST(postRequest(corps()));
+    expect(res.status).toBe(409);
+    expect(prisma.objectifNegocie.create).not.toHaveBeenCalled();
+    expect(sendObjectifProposeEmail).not.toHaveBeenCalled();
+  });
+
+  it('un dossier sans adresse n’émet aucun envoi', async () => {
+    prisma.patient.findUnique.mockResolvedValue({
+      praticienEmail: 'praticien@wellneuro.fr',
+      actif: true,
+      suiviClotureLe: null,
+      email: null,
+      prenom: 'Sophie',
+    });
+    await POST(postRequest(corps()));
+    expect(sendObjectifProposeEmail).not.toHaveBeenCalled();
+  });
+
+  // LE POINT LE PLUS IMPORTANT DU LOT. L'objectif est DÉJÀ écrit quand l'envoi
+  // a lieu : un relais SMTP en panne ne doit pas transformer une écriture
+  // réussie en 500, ni faire croire au praticien qu'il doit recommencer.
+  // L'échec est journalisé par l'envoyeur (donc visible sur la fiche depuis
+  // D-148), puis absorbé.
+  it('un envoi qui échoue n’annule pas l’écriture : la réponse reste 201', async () => {
+    sendObjectifProposeEmail.mockRejectedValue(new Error('550 relais refusé'));
+    const res = await POST(postRequest(corps()));
+    expect(res.status).toBe(201);
+    expect((await corpsDe(res)).ok).toBe(true);
+    expect(prisma.objectifNegocie.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('un refus AVANT écriture ne notifie personne', async () => {
+    // Énoncé vide : la préparation refuse, rien n'est écrit — donc rien ne part.
+    const res = await POST(postRequest(corps({ enoncePatient: '   ' })));
+    expect(res.status).toBe(400);
+    expect(prisma.objectifNegocie.create).not.toHaveBeenCalled();
+    expect(sendObjectifProposeEmail).not.toHaveBeenCalled();
   });
 });

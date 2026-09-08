@@ -8,6 +8,7 @@ export const TYPES_CORRESPONDANCE_PATIENT = {
   questionnaires: 'questionnaires',
   accuseQuestionnaire: 'accuse_questionnaire',
   relanceAgendaSommeil: 'relance_agenda_sommeil',
+  objectifPropose: 'objectif_propose',
 } as const;
 
 export type TypeCorrespondancePatient =
