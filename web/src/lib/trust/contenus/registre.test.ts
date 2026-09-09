@@ -21,7 +21,7 @@ describe('registre des documents TRUST', () => {
     }
   });
 
-  it('expose les dix documents attendus', () => {
+  it('expose les onze documents attendus', () => {
     const cles = REGISTRE_DOCUMENTS_TRUST.map(d => `${d.key}@${d.version}`);
     expect(cles).toEqual([
       'cadre_accompagnement@v1',
@@ -32,6 +32,7 @@ describe('registre des documents TRUST', () => {
       // Append-only : la v4 s'ajoute derrière la v3, qui garde sa place.
       'donnees_confidentialite@v4',
       'donnees_confidentialite@v5',
+      'donnees_confidentialite@v6',
       'usage_ia@v1',
       'droits_patient@v1',
       'consentement_suivi@v2',
@@ -71,13 +72,13 @@ describe('registre des documents TRUST', () => {
     }
   });
 
-  it('la v5 est servie, et elle ne nie plus la connexion patient par Google', () => {
+  it('le document servi ne nie plus la connexion patient par Google', () => {
     // LE DÉFAUT : la v3 écrivait « Google — connexion sécurisée du praticien
     // uniquement (jamais des patients) ». C'est une négation explicite, et elle
     // était fausse depuis le 2026-07-22 — la porte Google patient est ouverte
     // en production, relue par `env-get` le 2026-09-07.
     const courant = getDocumentCourant('donnees_confidentialite');
-    expect(courant.version).toBe('v5');
+    expect(courant.version).toBe('v6');
     const points = courant.sections.flatMap(sec => sec.points ?? []);
     expect(points.some(p => p.includes('jamais des patients'))).toBe(false);
     expect(points.some(p => p.includes('si vous le choisissez, votre propre connexion'))).toBe(true);
@@ -100,14 +101,34 @@ describe('registre des documents TRUST', () => {
     expect(hebergement?.paragraphes.some(p => p.includes('région européenne'))).toBe(true);
   });
 
-  it('la v5 est servie BIEN QU’ELLE PARTAGE SA DATE avec la v4', () => {
+  it('À DATE ÉGALE, c’est la DERNIÈRE DÉCLARÉE qui est servie', () => {
     // Le piège que ce cas ferme : `getDocumentCourant` comparait avec `>=` et
     // gardait donc la PLUS ANCIENNE à date égale. Deux versions publiées le
     // même jour laissaient le patient sur le document périmé, sans signal.
+    //
+    // CE CAS A FAILLI S'ÉTEINDRE SANS BRUIT. Il s'écrivait « la v5 est servie
+    // bien qu'elle partage sa date avec la v4 » — et la v6, publiée le
+    // 2026-09-09, a pris la date maximale à elle seule : la paire à égalité
+    // n'était plus sur le chemin de `getDocumentCourant`, le cas restait vert
+    // en ne prouvant plus rien. Antidater la v6 pour le garder vivant aurait
+    // été mentir sur la date de publication d'un document patient.
+    //
+    // Il est donc réécrit en PROPRIÉTÉ, vraie quel que soit le nombre de
+    // versions : le document servi est le dernier déclaré parmi ceux qui
+    // portent la date la plus récente. L'attente se dérive du registre, jamais
+    // d'une copie de la comparaison qu'elle vérifie.
+    const versions = REGISTRE_DOCUMENTS_TRUST.filter(d => d.key === 'donnees_confidentialite');
+    const dateMax = [...versions].sort((a, b) => a.publieLe.localeCompare(b.publieLe)).at(-1)?.publieLe;
+    const attendue = versions.filter(d => d.publieLe === dateMax).at(-1);
+    expect(getDocumentCourant('donnees_confidentialite').version).toBe(attendue?.version);
+
+    // La paire à égalité reste en place comme pièce à conviction : c'est elle
+    // qui a révélé le défaut, et elle rougirait encore si `>=` revenait un jour
+    // où la date maximale est partagée.
     const v4 = getVersion('donnees_confidentialite', 'v4');
     const v5 = getVersion('donnees_confidentialite', 'v5');
     expect(v4?.publieLe).toBe(v5?.publieLe);
-    expect(getDocumentCourant('donnees_confidentialite').version).toBe('v5');
+    expect(versions.filter(d => d.publieLe === v4?.publieLe).at(-1)?.version).toBe('v5');
   });
 
   it('la v5 nomme le prestataire d’envoi et dit ce que les emails transportent', () => {
@@ -136,5 +157,35 @@ describe('registre des documents TRUST', () => {
     // — pour un texte qui ne parle même pas de Google. Et aucun banc ne
     // l'aurait vu : les fixtures e2e résolvent la version depuis le registre.
     expect(getDocumentCourant('donnees_confidentialite').requiresAcknowledgement).toBe(false);
+  });
+
+  it('la v6 nomme les résultats d’analyses ET dit ce qui n’en est pas fait', () => {
+    // POURQUOI CETTE VERSION EXISTE. `WN_CB_RESULTS_ENABLED` a été posé en
+    // production le 2026-09-09 : le dossier peut désormais porter des résultats
+    // biologiques chiffrés. Or `DOSSIER_RGPD.md` §2 conditionnait cette
+    // ouverture à la mise à jour PRÉALABLE de ce document et du registre des
+    // traitements — condition écrite là et nulle part ailleurs, ni dans
+    // `FEATURE_FLAGS.md`, ni dans `D-122` §2 qui décrit pourtant le geste. Elle
+    // a été manquée ; le drapeau est resté posé et le retard se comble ici.
+    //
+    // Nommer la catégorie ne suffit pas : un patient qui lit « résultats
+    // d'analyses » suppose qu'on en tire quelque chose. Le document dit donc
+    // aussi la limite que l'écran tient réellement ([[D-157]]) — la plage est
+    // POSÉE À CÔTÉ de la mesure, aucun calcul ne la qualifie.
+    const courant = getDocumentCourant('donnees_confidentialite');
+    const paragraphes = courant.sections.flatMap(s => s.paragraphes ?? []);
+
+    const recueil = paragraphes.find(p => p.includes('exploration biologique'));
+    expect(recueil, 'la catégorie « exploration biologique » est absente du document patient').toBeTruthy();
+    expect(recueil).toContain('la valeur mesurée, son unité et la date du prélèvement');
+
+    const limite = paragraphes.find(p => p.includes('Aucun calcul'));
+    expect(limite, 'le document ne dit pas ce qui n’est PAS fait des résultats').toBeTruthy();
+    expect(limite).toContain('le travail de votre praticien');
+
+    // La conclusion de la section « Quelles données » reste la conclusion : les
+    // deux phrases neuves s'insèrent AVANT elle, jamais après.
+    const section = courant.sections.find(s => s.titre === 'Quelles données sont recueillies ?');
+    expect(section?.paragraphes.at(-1)).toContain('uniquement les informations nécessaires');
   });
 });

@@ -169,9 +169,12 @@ logique de PatientsPanel.
   ~~**conditionnée à D6 (HDS)**~~ — **réconcilié le 2026-09-04** : la
   condition HDS est levée (annexe signée `D-121`, hébergement exclusif
   `D-080`/`D-120`) et l'étage 2 est **livré** derrière
-  `WN_CB_RESULTS_ENABLED` éteint (`D-122`, PR #838/#854) ; la levée du
-  drapeau est un geste d'exploitation conditionné aux mises à jour RGPD
-  préalables. Croisement questionnaires × biologie dans la
+  `WN_CB_RESULTS_ENABLED` (`D-122`, PR #838/#854). **Drapeau posé le
+  2026-09-09** : l'étage 2 est ouvert en production. Il l'a été **avant** les
+  mises à jour RGPD que ce paragraphe posait comme préalables — écart daté au
+  dossier RGPD §2, comblé le jour même (rubrique 5 du registre, v6 du document
+  patient), sans qu'aucune donnée ait été traitée entre-temps (0 ligne).
+  Croisement questionnaires × biologie dans la
   synthèse IA = différenciant majeur — **entièrement à faire** : c'est la
   ré-alimentation du moteur par le mesuré, frontière fermée par `D-122`,
   entrée « à cadrer » de la file d'attente des campagnes.
