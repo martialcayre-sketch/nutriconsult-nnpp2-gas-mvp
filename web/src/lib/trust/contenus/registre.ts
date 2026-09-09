@@ -646,6 +646,55 @@ const DONNEES_CONFIDENTIALITE_V5: VersionDocumentTrust = {
   hash: '465d5422f8ec0c453570aaae5c35d3afccf3f25138456902078075df027f9479',
 };
 
+const DONNEES_CONFIDENTIALITE_V6: VersionDocumentTrust = {
+  key: 'donnees_confidentialite',
+  type: 'privacy',
+  version: 'v6',
+  titre: 'Vos données personnelles et leur confidentialité',
+  resume:
+    'Quelles données sont recueillies, pourquoi, qui peut y accéder, où elles sont hébergées, et comment exercer vos droits.',
+  sections: [
+    ...DONNEES_CONFIDENTIALITE_V5.sections.map(section => {
+      if (section.titre === 'Quelles données sont recueillies ?') {
+        return {
+          ...section,
+          // Les deux phrases s'insèrent AVANT la dernière (« Nous recueillons
+          // uniquement les informations nécessaires… »), qui conclut la section
+          // et doit le rester.
+          paragraphes: [
+            ...section.paragraphes.slice(0, -1),
+            'Si une exploration biologique vous est proposée, cet espace conserve aussi ce qui s’y rapporte : la proposition écrite qui vous est remise, les analyses que vous indiquez avoir déjà faites, et, lorsqu’ils sont saisis, les résultats chiffrés de vos analyses — la valeur mesurée, son unité et la date du prélèvement.',
+            'Ces résultats sont saisis par votre praticien à partir du compte rendu que vous lui remettez. Ils comptent parmi les informations les plus sensibles de votre dossier et suivent exactement les mêmes règles que le reste : même hébergement en France chez un hébergeur certifié « données de santé », même accès réservé à votre seul praticien, mêmes droits pour vous.',
+            ...section.paragraphes.slice(-1),
+          ],
+        };
+      }
+      if (section.titre === 'Pourquoi ?') {
+        return {
+          ...section,
+          paragraphes: [
+            ...section.paragraphes,
+            'Lorsque des résultats d’analyses figurent à votre dossier, ils sont affichés à côté des repères publiés qui s’y rapportent, en indiquant d’où ces repères viennent. Aucun calcul ne les déclare « normaux » ou « anormaux », et aucune conclusion n’en est tirée automatiquement : les rapprocher et les interpréter est le travail de votre praticien.',
+          ],
+        };
+      }
+      return section;
+    }),
+  ],
+  changeLevel: 'information_substantielle',
+  changeSummary:
+    'Une catégorie d’informations s’ajoute à ce document : ce qui se rapporte à une exploration biologique — la proposition qui vous est remise, les analyses que vous déclarez avoir déjà faites, et les résultats chiffrés de vos analyses lorsque votre praticien les saisit. Le document dit aussi ce qui n’est PAS fait de ces résultats : ils sont posés à côté des repères publiés, sans qu’aucun calcul ne les déclare normaux ou anormaux.',
+  publieLe: '2026-09-09',
+  // MÊME RÉGIME QUE LES v3, v4 ET v5, et le motif tient encore ici : ce
+  // document DÉCRIT une catégorie d'information, il ne demande aucune
+  // autorisation nouvelle. Le résultat d'analyse n'entre au dossier que si le
+  // patient remet lui-même son compte rendu à son praticien — le geste
+  // d'engagement existe déjà, hors écran, et un mur d'accusé le doublerait
+  // sans rien protéger de plus.
+  requiresAcknowledgement: false,
+  hash: 'f704378b435e996c2a39c78e70ae4e6a5df7af426312f41519c069dc42a31591',
+};
+
 /** Toutes les versions, les plus récentes en premier par clé. */
 export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.freeze([
   CADRE_ACCOMPAGNEMENT_V1,
@@ -655,6 +704,7 @@ export const REGISTRE_DOCUMENTS_TRUST: readonly VersionDocumentTrust[] = Object.
   DONNEES_CONFIDENTIALITE_V3,
   DONNEES_CONFIDENTIALITE_V4,
   DONNEES_CONFIDENTIALITE_V5,
+  DONNEES_CONFIDENTIALITE_V6,
   USAGE_IA_V1,
   DROITS_PATIENT_V1,
   CONSENTEMENT_SUIVI_V2,

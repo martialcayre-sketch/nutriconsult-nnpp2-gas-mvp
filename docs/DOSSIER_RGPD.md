@@ -68,12 +68,35 @@ l'évolution, remettre des documents validés par le praticien.
 Le même document écrit, et c'est une limite de finalité opposable :
 « cet accompagnement relève du bien-être et du suivi ; **il n'établit pas de
 diagnostic médical** ». L'étage des résultats biologiques réels est
-construit (table `resultats_biologiques`, `D-122` §2, 2026-09-03) et reste
-**fermé en production** : `WN_CB_RESULTS_ENABLED` est éteint, aucune valeur
-n'est saisie ni stockée. Son ouverture est un geste d'exploitation daté,
-conditionné à la mise à jour **préalable** du registre des traitements et du
-document d'information patient (nouvelle catégorie « résultats
-biologiques »).
+construit (table `resultats_biologiques`, `D-122` §2, 2026-09-03) et
+**ouvert en production depuis le 2026-09-09** : `WN_CB_RESULTS_ENABLED` a été
+posé ce jour-là, conteneurs redémarrés à 06:34:55, effectivité constatée par
+sonde non authentifiée sur `/api/praticien/biologie/resultats` — `401` et non
+`503`, la garde testant le drapeau avant la session.
+
+> **Écart assumé et daté — la condition préalable n'a pas été tenue.** Ce
+> paragraphe posait l'ouverture comme « conditionnée à la mise à jour
+> **préalable** du registre des traitements et du document d'information
+> patient ». Le drapeau a été posé **avant** ces deux mises à jour, sur une
+> vérification qui n'avait retenu que les conditions techniques de `D-081` et
+> `D-122` §2 — hébergement HDS exclusif, `WN_CB_ENABLED`, code déployé qui lit
+> le drapeau. La condition RGPD n'était écrite **qu'ici** : ni
+> `FEATURE_FLAGS.md`, ni `D-122` §2 qui décrit pourtant le geste, ne la
+> mentionnaient. Elle a donc été manquée.
+>
+> **Portée réelle de l'écart** : nulle sur les données. `resultats_biologiques`
+> comptait **0 ligne** au moment du constat (lecture par conteneur,
+> `one-off-8343`, 2026-09-09 08:38) — la capacité a été ouverte, aucune donnée
+> de santé n'a été traitée hors registre. L'arbitrage du responsable, rendu le
+> même jour, a été de **laisser le drapeau posé et de combler immédiatement**
+> plutôt que de refermer : les deux mises à jour sont faites ci-dessus
+> (rubrique 5) et dans la **v6** du document `donnees_confidentialite`
+> (`registre.ts`, publiée le 2026-09-09).
+>
+> Ce que l'épisode laisse au dossier : une condition d'ouverture qui ne vit que
+> dans une pièce de conformité, et pas dans la documentation du drapeau qu'elle
+> conditionne, est une condition qu'on manque. `FEATURE_FLAGS.md` la porte
+> désormais aussi.
 
 ## 3. Base légale
 
@@ -122,6 +145,7 @@ personnelles se répartissent ainsi :
 |---|---|---|
 | Identité et contact | `Patient` (email, prénom, nom, date de naissance, téléphone) | Données ordinaires |
 | **Santé (art. 9)** | `Consultation`, `QuestionnaireReponse`, `SyntheseIA`, `AssessmentEpisode`, `ProtocolDraft`, `ProtocolCheckin`, `AgendaSommeilNuit`, `AgendaAlimentaireJour`, `CorrespondanceMedecin`, `CorrespondancePatient`, `BookletEnvoi`, `RelectureNote`, `TrustAdverseEffectReport` | **Catégorie particulière** |
+| **Santé — exploration biologique (art. 9)** | `ArbitrageBiologique`, `PanelBiologieDocumente`, `DocumentPatientBiologie`, `ResultatBiologique` | **Catégorie particulière** — voir le paragraphe ci-dessous |
 | Preuves de transparence | `TrustAcknowledgement`, `TrustChoiceEvent`, `TrustRightsRequest`, `TrustPrivacyIncident` | Traces d'information, de choix et de demandes |
 | Authentification et accès | `Patient.accessTokenRevoked` (drapeau de révocation, non secret — les valeurs du jeton permanent ont été **purgées le 2026-08-22**, `D-085` §5), `PortailMagicLink`, `PortailConnexionGoogle`, `PortailDemandeTentative` | Drapeau, liens hachés expirants, traces de connexion, anti-abus |
 | Journalisation | `JournalAccesDossier` (`id_patient`, `praticien_email`, route, méthode, horodatage) | Piste d'audit des accès praticien |
@@ -647,6 +671,8 @@ elle.
 | 1 | Responsable | Contradiction DPO (G-TRUST-02 vs D-005) | Responsable | 2026-10-21 | `docs/DECISIONS.md` |
 | 3 | Base légale | Qualification, non rédigée à ce jour | Conseil qualifié | 2026-10-21 | ici, rubrique 3 |
 | 4 | Personnes | Cas des mineurs | Responsable | 2026-10-21 | `SOURCES_ET_VALIDATIONS.md` |
+| 5 | Catégories | **Dix-sept tables filles de `patients` ne sont pas déclarées** — mesuré le 2026-09-09 en comparant `schema.prisma` à cette rubrique : 38 modèles portent une relation vers `Patient`, 21 y sont cités. Les qualifier (art. 9 ou non) est un acte juridique, pas une écriture de code ; la liste est nommée dans `rubrique5.modeles.test.ts`, qui **rougit sur toute table ajoutée après cette date** — le passif est ouvert, la récidive est fermée | Responsable + conseil | 2026-10-21 | ici, rubrique 5 |
+| 5 | Catégories | ~~Catégorie « résultats biologiques » absente~~ — **déclarée le 2026-09-09** (quatre tables du rayon), mais **après** la pose de `WN_CB_RESULTS_ENABLED` que la rubrique 2 posait comme conditionnée à cette déclaration préalable. Écart daté en rubrique 2 ; portée nulle sur les données (0 ligne au constat) | — | fermé | ici, rubriques 2 et 5 |
 | 6 | Sous-traitants | Aucun DPA archivé — forme connue depuis la réponse du 2026-08-11 (DPA + annexe HDS distincte, signature séparée requise) mais ~~**signature et archivage non faits**~~ — **annexe HDS signée le 2026-08-30** (déclaration du responsable, consignée le 2026-08-31, `D-121`) ; **restent dus : l'archivage du document signé, et la signature + archivage du DPA** | Responsable | ~~avant bascule Scalingo~~ — ordre suspendu par `D-078` : **dès réception de l'annexe** (demandée 2026-08-12, relancée 2026-08-19 — **canal et dates vérifiés au fil le 2026-08-20**, rubrique 6 ; **signée le 2026-08-30**) ; ~~en tout état de cause **avant tout décommissionnement**~~ — **plus depuis `D-080`** (2026-08-22) ; archivage dû **avant la revue du 2026-10-21** | `CHECKLIST_FINALISATION.md` §F |
 | 6 | Sous-traitants | ~~Périmètre HDS de la région `osc-fr1` non confirmé~~ — **répondu par écrit le 2026-08-11** : couvert, activités 5 et 6 incluses | Responsable | fermé | ici, rubrique 6 |
 | 6 | Sous-traitants | ~~Fournisseur SMTP réel non identifié~~ — **identifié le 2026-08-22 : Google Workspace** (rubrique 6, TROU 2 — SPF/MX/DKIM du domaine + expéditeur du code) ; **restent dus** : localisation du traitement et couverture DPA | Responsable | 2026-10-21 | ici, rubrique 6 |

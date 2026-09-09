@@ -4,6 +4,78 @@
 
 ## Décisions actives
 
+### D-159 — Une condition d'ouverture qui ne vit que dans le dossier RGPD est une condition qu'on manque
+
+- Date : 2026-09-09
+- Statut : accepté — **arbitrage du responsable rendu en session le 2026-09-09**,
+  sur constat d'écart : « laisser posé, combler tout de suite »
+- Domaine : RGPD, exploitation, rayon biologie — étage 2
+- Porte sur : `D-081` (un drapeau se pose avec le code qui le lit, geste daté),
+  `D-122` §2 (l'étage 2 et son verrou), `D-120` §3 (le retrait du 2026-08-31),
+  `D-157` (la limite que l'écran tient), `DOSSIER_RGPD.md` §2 et rubrique 5
+
+**1. Le geste.** `WN_CB_RESULTS_ENABLED` est posé en production le 2026-09-09,
+sur demande explicite du responsable. `env-set` **puis** `restart` : Scalingo
+n'applique pas un changement d'environnement aux conteneurs en cours, et un
+drapeau posé sans redémarrage laisse la configuration et le runtime se
+contredire — l'écart exact que ce registre passe son temps à corriger ailleurs.
+Effectivité **constatée** par sonde non authentifiée sur
+`/api/praticien/biologie/resultats` : `401 unauthenticated` et non
+`503 cb_resultats_desactives`. `garderResultats` teste le drapeau **avant** la
+session ; ce couple de codes prouve donc le drapeau lu par le processus, sans
+authentification et sans toucher une donnée.
+
+**2. La condition manquée, et pourquoi elle l'a été.** `DOSSIER_RGPD.md` §2
+conditionnait cette ouverture à la mise à jour **préalable** du registre des
+traitements et du document d'information patient. Le drapeau a été posé avant.
+La vérification qui a précédé le geste avait retenu — et présenté comme
+complètes — les trois conditions **techniques** : hébergement HDS exclusif
+(`D-080`/`D-121`), `WN_CB_ENABLED`, code déployé qui lit le drapeau (`D-081`,
+la condition dont le manquement avait fait retirer ce même drapeau le
+2026-08-31). La quatrième était écrite **dans un seul document**, et ce document
+n'était ni `FEATURE_FLAGS.md`, ni `D-122` §2 — qui décrit pourtant le geste
+d'exploitation en trois lignes sans la nommer.
+
+**La décision que ceci prend, et qui dépasse ce drapeau** : une condition
+d'ouverture se pose **sur la ligne de ce qu'elle conditionne**. `FEATURE_FLAGS.md`
+porte désormais la condition RGPD à côté du drapeau. Un lecteur qui ouvre la
+documentation d'un drapeau y trouve toutes ses conditions, ou il n'en trouve
+aucune de fiable.
+
+**3. Portée réelle : nulle sur les données.** `resultats_biologiques` comptait
+**0 ligne** au constat (lecture par conteneur, `one-off-8343`). La capacité a
+été ouverte ; aucune donnée de santé n'a été traitée hors registre. L'arbitrage
+du responsable a été de **laisser posé et de combler immédiatement** plutôt que
+de refermer — le retour au fail-closed était l'autre branche, et elle a été
+présentée.
+
+**4. Ce qui est comblé.** Rubrique 5 du dossier RGPD : les quatre tables patient
+du rayon (`ArbitrageBiologique`, `PanelBiologieDocumente`,
+`DocumentPatientBiologie`, `ResultatBiologique`). Document patient :
+`donnees_confidentialite@v6`, qui nomme la catégorie **et dit ce qui n'en est pas
+fait** — les repères publiés se posent à côté de la mesure, aucun calcul ne les
+qualifie (`D-157`). Nommer une catégorie sans dire ce qu'on en fait laisserait le
+lecteur supposer le pire, ou le meilleur.
+
+**5. Le constat plus large, non tranché ici.** Comparer `schema.prisma` à la
+rubrique 5 rend **17 tables filles de `patients` non déclarées**, sans rapport
+avec la biologie : 38 modèles portent une relation vers `Patient`, 21 y étaient
+cités. Elles ne sont **pas** corrigées ici — qualifier une table au sens de
+l'article 9 est un acte juridique, comme le trou de base légale que la rubrique 3
+nomme déjà. Portées au récapitulatif des trous, porteur « responsable + conseil ».
+
+**6. La garde.** `rubrique5.modeles.test.ts` tient la rubrique 5 au schéma, comme
+`registre.dossier.test.ts` tient la rubrique 6 au document patient. Il compare
+des **noms de modèle**, jamais de la prose. La dette de 17 y est nommée et datée ;
+toute table ajoutée après le 2026-09-09 rougit. Un second cas périme la dette
+elle-même : un nom dispensé qui n'est plus une table doit en sortir, faute de quoi
+la liste finirait par couvrir une table neuve sous un ancien nom. **Le passif est
+ouvert, la récidive est fermée.**
+
+**Aucune modification clinique** (`DC-17`/`DC-18`) : aucun seuil, aucune règle,
+aucune table signée touchée — un geste d'exploitation, deux pièces de conformité
+et une garde.
+
 ### D-158 — Un `T0` ne se confirme qu'après le second rideau, ET sur une synthèse qui l'a lu
 
 - Date : 2026-09-08, **amendée le 2026-09-09** (§3 bis — le cinquième temps)
