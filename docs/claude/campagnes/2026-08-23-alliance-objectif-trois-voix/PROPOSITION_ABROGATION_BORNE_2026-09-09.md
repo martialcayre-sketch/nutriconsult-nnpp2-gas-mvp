@@ -41,17 +41,58 @@ périmètre du SHA) reste rédigeable aujourd'hui sans aucune lecture de product
 elle ne s'obtiendrait que par rejeu de `construireChaineC1`, déterministe
 (`chaineC1.ts:336-345`), ce que personne n'a programmé.
 
-### 3. La précondition n'est ni levée ni impossible à lever : elle est inattribuable
+### 3. La précondition EST levée — sur `PAT017` — et le silence est fabriqué
 
-Au 2026-09-08 (lecture de production rapportée par `D-154` §1) : 4 propositions,
-1 objectif négocié, 0 ratification, 0 amendement, 0 réponse de jalon. Un objectif
-existe donc. Mais **aucun texte du dépôt ne nomme le dossier qui le porte**, et
-`WN_OBJECTIF_PROPOSE_PATIENTS` est vide — la surface est ouverte à tous les
-dossiers courants, pas aux trois du périmètre. La grille du 2026-08-28 avertit
-elle-même qu'une proposition hors périmètre ne satisfait pas la condition (a)
-(`GRILLE_CONSTATS_2026-10-04.md:33-42`).
+**Révisé le 2026-09-09, après désignation par le praticien.** La rédaction
+initiale de ce fichier concluait à une précondition « inattribuable », faute que
+le dépôt nomme le dossier porteur. Le praticien l'a nommé : l'unique objectif
+négocié de production porte sur **`PAT017`**, qui appartient au périmètre de
+`D-093`. Le constat qui suit remplace celui-là ; il ne l'efface pas.
 
-Une borne qui tomberait le 2026-10-04 tomberait sur un état inconnu.
+La précondition du point 1 de `D-093` est donc **levée** : un objectif existe sur
+l'un des trois dossiers, il y a bien quelque chose à ratifier. La fenêtre
+d'observation a matière.
+
+Ce qui n'a pas pu se produire, c'est la **réponse**. À la date de cette écriture,
+il n'y avait ni client au cockpit praticien pour porter le geste, ni envoi vers
+le patient. Le patient de `PAT017` n'a jamais été informé qu'un objectif
+l'attendait.
+
+Et cette impossibilité est **permanente en l'état**, pas seulement passée :
+
+- `notifierObjectifPropose` n'est appelée que sur les deux chemins de `create`
+  (`web/src/app/api/praticien/objectifs/route.ts:877` et `:912`). **L'envoi se
+  déclenche à l'écriture, jamais sur l'état.**
+- Aucune relance, aucun renvoi n'existe : rien dans la route praticien ni dans le
+  cockpit ne permet de faire partir le courrier d'un objectif déjà écrit.
+- Un objectif écrit avant la mise en service de l'expéditeur ne produira donc
+  jamais de courrier. Celui de `PAT017` est **muet par construction**.
+
+Il n'est pas pour autant hors d'atteinte : la surface patient lit l'état, pas le
+courrier. Si le patient de `PAT017` se connectait, la sonde du hub ouvrirait le
+lien et l'objectif serait ratifiable. Mais rien ne lui donne de raison de se
+connecter.
+
+**Conséquence pour `D-093`.** Les six semaines n'ont pas mesuré une indifférence
+du patient : elles ont mesuré une absence de réponse sur un canal qui n'existait
+pas. C'est exactement le cas contre lequel `DC-24` met en garde, à l'envers — ici
+l'absence de constat ne serait pas prise pour un feu vert, elle serait prise pour
+un feu rouge, alors qu'elle n'est le constat de rien.
+
+**Deux façons d'ouvrir réellement l'observation, aucune ne demandant de code :**
+
+1. **Écrire une révision qui supersède la ligne existante.** Réviser AJOUTE une
+   ligne — c'est un `create`, donc le courrier part. La chaîne reste à une seule
+   tête si `supersedesObjectifId` est renseigné ; omis, elle en crée une seconde,
+   et deux têtes ferment le geste des deux côtés (`route.ts:490` et `:618-624`).
+   Réserve : réviser pour déclencher un envoi se sert d'un geste clinique comme
+   d'un transport. Cela ne se fait que si la révision a par ailleurs lieu d'être.
+2. **Prévenir le patient hors du produit**, et le laisser se connecter — la
+   surface l'attend.
+
+Une troisième voie demanderait du code : une action « relancer » qui envoie le
+courrier d'un objectif déjà écrit, sans toucher à la chaîne. Elle relève de la
+file d'attente, pas de cette décision.
 
 ### 4. La borne n'a ni exécutant ni définition
 
@@ -100,8 +141,11 @@ de signature : le délai courait sur une fenêtre déclarée fermée le jour mê
 `D-094` §3, prise le même jour et fondée sur `D-093`, interdit de persister
 l'ordre servi (`schema.prisma:2405-2408`) — soit exactement la trace que la
 condition (b) demande d'observer. Au 2026-09-08, un objectif négocié existe en
-production mais aucun texte ne nomme son dossier, et `WN_OBJECTIF_PROPOSE_PATIENTS`
-étant vide, rien ne garantit qu'il appartienne au périmètre. Enfin la borne n'a
+production, sur `PAT017`, dans le périmètre : la précondition est levée. Mais son
+patient n'a jamais été informé — il n'y avait alors ni client au cockpit ni envoi
+— et il ne peut plus l'être, `notifierObjectifPropose` ne partant qu'à l'écriture
+(`route.ts:877`, `:912`) sans qu'aucune relance existe. Les six semaines ont
+mesuré une absence de réponse sur un canal inexistant. Enfin la borne n'a
 aucun exécutant — `D-093` ne pose ni code, ni drapeau, ni migration — et son verbe
 « se referme » n'est glosé nulle part autrement que par « il ne s'étend pas par
 défaut ».
@@ -116,10 +160,13 @@ défaut ».
    « reste restreint » au lieu de « expire dans une ambiguïté » — ce qui est une
    retenue plus forte, non plus faible, et conforme à `DC-24` : rien ne s'ouvre
    par silence.
-3. **La condition (a) devient attribuable.** Une réponse patient ne vaut que si
-   elle porte sur un objectif d'un dossier du périmètre, **nommé par identifiant
-   au moment du constat**. Une proposition servie hors périmètre ne la satisfait
-   pas, quel qu'en soit le retour.
+3. **La condition (a) se constate par identifiant, et le constat s'écrit.** Une
+   réponse patient ne vaut que si elle porte sur un objectif d'un dossier du
+   périmètre, nommé par identifiant au moment du constat. L'unique objectif de
+   production porte sur `PAT017`, dans le périmètre — le dépôt ne le disait pas,
+   il le dit désormais. Une proposition servie hors périmètre ne satisfait pas la
+   condition, quel qu'en soit le retour, `WN_OBJECTIF_PROPOSE_PATIENTS` étant
+   vide.
 4. **La condition (b) est scindée.** Sa moitié descriptive — producteur de
    candidats, ordre à trois termes, textes `LIMITATION_*`, ce que le SHA couvre et
    ce qu'il laisse dehors — est due et rédigeable sans aucune lecture de
@@ -151,7 +198,10 @@ la forme employée par `D-155` sous `D-049` :
 > **AMENDÉE le 2026-09-09 par [[D-160]] — la borne est abrogée, le périmètre
 > demeure.** Le délai courait depuis une date à laquelle le point 1 ci-dessus
 > déclare l'observation non commencée ; `D-094` §3 interdit par ailleurs la trace
-> que la condition (b) demande d'observer. Le 2026-10-04 ne redevient pas un
+> que la condition (b) demande d'observer. L'objectif écrit sur `PAT017` n'a
+> jamais atteint son patient — ni cockpit ni envoi à l'époque, et
+> `notifierObjectifPropose` ne part qu'à l'écriture : les six semaines ont mesuré
+> un silence sur un canal inexistant. Le 2026-10-04 ne redevient pas un
 > point de contrôle. **Le périmètre reste `PAT006`, `PAT007`, `PAT017` sans
 > terme, et ne s'étend que par décision datée.**
 ```
@@ -175,10 +225,12 @@ la forme employée par `D-155` sous `D-049` :
 
 ## Ce que cette proposition ne tranche pas
 
-- **Sur quel dossier porte l'unique objectif négocié de production.** Une lecture
-  par identifiants seuls le dirait ; elle n'a pas été faite ici. Tant qu'elle ne
-  l'est pas, la condition (a) reste inattribuable, et c'est le seul point qui
-  demanderait la production.
+- ~~Sur quel dossier porte l'unique objectif négocié de production.~~ **Répondu
+  le 2026-09-09 par le praticien : `PAT017`, dans le périmètre.** Aucune lecture
+  de production n'est donc plus nécessaire pour trancher la borne.
+- **Comment porter à son patient l'objectif déjà écrit de `PAT017`** — révision
+  qui supersède, avis hors produit, ou action « relancer » à construire. Le choix
+  décide de la date à laquelle l'observation commence pour de bon.
 - **Si le praticien accepte la moitié descriptive du bilan comme condition (b)
   suffisante**, ou s'il la tient pour une simple pièce du futur dossier de
   signature.
