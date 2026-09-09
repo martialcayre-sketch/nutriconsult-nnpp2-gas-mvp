@@ -4,6 +4,193 @@
 
 ## Décisions actives
 
+### D-161 — La fin de l'objectif se dit par une ligne, et l'accord a deux formes qui ne se confondent pas
+
+- Date : 2026-09-09
+- Statut : accepté (arbitrage du praticien, rendu en session le 2026-09-09)
+- Porte sur : [[D-094]] (régime de l'objectif à trois voix), la chaîne
+  `objectifs_negocies` et les deux tables de retour patient. N'amende aucune
+  clause existante : ajoute ce qu'aucune ne dit.
+- Domaine : doctrine produit — campagne Alliance 6.0-B, passage de l'objectif
+  partagé à la prise de décision
+
+**Constat.** Une chaîne d'objectif porte deux faits qui ne sont pas des
+propriétés d'une version — s'est-on accordé, est-ce fini. Le premier est logé
+dans une colonne de version saisie à la main, ce qui le rend à la fois perdable
+et falsifiable ; le second n'existe pas. Rien ne permet donc de dire qu'une
+négociation est conclue, et le protocole se poserait sur un accord que le modèle
+ne sait pas exprimer.
+
+**Décision :**
+
+1. **Deux états distincts, et l'un n'est pas l'autre.** L'**état d'accord** est
+   une propriété de version, déjà dérivée du dernier geste, et **n'est jamais
+   terminal**. La **fin de chaîne** est une propriété de chaîne, et c'est elle
+   qui manque. Confondre les deux ferme l'objet au moment où le travail commence.
+2. **L'accord a deux formes, également recevables.** La **ratification au
+   portail** est un geste du patient, daté par la base : une preuve. L'**accord
+   attesté en consultation** est une déclaration du praticien, datée par lui : un
+   témoignage. Un accord se conclut le plus souvent dans le cabinet — exiger un
+   clic pour l'enregistrer effacerait un fait réel.
+3. **Le témoignage cède à la preuve, jamais l'inverse.** Un accord attesté par le
+   praticien reste contredisible par le patient au portail, et cette contradiction
+   l'emporte. Une ratification ne se défait par aucune déclaration du praticien.
+4. **Le patient voit laquelle des deux il lit.** « Convenu le » sans mention de
+   provenance laisse croire à un accord qu'il aurait donné. Chaque affichage
+   d'accord porte sa source — son geste, ou la parole du praticien.
+5. **La fin de chaîne se dit par une LIGNE, jamais par une colonne qu'on
+   écrase**, et cette ligne référence la **racine** de la chaîne — l'objectif dont
+   `supersedesObjectifId` est nul —, pas sa tête. La racine ne bouge jamais : une
+   fin ainsi attachée survit à toute révision, et ne peut pas se retrouver
+   orpheline. Se rouvrir est une ligne de plus, dans le régime déjà tenu par le
+   dépôt.
+6. **Trois motifs de fin, et trois seulement** : **atteint**, **abandonné** — avec
+   son motif écrit, dont `nonTraiteMotif` est la graine à promouvoir de la version
+   à la chaîne — et **remplacé**, portant la racine de la chaîne qui prend la
+   suite. Toute extension de cette liste est une décision `D-xxx` nouvelle.
+7. **« Atteint » se déclare à DEUX VOIX ; « abandonné » se prend seul.** Une
+   réussite ne se constate pas seul : il y faut le geste du praticien ET celui du
+   patient. L'ordre est libre — l'un propose la fin, l'autre la confirme —, et
+   c'est exactement la forme sous laquelle l'objectif s'est négocié : la fin se
+   négocie comme le début. Tant qu'une seule voix s'est prononcée, **la chaîne
+   n'est pas achevée** : elle porte une fin **proposée**, que l'autre voix peut
+   confirmer ou refuser. Un refus n'est pas une panne du mécanisme, c'est un
+   signal — il reste lisible et ne s'efface pas, au même titre qu'une
+   contestation.
+
+   **La conduite de cette fin INCOMBE AU PRATICIEN.** La voix du patient est
+   requise ; le devoir de l'obtenir ne lui incombe pas. Un patient qui ne répond
+   pas n'est jamais en défaut, et son silence ne devient pas un assentiment :
+   c'est au praticien qu'il revient d'aller chercher la seconde voix, et de
+   conclure la chaîne d'une manière ou d'une autre plutôt que de la laisser
+   pendre.
+
+   **Et la seconde voix suit le régime du point 2, entièrement.** Elle vaut par
+   un geste au portail — une preuve — ou par une parole tenue en consultation que
+   le praticien atteste — un témoignage, cédant à la preuve si le patient se
+   prononce ensuite. Le praticien peut donc consigner un « atteint » convenu dans
+   le cabinet, **parce qu'il l'a entendu** ; il ne peut pas attester ce que
+   personne n'a dit. **Un « atteint » sans l'une ou l'autre forme de seconde voix
+   n'existe pas** : la chaîne reste une fin proposée, ou devient un renoncement
+   motivé. Le silence ne conclut rien.
+
+   **Le renoncement, lui, reste unilatéral et motivé.** Exiger deux voix pour
+   abandonner condamnerait à l'inachèvement toute chaîne dont le patient ne
+   répond plus — on aurait rebâti, à la sortie, le défaut que cette décision
+   existe pour fermer. La règle tient en une phrase : *on ne conclut pas seul à
+   une réussite ; on renonce seul, et on le dit.* « Remplacé » suit le même
+   régime que l'abandon, étant un geste d'organisation du suivi et non un
+   jugement sur le résultat.
+
+8. **La clôture du suivi rend la chaîne INACTIVE, elle ne l'achève pas.** Rien ne
+   s'écrit : l'état se dérive de la clôture, et se défait si le suivi rouvre. Une
+   fin est un geste, pas une conséquence administrative.
+9. **« Atteint » ne dit rien d'une cause.** Il dit que l'objectif n'est plus ce
+   sur quoi on travaille, jamais qu'une intervention l'a produit (`DC-27`). Aucun
+   décompte, aucune moyenne, aucune note — ni des accords, ni des fins
+   (`DC-19`, `DC-24`).
+10. **Ce qui autorise le passage à la prise de décision** — protocole, bilan
+   biologique, compléments — tient en trois conditions cumulatives : une **seule
+   tête** de chaîne ; un **accord** sur cette tête, sous l'une ou l'autre forme ;
+   la chaîne **non achevée**. Le rail ne peut pas servir de feu : le statut de la
+   phase 3 ne lit aujourd'hui que les couvertures des douze besoins
+   (`FichePatientPanel.tsx:747-749`), et affiche « renseignée » sur un dossier
+   sans le moindre objectif.
+11. **`negocieLe` cesse d'être saisie sur la version.** La date d'accord se lit
+    depuis le fait qui la porte — geste du patient, ou attestation du praticien.
+    Tant que la colonne subsiste, le formulaire doit être vidé à chaque bascule
+    de mode, sans quoi une date abandonnée repart avec la version suivante.
+
+**Ce que cette décision N'AUTORISE PAS** : déclarer un accord au nom du patient
+sans dire que c'est le praticien qui parle ; faire de la ratification un terminus ; conclure seul à un « atteint » ;
+écraser une fin par un `UPDATE` ; compter, moyenner ou noter des accords ou des
+fins ; tirer d'un « atteint » une affirmation causale.
+
+**Ce que cette décision NE FAIT PAS.** Aucune migration n'est écrite ici et
+`schema.prisma` n'est pas touché : le modèle requis est décrit, sa mise en œuvre
+demande un feu vert explicite. Et elle ne corrige pas le blocage connu — deux
+têtes de chaîne sans verbe de départage ferment les trois gestes du patient en
+409 ; tant qu'il n'existe pas, la première des trois conditions du point 10 n'est
+pas garantie.
+
+- Conséquences : fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-l-accord.md`.
+  Aucun code, aucune migration, aucun drapeau dans cette décision.
+
+### D-160 — Ce qui se cite dans l'objectif partagé : deux listes, pas une
+
+- Date : 2026-09-09
+- Statut : accepté (arbitrage du praticien, rendu en session le 2026-09-09)
+- Amende : [[D-094]] §1, en portant sa liste fermée de trois à **quatre**
+  entrées, et ouvre à côté d'elle une **seconde** liste, distincte, pour la
+  reformulation praticien. Le reste de `D-094` est inchangé.
+- Domaine : doctrine produit — campagne Alliance 6.0-B, objectif à trois voix
+
+**Constat.** Deux chantiers tranchés le 2026-09-09 butent sur la clause de
+fermeture de `D-094` §1. L'un est une parole écrite du patient destinée à un
+fragment de proposition ; l'autre est un texte du praticien destiné à sa propre
+reformulation. Ni la nature, ni l'objet, ni le garant ne coïncident. La première
+entre dans la liste ; la seconde demande la sienne.
+
+**Décision :**
+
+1. **La liste de `D-094` §1 passe à quatre entrées.** Quatrième : « ce qui compte
+   pour moi aujourd'hui », verbatim, jamais paraphrasé, marqué comme citation
+   avec sa source — même régime que les trois autres. Quatre conditions, aucune
+   négociable :
+   - le fragment porte sa `saisiLe`, comme le fragment d'anamnèse porte sa
+     `dateConsultation` — sans quoi on cite un « aujourd'hui » vieux de trois
+     mois comme une demande actuelle ;
+   - **un seul dépôt, le plus récent.** En citer plusieurs, c'est les ordonner,
+     et la table n'a délibérément pas de `supersedes` (`lib/patient/ceQuiCompte.ts:21-29`,
+     « une parole n'est pas une donnée qu'on rectifie ») ;
+   - toute surface neuve rendant ces entrées entre dans `SURFACES_LOT`
+     (`ceQuiCompteAntiAgregat.guard.test.ts:28`), faute de quoi l'anti-agrégat
+     ne s'y applique pas ;
+   - aucun décompte, aucun résumé, aucune moyenne, y compris à l'écran
+     (`DC-19`, `DC-24`).
+2. **Ce dépôt alimente l'ÉNONCÉ, jamais la PRIORITÉ.** Deux motifs, aucun de
+   confort : la priorité est l'arbitrage du praticien — « ce sur quoi on
+   travaille d'abord » — et y verser une parole de patient convertirait
+   silencieusement l'une en l'autre, ce que le dossier à deux voix existe pour
+   empêcher ; et elle est bornée à 200 caractères contre 4 000 pour un dépôt,
+   donc il faudrait tronquer, que `lib/patient/ceQuiCompte.ts:44-50` nomme
+   explicitement contre-patron et « altération de donnée ».
+3. **Une SECONDE liste est ouverte, pour la reformulation praticien, fermée à
+   une entrée** : une version **publiée** de la synthèse de compréhension, citée
+   par identifiant de version, recopiée côté serveur, le fragment portant
+   `idSynthese` et `publieeLe`. **Un brouillon n'est jamais citable** — sinon la
+   garde de registre se contourne par le bas.
+4. **La garde manquante se pose EN MÊME TEMPS.** La saisie libre de la
+   reformulation reçoit le même refus bloquant sur le registre anxiogène que la
+   publication d'une synthèse. Sans cela, la citation devient le chemin sûr et la
+   frappe le chemin sale : on aurait déplacé le défaut au lieu de le fermer.
+5. **Les deux textes praticien ne fusionnent pas et ne se pré-remplissent pas
+   l'un l'autre.** Portées distinctes — la demande d'un côté, la personne de
+   l'autre — et verbes patient distincts : ratifier ou contester pour l'objectif,
+   signaler un désaccord pour la synthèse.
+6. **La clause de fermeture est reconduite et s'étend à la seconde liste.** Toute
+   extension de l'une ou de l'autre est une décision `D-xxx` nouvelle, pas un
+   champ de plus.
+
+**Ce que cette décision N'AUTORISE PAS** : faire rédiger par la machine l'une ou
+l'autre moitié de l'objectif ; pré-remplir une synthèse de compréhension par une
+sortie de moteur — la garde G3 nomme ce scénario mot pour mot
+(`comprehensionAppendOnly.guard.test.ts:161-166`) ; lire `SyntheseIA` depuis une
+autre route, ce qui serait un contournement et non une conformité ; tronquer un
+dépôt pour le faire entrer dans la priorité ; citer un brouillon.
+
+**Ce que cette décision NE RÈGLE PAS.** L'assemblage des propositions ne tourne
+qu'à la confirmation d'un épisode (`ClinicalRuntimeSection.tsx:928`) : un dépôt
+écrit après ne rafraîchit rien de lui-même, et rien n'apparaît en première
+consultation. L'**étage minimal** — afficher le dépôt courant et la synthèse
+publiée courante à côté des champs, comme le matériau d'anamnèse l'est déjà
+(`ObjectifNegociePanel.tsx:689`) — ne demande aucune décision, se pose dès
+maintenant, et c'est lui qui rend la chose utile au premier jour. Les deux étages
+sont complémentaires, pas alternatifs.
+
+- Conséquences : fragment `changelog.d/2026-09-09-deux-listes-de-sources-citables.md`.
+  Code à venir dans la campagne 6.0-B ; aucune migration, aucun drapeau neuf.
+
 ### D-159 — Une condition d'ouverture qui ne vit que dans le dossier RGPD est une condition qu'on manque
 
 - Date : 2026-09-09
