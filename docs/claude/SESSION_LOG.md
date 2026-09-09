@@ -5168,3 +5168,24 @@ charge.
 Prochaine action — fenêtre de surveillance du déploiement : connexion praticien
 réelle, entrée par lien magique (drapeau ouvert), charge Postgres
 (`staleTimes` 30 s → 0), premier `process.exit(1)`.
+
+## 2026-09-09 — Le drapeau des résultats biologiques posé, son registre rattrapé
+
+Décidé — `WN_CB_RESULTS_ENABLED` posé en production (`D-159`) : `env-set` **puis**
+`restart` (Scalingo n'applique rien aux conteneurs en cours), effectivité prouvée
+par sonde non authentifiée — `401` et non `503`, la garde testant le drapeau avant
+la session. L'étage 2 du rayon biologie est ouvert.
+
+Manqué — la condition RGPD **préalable** (registre des traitements + document
+patient) n'était écrite que dans `DOSSIER_RGPD.md` §2 ; j'avais présenté les trois
+conditions techniques comme l'ensemble complet. Comblée le jour même : rubrique 5,
+`donnees_confidentialite@v6`, et la condition portée sur la ligne du drapeau.
+
+Écarté — refermer le drapeau. Arbitrage du responsable, sur 0 ligne en base
+(`one-off-8343`) : aucune donnée traitée hors registre.
+
+Constaté, non tranché — 17 tables filles de `patients` absentes de la rubrique 5 ;
+qualification article 9 due au responsable et à un conseil.
+
+Prochaine action — l'accusé de lecture de la v6, tranché par précédent et non par
+droit.
