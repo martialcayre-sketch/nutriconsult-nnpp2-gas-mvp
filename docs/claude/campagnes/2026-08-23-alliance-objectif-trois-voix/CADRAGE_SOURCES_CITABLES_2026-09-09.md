@@ -2,9 +2,8 @@
 
 - Date : 2026-09-09
 - Objet : la clause de fermeture de `D-094` §1, et les deux chantiers qu'elle bloque
-- Statut : **texte de décision prêt à prendre.** Le numéro s'acquiert au merge —
-  `D-160` y est écrit parce que `scripts/lib/decisions-numerotation.mjs` refuse
-  un trou dans la suite.
+- Statut : **enregistré au registre sous `D-160`** dans la même PR que ce cadrage.
+  Le numéro se reprend au merge s'il a été pris entre-temps.
 
 Deux chantiers ont été tranchés en séance le 2026-09-09 et consignés à la file
 d'attente. Tous deux butent sur la même clause — « toute extension de cette liste

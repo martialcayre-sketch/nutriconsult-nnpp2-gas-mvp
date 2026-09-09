@@ -3,7 +3,8 @@
 - Date : 2026-09-09
 - Objet : la pièce qui manque pour passer de l'objectif partagé à la prise de
   décision (protocole, biologie, compléments)
-- Statut : **texte de décision prêt à prendre.** Le numéro s'acquiert au merge.
+- Statut : **enregistré au registre sous `D-161`** dans la même PR que ce cadrage.
+  Le numéro se reprend au merge s'il a été pris entre-temps.
 - Numérotation : trois textes de décision sont en vol au 2026-09-09 — abrogation
   de la borne `D-093`, deux listes de sources citables, et celui-ci. Chacun
   écrit un numéro parce qu'un trou est refusé par
@@ -186,12 +187,12 @@ têtes de chaîne sans verbe de départage ferment les trois gestes du patient e
 409 ; tant qu'il n'existe pas, la première des trois conditions du point 10 n'est
 pas garantie.
 
-- Conséquences : fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-accord.md`.
+- Conséquences : fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-l-accord.md`.
   Aucun code, aucune migration, aucun drapeau dans cette décision.
 
 ---
 
-## Fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-accord.md`
+## Fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-l-accord.md`
 
 ```markdown
 ### Doctrine produit
