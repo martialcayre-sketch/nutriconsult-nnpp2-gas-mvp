@@ -4,6 +4,81 @@
 
 ## Décisions actives
 
+### D-162 — La borne de six semaines de `D-093` est abrogée : une restriction n'a pas besoin de terme
+
+- Date : 2026-09-09
+- Statut : accepté (arbitrage du praticien)
+- Amende : [[D-093]], point 4 (« borne de six semaines »). **Le reste de `D-093`
+  est inchangé** — le périmètre, la relecture praticien, les deux conditions de
+  sortie et la condition nommée de la généralisation demeurent.
+- Domaine : gouvernance clinique — périmètre restreint des recommandations
+  élargies
+
+**Constat.** `D-093` intitule sa précondition « Précondition à lever avant que
+l'observation puisse commencer », puis compte six semaines depuis sa propre date
+de signature : le délai courait sur une fenêtre déclarée fermée le jour même.
+`D-094` §3, prise le même jour et fondée sur `D-093`, interdit de persister
+l'ordre servi (`schema.prisma:2405-2408`) — soit exactement la trace que la
+condition (b) demande d'observer. Au 2026-09-08, un objectif négocié existe en
+production, sur `PAT017`, dans le périmètre : la précondition est levée. Mais son
+patient n'a jamais été informé — il n'y avait alors ni client au cockpit ni envoi
+— et il ne peut plus l'être, `notifierObjectifPropose` ne partant qu'à l'écriture
+(`route.ts:877`, `:912`) sans qu'aucune relance existe. Les six semaines ont
+mesuré une absence de réponse sur un canal inexistant. Enfin la borne n'a
+aucun exécutant — `D-093` ne pose ni code, ni drapeau, ni migration — et son verbe
+« se referme » n'est glosé nulle part autrement que par « il ne s'étend pas par
+défaut ».
+
+**Décision :**
+
+1. **La borne du 2026-10-04 est abrogée.** Elle n'est pas repoussée : l'index
+   calendaire est retiré. Le 2026-10-04 ne redevient pas un point de contrôle à
+   ce titre.
+2. **Le périmètre n'est ni reconduit ni refermé ici.** Le praticien a annoncé le
+   2026-09-09 un amendement propre l'ouvrant à tous les dossiers. La présente
+   décision ne le préjuge pas et ne le porte pas : **elle retire la borne, et
+   rien d'autre.** Jusqu'à cet amendement, le périmètre reste ce que `D-093`
+   écrit, sans date d'expiration.
+3. **Les deux conditions de sortie perdent leur objet si le périmètre s'ouvre.**
+   Elles existaient pour sortir d'une restriction ; on ne sort pas d'une
+   restriction qui n'existe plus. La condition (a) — une réponse patient réelle
+   observée sur un objectif du périmètre — tombe avec elle, et c'est heureux :
+   elle n'était atteignable ni en droit, l'objectif de `PAT017` étant muet par
+   construction, ni en fait, aucun texte ne nommant le dossier porteur avant ce
+   jour.
+4. **Le bilan du classement survit, détaché de la mécanique de sortie.** Il
+   n'était une condition que par accident de rédaction ; sa valeur propre est de
+   documenter ce que la signature ne couvre pas. **Sa moitié descriptive est due
+   et rédigeable aujourd'hui**, sans aucune lecture de production : producteur de
+   candidats, ordre à trois termes, textes `LIMITATION_*`, périmètre du SHA.
+   Sa moitié comportementale ne s'obtient que par rejeu de `construireChaineC1`,
+   `D-094` §3 interdisant la trace en base ; elle n'est pas exigible et devient
+   une pièce du futur dossier de signature.
+5. **La clause de généralisation demeure, et elle vise l'amendement annoncé.**
+   `D-093` conditionne la généralisation à l'entrée du classement, des textes
+   `LIMITATION_*` et de l'ordre d'évaluation des motifs d'abstention dans un
+   périmètre **signé** : « tant que ce n'est pas fait, aucune généralisation ne
+   peut se réclamer d'une provenance certifiée » (`DC-01`, `DC-26`). Le classement
+   n'est pas signé à ce jour (`lib/clinical/priorityRulesV1.ts:489-495`).
+   **L'amendement qui ouvre le périmètre doit donc dire lequel des deux il fait**
+   : signer d'abord, ou généraliser en ne se réclamant d'aucune provenance
+   certifiée — ce que `D-094` §3 pratique déjà en retirant toute saillance à
+   l'ordre servi (au plus trois propositions, sans numérotation ni mise en avant
+   de la première). La seconde voie est ouverte ; elle n'est pas tacite.
+6. **Ce que `D-093` garde d'intact** : la relecture praticien de chaque
+   recommandation avant remise, et ses trois interdits — pas de recommandation
+   élargie sans relecture, pas de modification du classement ni des textes
+   `LIMITATION_*`. Ce sont eux, et non la borne, qui portaient la retenue.
+
+**Ce que cette décision N'AUTORISE PAS** : l'envoi d'une recommandation élargie
+sans relecture, et toute modification du classement ou des textes `LIMITATION_*`.
+Elle n'ouvre par elle-même aucun périmètre : l'élargissement annoncé se fait par
+son propre amendement, daté, qui dira s'il signe d'abord ou s'il généralise sans
+provenance certifiée.
+
+- Conséquences : fragment `changelog.d/2026-09-09-abrogation-borne-d093.md`.
+  Aucun code, aucun drapeau, aucune migration.
+
 ### D-161 — La fin de l'objectif se dit par une ligne, et l'accord a deux formes qui ne se confondent pas
 
 - Date : 2026-09-09
@@ -6177,6 +6252,16 @@ par `D-062`, et la re-signature du 2026-08-16 couvre le périmètre complet.
    deux conditions, **le périmètre se referme** — il ne s'étend pas par défaut.
    Une absence de constat n'est pas un feu vert (`DC-24`, appliqué à la
    gouvernance).
+
+> **AMENDÉE le 2026-09-09 par [[D-162]] — la borne est abrogée ; le périmètre
+> relève d'une décision propre.** Le délai courait depuis une date à laquelle le point 1 ci-dessus
+> déclare l'observation non commencée ; `D-094` §3 interdit par ailleurs la trace
+> que la condition (b) demande d'observer. L'objectif écrit sur `PAT017` n'a
+> jamais atteint son patient — ni cockpit ni envoi à l'époque, et
+> `notifierObjectifPropose` ne part qu'à l'écriture : les six semaines ont mesuré
+> un silence sur un canal inexistant. Le 2026-10-04 ne redevient pas un point de
+> contrôle. **Le périmètre n'est pas touché ici** : il ne porte plus de date, et
+> ne s'étend que par une décision propre.
 
 **Ce que cette décision N'AUTORISE PAS** : la généralisation à d'autres dossiers,
 l'envoi d'une recommandation élargie sans relecture, et toute modification du
