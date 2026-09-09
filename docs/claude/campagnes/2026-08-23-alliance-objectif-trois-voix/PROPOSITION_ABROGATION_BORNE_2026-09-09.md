@@ -1,14 +1,14 @@
 # Proposition — abroger la borne du 2026-10-04, garder le périmètre
 
 - Date de rédaction : 2026-09-09
-- Statut : **PROPOSÉE, NON ADOPTÉE**. L'arbitrage appartient au praticien, comme
-  celui de `D-093` lui-même.
+- Statut : **ADOPTÉE le 2026-09-09** — arbitrage du praticien, enregistré au
+  registre sous `D-162` dans la même PR que ce fichier.
 - Porte sur : `D-093`, point 4 (« borne de six semaines »). Rien d'autre.
 
-Ce fichier contient trois pièces prêtes à prendre : le texte de la décision,
-l'addendum à insérer sous `D-093`, le fragment de changelog. Le numéro `D-160`
-y est écrit parce qu'un trou est refusé par
-`scripts/lib/decisions-numerotation.mjs` ; il se reprend au merge.
+Ce fichier porte les trois pièces telles qu'elles ont été prises : le texte de la
+décision, l'addendum inséré sous le point 4 de `D-093`, le fragment de changelog.
+Le numéro `D-162` a été acquis après le merge de la PR #971, qui prenait `D-160`
+et `D-161`.
 
 ---
 
@@ -208,8 +208,8 @@ provenance certifiée.
 la forme employée par `D-155` sous `D-049` :
 
 ```
-> **AMENDÉE le 2026-09-09 par [[D-162]] — la borne est abrogée, le périmètre
-> demeure.** Le délai courait depuis une date à laquelle le point 1 ci-dessus
+> **AMENDÉE le 2026-09-09 par [[D-162]] — la borne est abrogée ; le périmètre
+> relève d'une décision propre.** Le délai courait depuis une date à laquelle le point 1 ci-dessus
 > déclare l'observation non commencée ; `D-094` §3 interdit par ailleurs la trace
 > que la condition (b) demande d'observer. L'objectif écrit sur `PAT017` n'a
 > jamais atteint son patient — ni cockpit ni envoi à l'époque, et
