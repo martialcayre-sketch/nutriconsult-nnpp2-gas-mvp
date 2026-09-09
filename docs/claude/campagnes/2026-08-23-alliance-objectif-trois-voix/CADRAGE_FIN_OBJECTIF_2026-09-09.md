@@ -131,6 +131,22 @@ ne sait pas exprimer.
    signal — il reste lisible et ne s'efface pas, au même titre qu'une
    contestation.
 
+   **La conduite de cette fin INCOMBE AU PRATICIEN.** La voix du patient est
+   requise ; le devoir de l'obtenir ne lui incombe pas. Un patient qui ne répond
+   pas n'est jamais en défaut, et son silence ne devient pas un assentiment :
+   c'est au praticien qu'il revient d'aller chercher la seconde voix, et de
+   conclure la chaîne d'une manière ou d'une autre plutôt que de la laisser
+   pendre.
+
+   **Et la seconde voix suit le régime du point 2, entièrement.** Elle vaut par
+   un geste au portail — une preuve — ou par une parole tenue en consultation que
+   le praticien atteste — un témoignage, cédant à la preuve si le patient se
+   prononce ensuite. Le praticien peut donc consigner un « atteint » convenu dans
+   le cabinet, **parce qu'il l'a entendu** ; il ne peut pas attester ce que
+   personne n'a dit. **Un « atteint » sans l'une ou l'autre forme de seconde voix
+   n'existe pas** : la chaîne reste une fin proposée, ou devient un renoncement
+   motivé. Le silence ne conclut rien.
+
    **Le renoncement, lui, reste unilatéral et motivé.** Exiger deux voix pour
    abandonner condamnerait à l'inachèvement toute chaîne dont le patient ne
    répond plus — on aurait rebâti, à la sortie, le défaut que cette décision
@@ -193,7 +209,9 @@ pas garantie.
   voix** — la fin se négocie comme le début, et tant qu'une seule s'est prononcée
   la chaîne porte une fin *proposée* — tandis que le renoncement reste
   unilatéral et motivé : on ne conclut pas seul à une réussite, on renonce seul
-  et on le dit (`D-161`).
+  et on le dit. **La conduite de cette fin incombe au praticien**, et la seconde
+  voix vaut par un geste au portail ou par une parole en consultation attestée —
+  jamais par le silence (`D-161`).
 ```
 
 ---
@@ -227,11 +245,20 @@ s'est prononcé. Une chaîne pourrait donc rester inachevée non parce que le
 patient est en désaccord, mais parce qu'il n'a **jamais été prévenu** — le même
 mécanisme, exactement, qui a rendu les six semaines de `D-093` inobservables.
 
-**La question qui reste, et elle est du même ordre que la précédente** : que fait
-un « atteint » proposé que la seconde voix ne vient jamais confirmer ? Trois
-réponses se tiennent — le laisser en attente indéfiniment, autoriser le praticien
-à le convertir en renoncement motivé, ou lui permettre d'**attester** la fin comme
-il atteste un accord en consultation, marquée comme telle et cédant à la preuve
-si le patient se prononce ensuite. La troisième est la plus cohérente avec le
-point 3, mais elle rouvre exactement ce que le point 7 vient de fermer. Elle
-n'est pas tranchée ici.
+**Tranché le 2026-09-09 : l'accord de fin incombe au praticien.** La rédaction
+proposait trois issues pour un « atteint » que la seconde voix ne confirme
+jamais ; la troisième — attester la fin comme on atteste un accord — était mal
+posée, et l'arbitrage la corrige plutôt qu'il ne la choisit.
+
+**Ce qui la rendait fautive** : un accord conclu en consultation est attestable
+parce que le praticien l'a **entendu**. Une fin que personne n'a prononcée n'a été
+entendue par personne — l'attester ne serait pas un témoignage mais une
+substitution, et ferait du silence un assentiment.
+
+**Ce que l'arbitrage pose à la place** : le devoir de conclure incombe au
+praticien, la voix du patient reste requise, et cette seconde voix suit le régime
+du point 2 — geste au portail ou parole en consultation attestée. Le cas résiduel
+se referme de lui-même : un patient injoignable, qui n'a rien dit ni au portail
+ni au cabinet, ne donne pas un « atteint ». La chaîne reste une fin proposée, ou
+se conclut en renoncement motivé — ce qui est vrai, et consignable, alors qu'une
+réussite ne l'est pas.
