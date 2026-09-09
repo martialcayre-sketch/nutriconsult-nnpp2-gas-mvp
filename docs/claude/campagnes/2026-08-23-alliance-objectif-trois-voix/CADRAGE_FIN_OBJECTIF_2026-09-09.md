@@ -121,27 +121,45 @@ ne sait pas exprimer.
    son motif écrit, dont `nonTraiteMotif` est la graine à promouvoir de la version
    à la chaîne — et **remplacé**, portant la racine de la chaîne qui prend la
    suite. Toute extension de cette liste est une décision `D-xxx` nouvelle.
-7. **La clôture du suivi rend la chaîne INACTIVE, elle ne l'achève pas.** Rien ne
+7. **« Atteint » se déclare à DEUX VOIX ; « abandonné » se prend seul.** Une
+   réussite ne se constate pas seul : il y faut le geste du praticien ET celui du
+   patient. L'ordre est libre — l'un propose la fin, l'autre la confirme —, et
+   c'est exactement la forme sous laquelle l'objectif s'est négocié : la fin se
+   négocie comme le début. Tant qu'une seule voix s'est prononcée, **la chaîne
+   n'est pas achevée** : elle porte une fin **proposée**, que l'autre voix peut
+   confirmer ou refuser. Un refus n'est pas une panne du mécanisme, c'est un
+   signal — il reste lisible et ne s'efface pas, au même titre qu'une
+   contestation.
+
+   **Le renoncement, lui, reste unilatéral et motivé.** Exiger deux voix pour
+   abandonner condamnerait à l'inachèvement toute chaîne dont le patient ne
+   répond plus — on aurait rebâti, à la sortie, le défaut que cette décision
+   existe pour fermer. La règle tient en une phrase : *on ne conclut pas seul à
+   une réussite ; on renonce seul, et on le dit.* « Remplacé » suit le même
+   régime que l'abandon, étant un geste d'organisation du suivi et non un
+   jugement sur le résultat.
+
+8. **La clôture du suivi rend la chaîne INACTIVE, elle ne l'achève pas.** Rien ne
    s'écrit : l'état se dérive de la clôture, et se défait si le suivi rouvre. Une
    fin est un geste, pas une conséquence administrative.
-8. **« Atteint » ne dit rien d'une cause.** Il dit que l'objectif n'est plus ce
+9. **« Atteint » ne dit rien d'une cause.** Il dit que l'objectif n'est plus ce
    sur quoi on travaille, jamais qu'une intervention l'a produit (`DC-27`). Aucun
    décompte, aucune moyenne, aucune note — ni des accords, ni des fins
    (`DC-19`, `DC-24`).
-9. **Ce qui autorise le passage à la prise de décision** — protocole, bilan
+10. **Ce qui autorise le passage à la prise de décision** — protocole, bilan
    biologique, compléments — tient en trois conditions cumulatives : une **seule
    tête** de chaîne ; un **accord** sur cette tête, sous l'une ou l'autre forme ;
    la chaîne **non achevée**. Le rail ne peut pas servir de feu : le statut de la
    phase 3 ne lit aujourd'hui que les couvertures des douze besoins
    (`FichePatientPanel.tsx:747-749`), et affiche « renseignée » sur un dossier
    sans le moindre objectif.
-10. **`negocieLe` cesse d'être saisie sur la version.** La date d'accord se lit
+11. **`negocieLe` cesse d'être saisie sur la version.** La date d'accord se lit
     depuis le fait qui la porte — geste du patient, ou attestation du praticien.
     Tant que la colonne subsiste, le formulaire doit être vidé à chaque bascule
     de mode, sans quoi une date abandonnée repart avec la version suivante.
 
 **Ce que cette décision N'AUTORISE PAS** : déclarer un accord au nom du patient
-sans dire que c'est le praticien qui parle ; faire de la ratification un terminus ;
+sans dire que c'est le praticien qui parle ; faire de la ratification un terminus ; conclure seul à un « atteint » ;
 écraser une fin par un `UPDATE` ; compter, moyenner ou noter des accords ou des
 fins ; tirer d'un « atteint » une affirmation causale.
 
@@ -149,7 +167,7 @@ fins ; tirer d'un « atteint » une affirmation causale.
 `schema.prisma` n'est pas touché : le modèle requis est décrit, sa mise en œuvre
 demande un feu vert explicite. Et elle ne corrige pas le blocage connu — deux
 têtes de chaîne sans verbe de départage ferment les trois gestes du patient en
-409 ; tant qu'il n'existe pas, la première des trois conditions du point 9 n'est
+409 ; tant qu'il n'existe pas, la première des trois conditions du point 10 n'est
 pas garantie.
 
 - Conséquences : fragment `changelog.d/2026-09-09-fin-objectif-et-formes-de-accord.md`.
@@ -171,7 +189,11 @@ pas garantie.
   l'achever. Et l'accord a deux formes qui ne se confondent pas : la ratification
   au portail est une **preuve**, l'accord attesté en consultation est un
   **témoignage** — le témoignage cède à la preuve, jamais l'inverse, et le patient
-  voit toujours laquelle des deux il lit (`D-161`).
+  voit toujours laquelle des deux il lit. Enfin **« atteint » se déclare à deux
+  voix** — la fin se négocie comme le début, et tant qu'une seule s'est prononcée
+  la chaîne porte une fin *proposée* — tandis que le renoncement reste
+  unilatéral et motivé : on ne conclut pas seul à une réussite, on renonce seul
+  et on le dit (`D-161`).
 ```
 
 ---
@@ -189,10 +211,27 @@ pas garantie.
    motifs — qui demande une migration, donc un feu vert explicite.
 4. **La source de l'accord à l'affichage**, côté patient comme côté praticien.
 5. **Le rail**, qui doit cesser de dire « renseignée » sur un dossier sans
-   objectif : point 9, dernière phrase.
+   objectif : point 10, dernière phrase.
 
-**Question laissée ouverte, et elle n'est pas technique.** Qui déclare
-« atteint » ? Le praticien seul, comme il atteste l'accord en consultation — avec
-la même règle, contredisible par le patient ? Ou faut-il ici les deux voix, au
-motif qu'une fin engage davantage qu'un début ? La décision ci-dessus ne tranche
-pas ce point : elle pose la forme, pas l'auteur.
+**Question tranchée le 2026-09-09 : les deux voix déclarent « atteint ».** Elle
+était laissée ouverte à la rédaction ; le praticien l'a rendue le jour même. Le
+point 7 ci-dessus la porte, avec l'asymétrie qui en découle — atteint à deux,
+renoncement seul.
+
+**Ce que cette règle hérite, et qu'il faut regarder en face.** Un « atteint » qui
+attend la voix du patient hérite de TOUS les défauts du chemin de retour
+inventoriés le 2026-09-09 : l'envoi ne part qu'à l'écriture et aucune relance
+n'existe, le courrier ne conduit pas au dossier, aucune surface du portail ne
+signale qu'une chose attend, et rien ne revient au praticien quand le patient
+s'est prononcé. Une chaîne pourrait donc rester inachevée non parce que le
+patient est en désaccord, mais parce qu'il n'a **jamais été prévenu** — le même
+mécanisme, exactement, qui a rendu les six semaines de `D-093` inobservables.
+
+**La question qui reste, et elle est du même ordre que la précédente** : que fait
+un « atteint » proposé que la seconde voix ne vient jamais confirmer ? Trois
+réponses se tiennent — le laisser en attente indéfiniment, autoriser le praticien
+à le convertir en renoncement motivé, ou lui permettre d'**attester** la fin comme
+il atteste un accord en consultation, marquée comme telle et cédant à la preuve
+si le patient se prononce ensuite. La troisième est la plus cohérente avec le
+point 3, mais elle rouvre exactement ce que le point 7 vient de fermer. Elle
+n'est pas tranchée ici.
