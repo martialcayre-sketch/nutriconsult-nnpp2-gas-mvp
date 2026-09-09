@@ -125,7 +125,7 @@ déplaçant l'objet voisin (`D-037`).
 
 ## Pièce 1 — texte de la décision, à placer en tête de `docs/DECISIONS.md`
 
-### D-160 — La borne de six semaines de `D-093` est abrogée : une restriction n'a pas besoin de terme
+### D-162 — La borne de six semaines de `D-093` est abrogée : une restriction n'a pas besoin de terme
 
 - Date : 2026-09-09
 - Statut : accepté (arbitrage du praticien)
@@ -155,34 +155,47 @@ défaut ».
 1. **La borne du 2026-10-04 est abrogée.** Elle n'est pas repoussée : l'index
    calendaire est retiré. Le 2026-10-04 ne redevient pas un point de contrôle à
    ce titre.
-2. **Le périmètre reste `PAT006`, `PAT007`, `PAT017`, et eux seuls, sans terme.**
-   Il ne s'étend que par une décision datée qui le dise. Le défaut devient donc
-   « reste restreint » au lieu de « expire dans une ambiguïté » — ce qui est une
-   retenue plus forte, non plus faible, et conforme à `DC-24` : rien ne s'ouvre
-   par silence.
-3. **La condition (a) se constate par identifiant, et le constat s'écrit.** Une
-   réponse patient ne vaut que si elle porte sur un objectif d'un dossier du
-   périmètre, nommé par identifiant au moment du constat. L'unique objectif de
-   production porte sur `PAT017`, dans le périmètre — le dépôt ne le disait pas,
-   il le dit désormais. Une proposition servie hors périmètre ne satisfait pas la
-   condition, quel qu'en soit le retour, `WN_OBJECTIF_PROPOSE_PATIENTS` étant
-   vide.
-4. **La condition (b) est scindée.** Sa moitié descriptive — producteur de
-   candidats, ordre à trois termes, textes `LIMITATION_*`, ce que le SHA couvre et
-   ce qu'il laisse dehors — est due et rédigeable sans aucune lecture de
-   production. Sa moitié comportementale ne s'obtient que par **rejeu** de
-   `construireChaineC1`, `D-094` §3 interdisant la trace en base ; à défaut de ce
-   rejeu, elle n'est pas exigible et ne bloque pas la moitié descriptive.
-5. **Ce qui ferme réellement le sujet reste inchangé** : faire entrer le
-   classement, les textes `LIMITATION_*` et l'ordre d'évaluation des motifs
-   d'abstention dans un périmètre signé (`D-093`, « condition nommée de la
-   généralisation ultérieure »). C'est un travail, pas un délai — il ne reçoit
-   donc pas de date ici.
+2. **Le périmètre n'est ni reconduit ni refermé ici.** Le praticien a annoncé le
+   2026-09-09 un amendement propre l'ouvrant à tous les dossiers. La présente
+   décision ne le préjuge pas et ne le porte pas : **elle retire la borne, et
+   rien d'autre.** Jusqu'à cet amendement, le périmètre reste ce que `D-093`
+   écrit, sans date d'expiration.
+3. **Les deux conditions de sortie perdent leur objet si le périmètre s'ouvre.**
+   Elles existaient pour sortir d'une restriction ; on ne sort pas d'une
+   restriction qui n'existe plus. La condition (a) — une réponse patient réelle
+   observée sur un objectif du périmètre — tombe avec elle, et c'est heureux :
+   elle n'était atteignable ni en droit, l'objectif de `PAT017` étant muet par
+   construction, ni en fait, aucun texte ne nommant le dossier porteur avant ce
+   jour.
+4. **Le bilan du classement survit, détaché de la mécanique de sortie.** Il
+   n'était une condition que par accident de rédaction ; sa valeur propre est de
+   documenter ce que la signature ne couvre pas. **Sa moitié descriptive est due
+   et rédigeable aujourd'hui**, sans aucune lecture de production : producteur de
+   candidats, ordre à trois termes, textes `LIMITATION_*`, périmètre du SHA.
+   Sa moitié comportementale ne s'obtient que par rejeu de `construireChaineC1`,
+   `D-094` §3 interdisant la trace en base ; elle n'est pas exigible et devient
+   une pièce du futur dossier de signature.
+5. **La clause de généralisation demeure, et elle vise l'amendement annoncé.**
+   `D-093` conditionne la généralisation à l'entrée du classement, des textes
+   `LIMITATION_*` et de l'ordre d'évaluation des motifs d'abstention dans un
+   périmètre **signé** : « tant que ce n'est pas fait, aucune généralisation ne
+   peut se réclamer d'une provenance certifiée » (`DC-01`, `DC-26`). Le classement
+   n'est pas signé à ce jour (`lib/clinical/priorityRulesV1.ts:489-495`).
+   **L'amendement qui ouvre le périmètre doit donc dire lequel des deux il fait**
+   : signer d'abord, ou généraliser en ne se réclamant d'aucune provenance
+   certifiée — ce que `D-094` §3 pratique déjà en retirant toute saillance à
+   l'ordre servi (au plus trois propositions, sans numérotation ni mise en avant
+   de la première). La seconde voie est ouverte ; elle n'est pas tacite.
+6. **Ce que `D-093` garde d'intact** : la relecture praticien de chaque
+   recommandation avant remise, et ses trois interdits — pas de recommandation
+   élargie sans relecture, pas de modification du classement ni des textes
+   `LIMITATION_*`. Ce sont eux, et non la borne, qui portaient la retenue.
 
-**Ce que cette décision N'AUTORISE PAS** : la généralisation à d'autres dossiers,
-l'envoi d'une recommandation élargie sans relecture, et toute modification du
-classement ou des textes `LIMITATION_*`. Les trois interdits de `D-093` sont
-repris tels quels.
+**Ce que cette décision N'AUTORISE PAS** : l'envoi d'une recommandation élargie
+sans relecture, et toute modification du classement ou des textes `LIMITATION_*`.
+Elle n'ouvre par elle-même aucun périmètre : l'élargissement annoncé se fait par
+son propre amendement, daté, qui dira s'il signe d'abord ou s'il généralise sans
+provenance certifiée.
 
 - Conséquences : fragment `changelog.d/2026-09-09-abrogation-borne-d093.md`.
   Aucun code, aucun drapeau, aucune migration.
@@ -195,15 +208,15 @@ repris tels quels.
 la forme employée par `D-155` sous `D-049` :
 
 ```
-> **AMENDÉE le 2026-09-09 par [[D-160]] — la borne est abrogée, le périmètre
+> **AMENDÉE le 2026-09-09 par [[D-162]] — la borne est abrogée, le périmètre
 > demeure.** Le délai courait depuis une date à laquelle le point 1 ci-dessus
 > déclare l'observation non commencée ; `D-094` §3 interdit par ailleurs la trace
 > que la condition (b) demande d'observer. L'objectif écrit sur `PAT017` n'a
 > jamais atteint son patient — ni cockpit ni envoi à l'époque, et
 > `notifierObjectifPropose` ne part qu'à l'écriture : les six semaines ont mesuré
-> un silence sur un canal inexistant. Le 2026-10-04 ne redevient pas un
-> point de contrôle. **Le périmètre reste `PAT006`, `PAT007`, `PAT017` sans
-> terme, et ne s'étend que par décision datée.**
+> un silence sur un canal inexistant. Le 2026-10-04 ne redevient pas un point de
+> contrôle. **Le périmètre n'est pas touché ici** : il ne porte plus de date, et
+> ne s'étend que par une décision propre.
 ```
 
 ---
@@ -218,7 +231,7 @@ la forme employée par `D-155` sous `D-049` :
   d'observation non ouverte, et sa condition (b) portait sur une trace que
   `D-094` §3 interdit d'écrire. Le périmètre des recommandations élargies reste
   restreint à trois dossiers, désormais **sans terme** : il ne s'étend que par
-  une décision datée. Aucun code, aucun drapeau, aucune migration (`D-160`).
+  une décision datée. Aucun code, aucun drapeau, aucune migration (`D-162`).
 ```
 
 ---
@@ -231,8 +244,13 @@ la forme employée par `D-155` sous `D-049` :
 - **Comment porter à son patient l'objectif déjà écrit de `PAT017`** — révision
   qui supersède, avis hors produit, ou action « relancer » à construire. Le choix
   décide de la date à laquelle l'observation commence pour de bon.
-- **Si le praticien accepte la moitié descriptive du bilan comme condition (b)
-  suffisante**, ou s'il la tient pour une simple pièce du futur dossier de
-  signature.
+- ~~Si le praticien accepte la moitié descriptive du bilan comme condition (b)
+  suffisante.~~ **Tranché le 2026-09-09** : le bilan cesse d'être une condition
+  de sortie et devient un document dû en propre ; sa moitié descriptive est due,
+  sa moitié comportementale ne l'est pas.
+- ~~Le sort du périmètre.~~ **Tranché le 2026-09-09** : le praticien amendera
+  `D-093` pour l'ouvrir à tous les dossiers, par une décision propre. Reste à
+  cet amendement de dire s'il signe le classement d'abord, ou s'il généralise
+  sans se réclamer d'une provenance certifiée (point 5 ci-dessus).
 - **Le rejeu de `construireChaineC1`** — s'il vaut la peine d'être programmé, ou
   si la moitié comportementale du bilan est abandonnée en connaissance de cause.
